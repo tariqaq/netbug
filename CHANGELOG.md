@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 04:58: changelog + docs rule
+### 04:57: `75774e5` changelog + docs rules
 - Added `CHANGELOG.md`, reconstructed from git history and session actions.
 - `AGENTS.md` rule 4: keep all docs/`.md` files up to date. Rule 5: log every change here with a system-clock timestamp.
 

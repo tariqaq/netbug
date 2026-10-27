@@ -1,11 +1,16 @@
 // netbug - lightweight always-on network health logger.
 //
 // Probes every second (gateway ping, 1.1.1.1 + 8.8.8.8 ping), DNS via the
-// gateway every 2 s, a TCP connect + UDP port usage + gateway MAC every 10 s,
-// and the public IP every 5 min. Writes a CSV row every 5 s while healthy and
-// every 1 s during (and 60 s after) any failure. Outage start/end, link,
-// interface, gateway MAC, public IP and UDP-usage changes go to an events log,
-// and every outage start triggers snapshot.ps1 for a detailed dump.
+// gateway every 2 s, a TCP connect + UDP port usage + gateway MAC every 10 s
+// (a failed TCP connect is retried every second), and the public IP every 5 min.
+// Background threads keep one long-lived TLS connection (HEAD every 15 s) and one
+// long-lived UDP socket doing STUN every 2 s (UDP RTT + NAT mapping).
+// Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
+// any failure. Outage/LAG start/end, link, interface, gateway MAC, public IP, NAT
+// mapping, TCP-connection deaths and UDP-usage changes go to events.log, and an
+// outage (or 5 s of lag) triggers snapshot.ps1 at most once per 60 s.
+// logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
+// process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
 //
 // Build: csc /target:winexe /optimize /out:netbug.exe netbug.cs
 

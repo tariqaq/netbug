@@ -13,9 +13,9 @@ Location: hostel room, wired via room wall port. Kuala Lumpur, Malaysia.
 | 2 | **Hostel router blocks all third-party DNS**: UDP/TCP 53, DoT 853, and even TCP 443/80 to `1.1.1.1`, `8.8.8.8`, `9.9.9.9`, `cloudflare-dns.com`, `dns.google`. Only the router's own resolver (`10.255.31.254`) works. | High (explains random "no internet" / DNS timeouts) |
 | 3 | **DNS timeouts observed**: event 1014 at 02:56 ("none of the configured DNS servers responded"). During one test burst every hostname lookup failed for ~20 s, then recovered. | High |
 | 4 | ~~Upload capped~~. **Correction:** Ookla multi-stream gets **940 down / 900 up** (Uni5G Kepong, 1 ms), so the line is really 1 Gbps. Single-stream curl only reached ~450–600 / 50–100. Both Ookla and fast.com sit at 0 for ~30 s before starting, which points to slow setup of the first connection. | Info |
-| 5 | **Ethernet goes through a USB dongle/dock** (Realtek RTL8153B, Ugreen) behind a chain of USB hubs. The driver is from **2018**, and USB power saving is enabled. | Medium (possible drop/stall source) |
-| 6 | **Windows Firewall is OFF for the Private profile**, and the hostel LAN is marked *Private*. MySQL (3306/33060), SMB (445), RPC and spacedesk (28252) are open to every device on the hostel LAN. | **High (security)** |
-| 7 | Tcpip event 4266: **UDP ephemeral ports exhausted** 20+ times since 2026-09-24, every 1–4 days. That matches the frequency of the Discord/Valorant outages. | **High** |
+| 5 | **Ethernet goes through a USB dongle/dock** (Realtek RTL8153B, Ugreen) behind a chain of USB hubs. The driver is from **2018**, and USB power saving is enabled. **Update:** the driver was updated to 1153.23.20.605 and power saving was turned off (see §11). | Medium (possible drop/stall source) |
+| 6 | **Windows Firewall is OFF for the Private profile**, and the hostel LAN is marked *Private*. MySQL (3306/33060), SMB (445), RPC and spacedesk (28252) are open to every device on the hostel LAN. The user keeps this on purpose. | Info (user decision) |
+| 7 | Tcpip event 4266: **UDP ephemeral ports exhausted** 45 times since 2026-08-09. **Update:** none of these times match a known outage, so it's a separate background leak (see §10b). netbug flags it if UDP endpoints reach 3000 or more. | Low |
 | 8 | Path MTU = **1492** (TM Unifi PPPoE). The router handles PMTUD correctly. | Info |
 
 ---
@@ -213,8 +213,8 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 ## 10. Suspects for the 2-year problem (to confirm)
 
 1. **Router DNS is a single point of failure.** All other DNS is blocked, so any resolver stall on the MikroTik looks like "internet down".
-2. **Upload throttled** to ~50–100 Mbps per user.
-3. **USB NIC chain**: a 2018 driver, selective suspend enabled, and two USB hubs. RTL8153 on old drivers is known to stall or drop silently.
+2. ~~**Upload throttled** to ~50–100 Mbps per user.~~ Ruled out: Ookla multi-stream gets 900 up.
+3. ~~**USB NIC chain**: a 2018 driver, selective suspend enabled, and two USB hubs.~~ Mostly ruled out: the driver is updated, power saving is off, and the user saw the same drops with a different dongle. A TX stall is still covered by the logger.
 4. **One big flat /20 with ~4k possible clients.** Broadcast/ARP noise and no client isolation. Everyone can reach everyone, which matters given finding #6.
 
 ## 10b. Outage history (from Discord PTB logs + Windows events)
@@ -253,10 +253,13 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 - Added a UDP path check: a long-lived UDP socket sends STUN to `stun.cloudflare.com:3478` (fallback `stun.l.google.com:19302`) every 2 s. RTT is ~9 ms. `UDP NAT mapping changed` is logged when the public port for the same local socket changes, which is what would break a running Discord/Valorant UDP session. New CSV columns are `udp_ms` and `udp_map`; the pre-upgrade CSV was kept as `netbug-2026-10-28-old-044708.csv`.
 - `logs/` hard cap is 500 MB: the oldest snapshots are deleted first, then the oldest CSVs. Normal growth is ~3 MB/day of CSV plus ~0.6 MB per snapshot.
 - The user reports laptop ports, dongle and cable are known-good across other places. **Remaining physical suspect: the room wall port and the hostel cabling/switch behind it.**
+- Leak safety net: netbug writes an hourly `health:` line (private MB, handles, threads, uptime) to `events.log`. If it ever exceeds 200 MB private memory, 5000 handles or 100 threads, it starts a fresh copy and exits. Snapshot processes are separate and don't count toward this.
+- Priority stays BelowNormal on purpose. Ping RTTs are kernel-timed, so priority can't skew them. DNS/UDP/TCP timings would only inflate if all 16 threads were saturated.
 
-## 12. Recommended next actions (not applied)
+## 12. Next actions
 
-- **Turn the Private firewall back on**, or set the hostel network to *Public*. Bind MySQL to `127.0.0.1`.
-- Update the RTL8153 driver to the current Realtek/Microsoft release. Disable "Allow computer to turn off this device" and selective suspend.
-- Plug the dongle straight into a laptop USB-C/USB 3 port to rule out the hubs.
-- Run a long-term monitor (gw ping + router DNS + external HTTPS) to timestamp the drops.
+- ~~Turn the Private firewall back on.~~ Won't do: the user keeps it off intentionally.
+- ~~Update the RTL8153 driver; disable NIC power-off and selective suspend.~~ Done.
+- ~~Plug the dongle straight into the laptop to rule out hubs.~~ Not needed: the user confirmed ports, dongle and cable are fine.
+- ~~Run a long-term monitor.~~ Done: netbug.
+- **Open:** wait for the next real incident, then analyze `logs/events.log`, the CSV and the snapshot.

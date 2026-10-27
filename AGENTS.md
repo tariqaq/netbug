@@ -10,3 +10,7 @@
    - After **every** edit to an original, rerun the script, then commit and push the `REDACTED_*` copy.
    - When new PII shows up, add the literal string to `redact.local.txt` (gitignored) before running the script. The script refuses to write a copy that still contains any listed term or a MAC.
    - Before every commit, check that no gitignored original or `redact.local.txt` is staged.
+3. **Code is the source of truth. Report every doc/code mismatch immediately.**
+   - Whenever code disagrees with any doc, `.md` file or code comment, tell the user right away. Say what mismatches (file:line on both sides), which side is stale, and the proposed action (usually: update the doc to match the code). Then wait for their call before changing behavior.
+   - When in doubt, follow what the code actually does, never stale docs, `.md` files or comments.
+   - After any code change, update every affected doc, `.md` and comment in the same commit (and regenerate `REDACTED_*` copies per rule 2).

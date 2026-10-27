@@ -1,4 +1,4 @@
-// netmon - lightweight always-on network health logger.
+// netbug - lightweight always-on network health logger.
 //
 // Probes every second (gateway ping, 1.1.1.1 + 8.8.8.8 ping), DNS via the
 // gateway every 2 s, a TCP connect + UDP port usage + gateway MAC every 10 s,
@@ -7,7 +7,7 @@
 // interface, gateway MAC, public IP and UDP-usage changes go to an events log,
 // and every outage start triggers snapshot.ps1 for a detailed dump.
 //
-// Build: csc /target:winexe /optimize /out:netmon.exe netmon.cs
+// Build: csc /target:winexe /optimize /out:netbug.exe netbug.cs
 
 using System;
 using System.Collections.Generic;
@@ -70,10 +70,10 @@ class NetMon
         Directory.CreateDirectory(snapDir);
 
         bool created;
-        using (new Mutex(true, "Global\\netbug-netmon", out created))
+        using (new Mutex(true, "Global\\netbug", out created))
         {
             if (!created) return;   // already running
-            Event("netmon started");
+            Event("netbug started");
             new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             Run();
         }
@@ -201,7 +201,7 @@ class NetMon
             }
             catch (Exception ex)
             {
-                Event("netmon error: " + ex.GetType().Name + ": " + ex.Message);
+                Event("netbug error: " + ex.GetType().Name + ": " + ex.Message);
             }
 
             tick++;
@@ -445,7 +445,7 @@ class NetMon
             if (File.GetLastWriteTime(f) < DateTime.Now.AddDays(-RetentionDays)) { try { File.Delete(f); } catch { } }
     }
 
-    static string CsvPath() { return Path.Combine(logDir, "netmon-" + currentDay + ".csv"); }
+    static string CsvPath() { return Path.Combine(logDir, "netbug-" + currentDay + ".csv"); }
     static string Csv(string s) { return (s ?? "").Replace(",", ";"); }
     static void Row(string line) { File.AppendAllText(CsvPath(), line + "\r\n"); }
 

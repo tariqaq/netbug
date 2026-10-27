@@ -225,18 +225,18 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 | 10-20 16:49–17:11 | gateway WS closed ~15x in 20 min | nothing network-related; Cloudflare WARP disconnect 17:11 |
 | **10-24 03:13** | **voice heartbeat ACK took 13.7 s → reconnect code 4800 (heartbeat timeout)** | **nothing at all**: no link change, no DHCP, no NIC event |
 | 10-26 19:44–20:21 | gateway WS closed ~12x, voice WS 1006 | user rebooted 20:23; DNS 1014 on msftconnecttest |
-| 10-28 04:03:58–04:04:31 | (caught by netmon) | **LAN lag**: gateway RTT 0 → 10–65 ms with loss. Gateway, 1.1.1.1 and 8.8.8.8 often had *identical* RTTs (30/30/30, 65/65/65), so the delay sits on the local segment (hostel LAN or laptop/dongle), not upstream. Own traffic was low. |
-| 10-28 04:13:25–04:13:32 | Claude Code "API Error: Connection lost mid-response" (other session) | netmon saw nothing: gw 0 ms, cf 8 ms, DNS 11 ms, no loss. Either one connection was killed or it was API-side. The persistent-TCP probe was added to catch this class. |
+| 10-28 04:03:58–04:04:31 | (caught by netbug) | **LAN lag**: gateway RTT 0 → 10–65 ms with loss. Gateway, 1.1.1.1 and 8.8.8.8 often had *identical* RTTs (30/30/30, 65/65/65), so the delay sits on the local segment (hostel LAN or laptop/dongle), not upstream. Own traffic was low. |
+| 10-28 04:13:25–04:13:32 | Claude Code "API Error: Connection lost mid-response" (other session) | netbug saw nothing: gw 0 ms, cf 8 ms, DNS 11 ms, no loss. Either one connection was killed or it was API-side. The persistent-TCP probe was added to catch this class. |
 
 - Gateway WebSocket also dies (code 1006) several times a day outside these windows.
 - **UDP exhaustion (4266) times do not match any of these outages.** It's a separate background leak, not the cause.
-- 10-24 shows traffic silently black-holed for 14+ s while Windows saw the link as perfectly fine. That points at the path beyond the laptop (hostel switch/MikroTik) or a NIC TX stall. The netmon logger is set up to tell these apart.
+- 10-24 shows traffic silently black-holed for 14+ s while Windows saw the link as perfectly fine. That points at the path beyond the laptop (hostel switch/MikroTik) or a NIC TX stall. The netbug logger is set up to tell these apart.
 
 ## 11. Changes applied (2026-10-28, user-approved)
 
 - Ethernet 7: "Allow computer to turn off this device" → **Disabled**.
 - Power plan USB selective suspend → **Disabled** on AC and DC. The 2018 driver has no per-adapter selective-suspend keyword, so the power plan setting is what covers it.
-- Logger `tools/netmon.exe` (C#, ~35 MB RAM, ~1% of one core, BelowNormal priority) runs as the scheduled task `netbug-netmon` at logon with highest privileges. It writes `logs/netmon-<date>.csv`, `logs/events.log` and `logs/snapshots/`, and keeps 30 days.
+- Logger `tools/netbug.exe` (C#, ~35 MB RAM, ~1% of one core, BelowNormal priority) runs as the scheduled task `netbug` at logon with highest privileges. It writes `logs/netbug-<date>.csv`, `logs/events.log` and `logs/snapshots/`, and keeps 30 days.
   - Since 04:17 it also logs `LAG` events (gateway ≥ 15 ms, or gateway + internet loss) and keeps a long-lived TLS connection to www.google.com (HEAD every 15 s). When that connection dies it logs FIN, RST or timeout.
   - Snapshot pings now use `ping.exe`. The first snapshot (03:57) showed false 0/3 results because `Test-Connection -TimeoutSeconds` is PS7-only.
 
@@ -245,8 +245,8 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 - RTL8153 driver updated by the user to Realtek NetAdapterCx **1153.23.20.605** (service `rtu53cx22x64`, `oem22.inf`, signed by Microsoft Windows Hardware Compatibility Publisher). The old 2018 `rtucx22x64` 11.19.20.602 is gone from use.
   - The new driver raised Rx URBs/buffers from 6/16 to 10/32 and Tx buffers from 18 to 37.
   - "Allow computer to turn off this device" is still **Disabled** after the update. USB selective suspend is still off in the power plan.
-- netmon came back by itself after the reboot: the task started it at 04:33:43, about 30 s after logon.
-- Unplug test: cable out 04:34:14, back 04:35:03. netmon logged the link down/up, `OUTAGE START`/`END` (50 s) and a full snapshot with a pktmon capture.
+- netbug came back by itself after the reboot: the task started it at 04:33:43, about 30 s after logon.
+- Unplug test: cable out 04:34:14, back 04:35:03. netbug logged the link down/up, `OUTAGE START`/`END` (50 s) and a full snapshot with a pktmon capture.
 - Logger fixes from the test:
   - no `LAG` events while there's no interface
   - repeated persistent-TCP reconnect failures are collapsed into one line

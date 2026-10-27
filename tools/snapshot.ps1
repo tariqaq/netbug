@@ -1,4 +1,4 @@
-# snapshot.ps1 - detailed network state dump, launched by netmon.exe when an
+# snapshot.ps1 - detailed network state dump, launched by netbug.exe when an
 # outage starts. Runs once per outage, so it can afford heavier commands.
 
 param([Parameter(Mandatory)][string]$Out)

@@ -27,6 +27,7 @@
   --gw: #0a84ff;
   --net: #fff;
   --udp: #bf5af2;
+  --info: #64d2ff;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
   --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
@@ -49,6 +50,7 @@ main {
 header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; }
 .brand { font: 700 18px/1 var(--display); letter-spacing: -0.02em; }
 .meta { font-size: 13px; display: flex; gap: 4px 18px; flex-wrap: wrap; }
+.meta b, .axis b { font-weight: 600; }
 
 .status { margin: 48px 0 32px; display: grid; grid-template-columns: auto 1fr; column-gap: 18px; }
 .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--ok); grid-row: span 2; margin-top: 0.42em; font-size: clamp(30px, 6vw, 56px); }
@@ -66,7 +68,7 @@ canvas { display: block; width: 100%; height: 200px; }
 .readouts { display: grid; grid-template-columns: repeat(6, 1fr); margin: 30px 0 0; }
 .readout { padding-right: 16px; min-width: 0; }
 .readout + .readout { border-left: 1px solid var(--line); padding-left: 16px; }
-.readout .k { font-size: 13px; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.readout .k { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .readout .k i { width: 10px; height: 3px; border-radius: 2px; flex: none; }
 .readout .v { font: 600 30px/1.15 var(--display); letter-spacing: -0.03em; margin-top: 2px; }
 .readout .v small { font: 500 14px var(--sans); letter-spacing: 0; margin-left: 3px; }
@@ -74,13 +76,13 @@ canvas { display: block; width: 100%; height: 200px; }
 
 .facts { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 32px; margin: 32px 0 48px; }
 .fact { border-top: 1px solid var(--line); padding: 12px 0 14px; min-width: 0; }
-.fact dt { font-size: 13px; }
-.fact dd { margin: 3px 0 0; font-size: 16px; font-weight: 500; overflow-wrap: anywhere; }
+.fact dt { font-size: 13px; font-weight: 600; }
+.fact dd { margin: 3px 0 0; font-size: 16px; font-weight: 400; overflow-wrap: anywhere; }
 .fact dd span { display: block; font-size: 13px; font-weight: 400; margin-top: 2px; }
 
 .logs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .logs-head h2 { font: 700 20px/1 var(--display); letter-spacing: -0.02em; margin: 0; }
-.logs-head label { font-size: 13px; display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.logs-head label { font-size: 13px; font-weight: 600; display: flex; gap: 8px; align-items: center; cursor: pointer; }
 input[type="checkbox"] { accent-color: var(--gw); width: 16px; height: 16px; margin: 0; }
 .log-wrap { position: relative; }
 #log {
@@ -98,6 +100,8 @@ input[type="checkbox"] { accent-color: var(--gw); width: 16px; height: 16px; mar
 #log .day:first-child { padding-top: 2px; }
 #log .down .m { color: var(--down); }
 #log .lag .m { color: var(--lag); }
+#log .t { font-weight: 700; }
+#log .quiet .t, #log .quiet .m { color: var(--info); }
 #log.hide-quiet .quiet { display: none; }
 #jump {
   position: absolute; right: 14px; bottom: 14px;
@@ -134,7 +138,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
 <main>
   <header>
     <div class="brand">netbug</div>
-    <div class="meta"><span id="m-up">Connecting</span><span id="m-mem"></span><span id="m-host"></span></div>
+    <div class="meta"><span id="m-up">Connecting…</span><span id="m-mem"></span><span id="m-host"></span></div>
   </header>
 
   <section class="status" aria-live="polite">
@@ -146,25 +150,25 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
   <div class="trace">
     <canvas id="chart" aria-label="Gateway, Cloudflare and UDP round-trip times over the last 5 minutes"></canvas>
   </div>
-  <div class="axis"><span>5 min ago</span><span class="mid">Shaded seconds had a failure</span><span>Now</span></div>
+  <div class="axis"><span>5 min ago</span><span class="mid"><b>Shaded:</b> seconds with a failure</span><span>Now</span></div>
 
   <div class="readouts">
-    <div class="readout"><div class="k"><i style="background:var(--gw)"></i>Gateway</div><div class="v" id="r-gw">–</div></div>
-    <div class="readout"><div class="k"><i style="background:var(--net)"></i>Cloudflare</div><div class="v" id="r-cf">–</div></div>
-    <div class="readout"><div class="k">Google</div><div class="v" id="r-g">–</div></div>
-    <div class="readout"><div class="k"><i style="background:var(--udp)"></i>UDP</div><div class="v" id="r-udp">–</div></div>
-    <div class="readout"><div class="k">DNS</div><div class="v" id="r-dns">–</div></div>
-    <div class="readout"><div class="k">New TCP</div><div class="v" id="r-tcp">–</div></div>
+    <div class="readout"><div class="k"><i style="background:var(--gw)"></i>Gateway:</div><div class="v" id="r-gw">–</div></div>
+    <div class="readout"><div class="k"><i style="background:var(--net)"></i>Cloudflare:</div><div class="v" id="r-cf">–</div></div>
+    <div class="readout"><div class="k">Google:</div><div class="v" id="r-g">–</div></div>
+    <div class="readout"><div class="k"><i style="background:var(--udp)"></i>UDP:</div><div class="v" id="r-udp">–</div></div>
+    <div class="readout"><div class="k">DNS:</div><div class="v" id="r-dns">–</div></div>
+    <div class="readout"><div class="k">New TCP:</div><div class="v" id="r-tcp">–</div></div>
   </div>
 
   <dl class="facts" id="facts"></dl>
 
   <div class="logs-head">
     <h2>Events</h2>
-    <label><input type="checkbox" id="quiet"> Show health lines</label>
+    <label><input type="checkbox" id="quiet" checked> Show health lines</label>
   </div>
   <div class="log-wrap">
-    <div id="log" class="hide-quiet" tabindex="0" aria-label="events.log"></div>
+    <div id="log" tabindex="0" aria-label="events.log"></div>
     <button id="jump" type="button">Jump to latest</button>
   </div>
 </main>
@@ -173,7 +177,11 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
 (() => {
   const $ = id => document.getElementById(id);
   const css = getComputedStyle(document.documentElement);
-  const col = n => css.getPropertyValue('--' + n).trim();
+  const C = {};                    // palette read once, not on every chart draw
+  for (const n of ['line', 'ink', 'gw', 'net', 'udp', 'sans']) C[n] = css.getPropertyValue('--' + n).trim();
+  // DOM writes only when the content changed, so an unchanged second costs no layout
+  const put = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+  const putText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   let since = 0, offset = -1, lastOk = 0, state = null;
@@ -200,10 +208,10 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
   const failText = f => f.split('|').filter(Boolean).map(x => failNames[x] || x).join(', ');
 
   function setReadout(id, v) {
-    const el = $(id);
-    if (v === null || v === undefined) { el.textContent = 'lost'; el.className = 'v bad'; return; }
-    el.className = 'v';
-    el.innerHTML = v + '<small>ms</small>';
+    const el = $(id), lost = v === null || v === undefined;
+    const cls = lost ? 'v bad' : 'v';
+    if (el.className !== cls) el.className = cls;
+    put(el, lost ? 'lost' : v + '<small>ms</small>');
   }
 
   // ---------- status ----------
@@ -232,17 +240,18 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
           : lastProblem ? 'Last problem: ' + lastProblem.what + ', ' + ago(lastProblem.at) + '.'
           : 'No outages or lag in the recent log.';
     }
-    document.body.dataset.state = st;
-    if ($('headline').textContent !== head) $('headline').textContent = head;
-    $('sub').textContent = sub;
-    document.title = (st === 'ok' ? '' : st === 'lag' ? '◐ ' : '● ') + 'netbug';
+    if (document.body.dataset.state !== st) document.body.dataset.state = st;
+    putText($('headline'), head);
+    putText($('sub'), sub);
+    const title = (st === 'ok' ? '' : st === 'lag' ? '◐ ' : '● ') + 'netbug';
+    if (document.title !== title) document.title = title;
   }
 
   function renderState() {
     const s = state.sample;
-    $('m-up').textContent = 'Running ' + dur(state.now - state.started);
-    $('m-mem').textContent = state.memMb.toFixed(0) + ' MB';
-    $('m-host').textContent = location.host;
+    put($('m-up'), '<b>Uptime:</b> ' + dur(state.now - state.started));
+    put($('m-mem'), '<b>Memory:</b> ' + state.memMb.toFixed(0) + ' MB');
+    put($('m-host'), '<b>Address:</b> ' + esc(location.host));
     if (!s) return;
     const last = [...hist.values()].pop();
     if (last) {
@@ -265,8 +274,8 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
       ['UDP ports in use', s.udpTotal < 0 ? '–' : s.udpTotal + (top ? '<span>' + esc(top) + '</span>' : '')],
     ];
     // the last one (UDP ports + per-process list) is the longest: full width on phones
-    $('facts').innerHTML = facts.map(([k, v], i) =>
-      '<div class="fact' + (i === facts.length - 1 ? ' wide' : '') + '"><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
+    put($('facts'), facts.map(([k, v], i) =>
+      '<div class="fact' + (i === facts.length - 1 ? ' wide' : '') + '"><dt>' + k + ':</dt><dd>' + v + '</dd></div>').join(''));
   }
 
   // ---------- chart ----------
@@ -283,22 +292,29 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     const pw = w - 52;               // plot width; the right gutter holds the scale labels
     const x = t => (1 - (end - t) / SPAN) * pw;
 
-    ctx.font = '500 11px ' + col('sans');
+    ctx.font = '500 11px ' + C.sans;
     ctx.textAlign = 'right';
     for (const g of [1, 10, 50, 150, 300]) {
       const yy = Math.round(y(g, h)) + .5;
-      ctx.strokeStyle = col('line'); ctx.lineWidth = 1;
+      ctx.strokeStyle = C.line; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(pw, yy); ctx.stroke();
-      ctx.fillStyle = col('ink'); ctx.fillText(g + (g === 300 ? '+ ms' : ' ms'), w - 2, yy + 4);
+      ctx.fillStyle = C.ink; ctx.fillText(g + (g === 300 ? '+ ms' : ' ms'), w - 2, yy + 4);
     }
 
     const rows = [...hist.values()];
     const bw = Math.max(1, pw / SPAN);
+    // a failed second shades back to the previous sample: during an outage probes time out
+    // and samples arrive every 2-3 s, so fixed-width bands would leave stripes
+    let prevT = null;
     for (const r of rows) {
-      if (!r[7]) continue;
-      const lagOnly = r[7].split('|').every(f => f === 'lag' || f === 'gw' || f === 'udp_high');
-      ctx.fillStyle = lagOnly ? 'rgba(255,159,10,.2)' : 'rgba(255,69,58,.28)';
-      ctx.fillRect(x(r[0]) - bw, 0, bw + .5, h);
+      if (r[7]) {
+        const lagOnly = r[7].split('|').every(f => f === 'lag' || f === 'gw' || f === 'udp_high');
+        const x0 = prevT !== null && r[0] - prevT <= 10 ? x(prevT) : x(r[0]) - bw;
+        ctx.fillStyle = lagOnly ? 'rgba(255,159,10,.2)' : 'rgba(255,69,58,.28)';
+        const a = Math.round(x0), b = Math.round(x(r[0]));   // whole pixels: no overlap seams
+        ctx.fillRect(a, 0, Math.max(1, b - a), h);
+      }
+      prevT = r[0];
     }
 
     const line = (i, color, width) => {
@@ -316,9 +332,9 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
       }
       ctx.stroke();
     };
-    line(4, col('udp'), 1.25);
-    line(2, col('net'), 1.25);
-    line(1, col('gw'), 2);
+    line(4, C.udp, 1.25);
+    line(2, C.net, 1.25);
+    line(1, C.gw, 2);
   }
 
   // ---------- events ----------
@@ -327,7 +343,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
   const kind = m =>
     /^(OUTAGE|\s*outage now)/.test(m) ? 'down' :
     /^LAG/.test(m) ? 'lag' :
-    /^(health:|netbug started|dashboard listening|log size cap)/.test(m) ? 'quiet' : '';
+    /^health:/.test(m) ? 'quiet' : '';
 
   function addLines(lines) {
     const frag = document.createDocumentFragment();
@@ -363,6 +379,8 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     $('jump').classList.toggle('show', !follow);
   });
   $('jump').onclick = () => { log.scrollTop = log.scrollHeight; };
+  // the web font swapping in changes line heights after the first auto-scroll: re-pin to the bottom
+  if (document.fonts) document.fonts.ready.then(() => { if (follow) log.scrollTop = log.scrollHeight; });
   $('quiet').onchange = e => {
     log.classList.toggle('hide-quiet', !e.target.checked);
     if (follow) log.scrollTop = log.scrollHeight;
@@ -399,7 +417,8 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
   }
   function stop() { timers.forEach(clearInterval); timers = []; }
   document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
-  window.addEventListener('resize', draw);
+  let raf = 0;
+  window.addEventListener('resize', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
   start();
 })();
 </script>

@@ -17,6 +17,7 @@ Location: hostel room, wired via room wall port. Kuala Lumpur, Malaysia.
 | 6 | **Windows Firewall is OFF for the Private profile**, and the hostel LAN is marked *Private*. MySQL (3306/33060), SMB (445), RPC and spacedesk (28252) are open to every device on the hostel LAN. The user keeps this on purpose. | Info (user decision) |
 | 7 | Tcpip event 4266: **UDP ephemeral ports exhausted** 45 times since 2026-08-09. **Update:** none of these times match a known outage, so it's a separate background leak (see §10b). netbug flags it if UDP endpoints reach 3000 or more. | Low |
 | 8 | Path MTU = **1492** (TM Unifi PPPoE). The router handles PMTUD correctly. | Info |
+| 9 | **ROOT CAUSE FOUND (10-28 05:34): ARP spoofing on the hostel LAN.** Another device (`10.255.18.145`, MAC `xx-xx-xx-xx-xx-xx`, locally administered/randomized) sent unicast ARP replies claiming to be the gateway `10.255.31.254`. The laptop's ARP cache was poisoned and all traffic went to that device and died for 150 s. Other hosts were asking for the gateway at the same time. See §10c. | **Critical** |
 
 ---
 
@@ -215,7 +216,7 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 1. **Router DNS is a single point of failure.** All other DNS is blocked, so any resolver stall on the MikroTik looks like "internet down".
 2. ~~**Upload throttled** to ~50–100 Mbps per user.~~ Ruled out: Ookla multi-stream gets 900 up.
 3. ~~**USB NIC chain**: a 2018 driver, selective suspend enabled, and two USB hubs.~~ Mostly ruled out: the driver is updated, power saving is off, and the user saw the same drops with a different dongle. A TX stall is still covered by the logger.
-4. **One big flat /20 with ~4k possible clients.** Broadcast/ARP noise and no client isolation. Everyone can reach everyone, which matters given finding #6.
+4. **One big flat /20 with ~4k possible clients.** Broadcast/ARP noise and no client isolation. Everyone can reach everyone, which matters given finding #6. **Confirmed as the attack surface:** gateway ARP spoofing caught 10-28 05:34 (§10c).
 
 ## 10b. Outage history (from Discord PTB logs + Windows events)
 
@@ -231,6 +232,31 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 - Gateway WebSocket also dies (code 1006) several times a day outside these windows.
 - **UDP exhaustion (4266) times do not match any of these outages.** It's a separate background leak, not the cause.
 - 10-24 shows traffic silently black-holed for 14+ s while Windows saw the link as perfectly fine. That points at the path beyond the laptop (hostel switch/MikroTik) or a NIC TX stall. The netbug logger is set up to tell these apart.
+
+## 10c. 2026-10-28 05:34 incident: gateway ARP spoofing (caught live by netbug)
+
+Timeline (`logs/events.log`, CSV, snapshot `2026-10-28_05-34-06_outage`):
+
+| Time | What |
+|---|---|
+| 05:34:00 | All fine: gateway MAC `xx-xx-xx-xx-xx-xx` (the MikroTik), gw 0 ms, cf 9 ms. |
+| 05:34:03 | **Gateway MAC changes to `xx-xx-xx-xx-xx-xx`.** |
+| 05:34:04 | Gateway, 1.1.1.1 and 8.8.8.8 pings all fail. TCP probe still OK (an established path, cached). |
+| 05:34:06 | `OUTAGE START [gw|internet|dns|lag]`. DNS dead. tx 31 / rx 3 packets/s: sending, almost nothing coming back. |
+| 05:34:14 | Persistent TLS connection (516 s old) dies by TIMEOUT. |
+| 05:34:20 | UDP (STUN) and new TCP also dead. |
+| 05:36:35 | User unplugs Ethernet, laptop moves to Wi-Fi. `OUTAGE END after 150 s`. |
+
+Evidence from the snapshot taken at 05:34:07:
+- Neighbor cache: `10.255.31.254` **and** `10.255.18.145` both map to `xx-xx-xx-xx-xx-xx`. That MAC belongs to the device at `.18.145`.
+- pktmon capture (15 s): 4× `xx-xx-xx-xx-xx-xx > (laptop MAC) ARP Reply 10.255.31.254 is-at xx-xx-xx-xx-xx-xx`. These are **unicast replies aimed at this laptop**, not broadcasts. The real MikroTik MAC does not appear even once in the capture.
+- Other hosts (`10.255.23.47`, `10.255.22.125`) were broadcasting "who-has 10.255.31.254" at the same time, so they had lost the gateway too.
+- The traceroute died at hop 1, and NCSI still said "Internet" (it hadn't re-probed yet).
+
+Reading: this is ARP cache poisoning of the gateway address, the pattern of NetCut / arpspoof-type tools (or a badly misbehaving device). Previous symptoms fit it:
+- "Friends can't hear me but I hear them": outbound goes to the spoofer (which forwards badly or not at all), while inbound still arrives straight from the router.
+- "Replug gives connected, no internet": the spoofer re-poisons the fresh ARP entry.
+- Other residents are hit too, and it recovers by itself when the spoofer stops.
 
 ## 11. Changes applied (2026-10-28, user-approved)
 
@@ -263,4 +289,7 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 - ~~Update the RTL8153 driver; disable NIC power-off and selective suspend.~~ Done.
 - ~~Plug the dongle straight into the laptop to rule out hubs.~~ Not needed: the user confirmed ports, dongle and cable are fine.
 - ~~Run a long-term monitor.~~ Done: netbug.
-- **Open:** wait for the next real incident, then analyze `logs/events.log`, the CSV and the snapshot.
+- ~~Wait for the next real incident.~~ Caught on 10-28 05:34 (§10c).
+- **Open (needs user OK):** pin the real gateway MAC with a static ARP entry on Ethernet 7, so spoofed replies are ignored.
+- **Open:** report `10.255.18.145` / `xx-xx-xx-xx-xx-xx` with the timeline to the hostel RCC. On the MikroTik, its DHCP lease and bridge host table show the port or AP. Ask for ARP spoofing protection (DHCP snooping + ARP inspection, or `arp=reply-only` plus static leases, and client isolation).
+- **Open (proposal):** have netbug treat a gateway MAC change as an alert of its own (event + snapshot right away, and red on the dashboard).

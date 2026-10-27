@@ -94,11 +94,12 @@ Open `http://<laptop-ip>:8787/` from any device on the LAN (or `http://localhost
 - Big status line: healthy, lagging, down, or "netbug isn't answering", plus the last finished outage or lag
 - 5-minute trace of gateway, Cloudflare and UDP round-trip times, with a band on every second that had a failure
 - Latest readings for every probe: interface, IPs, gateway MAC, NAT mapping, packet counts, UDP port usage
-- `events.log` scrolling live. Health lines are hidden unless you tick the box, and it stops following if you scroll up.
+- `events.log` scrolling live: outages in red, lag in orange, hourly health lines in cyan (untick the box to hide them). It stops following if you scroll up.
+- Labels are bold with a colon and values are regular weight, so they're easy to tell apart
 
 Pure black for AMOLED, white text, SF Pro on Apple devices and Inter (`tools/fonts/inter.woff2`, served by netbug) everywhere else. It lays out for desktop, tablet and phone.
 
-The page is read-only and makes no external requests, so it keeps working while the internet is down. It polls only while the tab is visible: `/api/state` every 1 s (only new samples, ~0.4 KB) and `/api/events` every 2 s (only new lines). Each request costs netbug ~0.15 ms of CPU; with no tab open the dashboard costs nothing. `tools/dashboard.html` is read from disk on every request, so editing it doesn't need a rebuild.
+The page is read-only and makes no external requests, so it keeps working while the internet is down. It only touches the DOM when a value actually changes, and the chart is one small canvas redraw per second (the pulsing status dot is a compositor-only opacity animation, and only while there's a problem). It polls only while the tab is visible: `/api/state` every 1 s (only new samples, ~0.4 KB) and `/api/events` every 2 s (only new lines). Each request costs netbug ~0.15 ms of CPU; with no tab open the dashboard costs nothing. `tools/dashboard.html` is read from disk on every request, so editing it doesn't need a rebuild.
 
 > ⚠️ Anyone on the LAN can see what the page shows, including your public IP, the gateway MAC and process names.
 

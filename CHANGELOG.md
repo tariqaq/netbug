@@ -5,6 +5,16 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 05:39: `HASH` dashboard readability + render efficiency; 05:34 incident analysed
+- Labels are bold with a colon (readouts, details, header meta); values are regular weight.
+- Health lines are shown by default, in cyan. Only `health:` lines count as health lines now (startup lines show normally).
+- Bold timestamps in the log.
+- DOM is written only when content changes; chart colors are read once; resize redraws are throttled to one per frame.
+- Outage shading spans back to the previous sample, so it no longer leaves stripes when samples are 2-3 s apart. Edges are whole pixels to avoid seams.
+- The log re-pins to the bottom after the web font loads.
+- Server stress test: 7000 requests (1000 concurrent). Private memory 28.5 to 28.6 MB; handles and threads flat.
+- Scan report: finding #9 and §10c, the 05:34 gateway ARP-spoofing incident, with the timeline, the capture evidence and open actions.
+
 ### 05:30: `a998f6a` dashboard redesign + server CPU fix
 - Pure black (AMOLED) and white text. Apple system colors for status and traces. SF Pro on Apple devices, Inter elsewhere.
 - Inter is bundled in `tools/fonts/` (SIL OFL) and served at `/fonts/inter.woff2` with a 1-year cache, so the page still makes no external requests.

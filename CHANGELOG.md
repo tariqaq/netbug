@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 05:39: `HASH` dashboard readability + render efficiency; 05:34 incident analysed
+### 05:39: `87367ed` dashboard readability + render efficiency; 05:34 incident analysed
 - Labels are bold with a colon (readouts, details, header meta); values are regular weight.
 - Health lines are shown by default, in cyan. Only `health:` lines count as health lines now (startup lines show normally).
 - Bold timestamps in the log.

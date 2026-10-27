@@ -20,3 +20,5 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 ```
 
 Output goes to `logs/` (gitignored): `netbug-<date>.csv`, `events.log`, `snapshots/`. Files older than 30 days are deleted automatically, and `logs/` is capped at 500 MB: the oldest snapshots go first, then the oldest CSVs.
+
+See `CHANGELOG.md` for every change (MYT timestamps) and `AGENTS.md` for the repo rules.

@@ -14,3 +14,11 @@
    - Whenever code disagrees with any doc, `.md` file or code comment, tell the user right away. Say what mismatches (file:line on both sides), which side is stale, and the proposed action (usually: update the doc to match the code). Then wait for their call before changing behavior.
    - When in doubt, follow what the code actually does, never stale docs, `.md` files or comments.
    - After any code change, update every affected doc, `.md` and comment in the same commit (and regenerate `REDACTED_*` copies per rule 2).
+4. **Keep every doc and `.md` file up to date, always.**
+   - After any change (code, config, machine settings, findings), update every doc and `.md` file it affects before finishing the task: `README.md`, `AGENTS.md`, `CHANGELOG.md`, `NETWORK_SCAN.md` (+ its `REDACTED_` copy), and any new ones.
+   - Never leave a doc describing old behavior.
+5. **Log every change in `CHANGELOG.md`.**
+   - Every action that changes the repo or the machine gets an entry, newest first, grouped by date. That covers code, docs, scheduled tasks, drivers, adapter/power settings and anything else.
+   - Timestamp each entry with the user's **system clock** (Kuala Lumpur, MYT, UTC+08:00). Get the time via `Get-Date -Format 'yyyy-MM-dd HH:mm'`; never guess it.
+   - Include the commit hash when there is one, and mark machine-side changes with **Machine:**.
+   - `CHANGELOG.md` is public: no PII (see rule 2).

@@ -18,3 +18,9 @@
 4. **`CHANGELOG.md`: log every repo or machine change.**
    - Newest first, grouped by date. Time from the system clock (`Get-Date -Format 'yyyy-MM-dd HH:mm'`, MYT UTC+08:00), never guessed.
    - Add the commit hash, tag machine-side changes **Machine:**, and include no PII.
+
+## LOG ANALYSIS (every time the user asks to analyze logs)
+
+1. **Check the gateway ARP pin.** The hostel gateway `10.255.31.254` should be `static` on the wired adapter. Check the `gw_arp` CSV column, the `gateway ARP entry` events and `Get-NetNeighbor -IPAddress 10.255.31.254`.
+   - If it's `dynamic` or missing while on hostel Ethernet (for example the dongle was renamed), **tell the user first** and give the re-pin command (`INCIDENT_2026-10-28_ARP_SPOOFING.md` §8).
+2. Search `events.log` for `ARP SPOOFING DETECTED` and `GATEWAY MAC CHANGED`, and report each with its time and MAC.

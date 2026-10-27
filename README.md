@@ -101,6 +101,10 @@ All output goes to `logs/`, which is gitignored and stays on the machine.
 
 Open `http://<laptop-ip>:8787/` from any device on the LAN (or `http://localhost:8787/` on the laptop itself).
 
+📱 Over **Tailscale** it's also at `http://<laptop-machine-name>:8787/` (MagicDNS) from any device on your tailnet. The Tailscale adapter is Private and adds no default route (no exit node), so netbug ignores it as an interface.
+- During a hostel outage, the tailnet path only survives if the phone and laptop have a **direct LAN connection**. A relayed path (for example a phone on mobile data) dies with the internet.
+- On the hostel LAN, the plain LAN address is the more reliable choice.
+
 - Big status line: healthy, lagging (orange), down (red), **possible ARP spoofing** (red, for 30 min after an alert) or "netbug isn't answering", plus the last finished outage or lag
 - 5-minute trace of gateway, Cloudflare and UDP round-trip times. Failures are shaded red (outage) or orange (lag), with a solid strip on top so they stand out
 - Latest readings for every probe: interface, IPs, gateway MAC with pin status and the last ARP watch result (red during an alert), NAT mapping, packet counts, UDP port usage

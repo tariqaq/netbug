@@ -301,6 +301,12 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
   - snapshots list every MAC that claimed the gateway
   - the dashboard turns red for 30 min after a spoofing alert
 
+### 2026-10-28 05:48 — Tailscale installed (by the user)
+
+- Installed so the user can view the netbug dashboard from a phone via MagicDNS. Default settings, **no exit node**, "allow local network access" on (laptop and phone).
+- Adapter `Tailscale` (100.x address) is on the **Private** profile, with no default route. netbug's interface picker ignores it. The dashboard listener (`http://+:8787/`) answers on the Tailscale IP (verified HTTP 200).
+- The 05:59:44 1 s "outage" on Wi-Fi was a gateway + internet ICMP blip with DNS and TCP fine and no system events. It was unrelated to Tailscale (installed 05:48).
+
 ## 12. Next actions
 
 - ~~Turn the Private firewall back on.~~ Won't do: the user keeps it off intentionally.

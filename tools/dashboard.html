@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>netbug</title>
+<meta name="color-scheme" content="dark">
+<!-- Served by netbug.exe on port 8787. No external requests: it has to keep working while
+     the internet is down. Polls /api/state every 1 s and /api/events every 2 s, only while visible. -->
+<style>
+:root {
+  --bg: #111a26;
+  --raise: #172231;
+  --rule: #233247;
+  --ink: #e7ecf3;
+  --muted: #8a97a8;
+  --ok: #6fd1b0;
+  --lag: #f2b35b;
+  --down: #ff6b6b;
+  --gw: #8fb3ff;
+  --net: #e7ecf3;
+  --udp: #c3a1ff;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 40px; }
+
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.brand { font: 600 17px/1 var(--display); letter-spacing: -0.01em; }
+.meta { color: var(--muted); font-size: 13px; display: flex; gap: 18px; flex-wrap: wrap; }
+
+.status { margin: 44px 0 28px; display: grid; grid-template-columns: auto 1fr; column-gap: 18px; align-items: center; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: var(--ok); grid-row: span 2; align-self: start; margin-top: 18px; }
+.headline { font: 600 clamp(30px, 5.4vw, 52px)/1.08 var(--display); letter-spacing: -0.025em; margin: 0; }
+.sub { color: var(--muted); margin: 8px 0 0; font-size: 16px; max-width: 64ch; }
+body[data-state="lag"] .dot { background: var(--lag); }
+body[data-state="down"] .dot, body[data-state="stale"] .dot { background: var(--down); }
+body[data-state="lag"] .dot, body[data-state="down"] .dot { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 9px transparent; opacity: .45; } }
+
+.trace { position: relative; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+canvas { display: block; width: 100%; height: 200px; }
+.axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; padding-top: 6px; }
+
+.readouts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; margin: 26px 0 8px; }
+.readout { padding: 2px 16px 0 0; }
+.readout + .readout { border-left: 1px solid var(--rule); padding-left: 16px; }
+.readout .k { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 7px; }
+.readout .k i { width: 10px; height: 2px; border-radius: 1px; display: inline-block; }
+.readout .v { font: 500 28px/1.2 var(--display); letter-spacing: -0.02em; }
+.readout .v small { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+.readout .v.bad { color: var(--down); }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 24px; margin: 22px 0 40px; font-size: 13px; }
+.facts div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--rule); padding: 6px 0; min-width: 0; }
+.facts dt { color: var(--muted); white-space: nowrap; }
+.facts dd { margin: 0; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.logs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.logs-head h2 { font: 600 17px/1 var(--display); margin: 0; }
+.logs-head label { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.log-wrap { position: relative; }
+#log {
+  background: var(--raise);
+  border-radius: 10px;
+  height: 46vh; min-height: 280px;
+  overflow-y: auto;
+  padding: 12px 0;
+  font: 12.5px/1.65 var(--mono);
+  overscroll-behavior: contain;
+}
+#log .l { display: grid; grid-template-columns: 74px 1fr; gap: 14px; padding: 0 16px; }
+#log .l:hover { background: rgba(255,255,255,.03); }
+#log .t { color: var(--muted); }
+#log .m { white-space: pre-wrap; word-break: break-word; }
+#log .day { color: var(--muted); padding: 10px 16px 4px; font-family: var(--sans); font-size: 12px; }
+#log .down .m { color: var(--down); }
+#log .lag .m { color: var(--lag); }
+#log .quiet .m { color: var(--muted); }
+#log.hide-quiet .quiet { display: none; }
+#jump {
+  position: absolute; right: 14px; bottom: 14px;
+  background: var(--ink); color: var(--bg); border: 0; border-radius: 999px;
+  font: 600 13px/1 var(--sans); padding: 9px 14px; cursor: pointer; display: none;
+}
+#jump.show { display: block; }
+button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px solid var(--gw); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  main { padding: 20px 16px 32px; }
+  .status { margin: 30px 0 22px; }
+  .readouts { grid-template-columns: repeat(3, 1fr); row-gap: 16px; }
+  .readout:nth-child(4) { border-left: 0; padding-left: 0; }
+  canvas { height: 160px; }
+  #log .l { grid-template-columns: 62px 1fr; gap: 10px; padding: 0 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+</style>
+</head>
+<body data-state="ok">
+<main>
+  <header>
+    <div class="brand">netbug</div>
+    <div class="meta"><span id="m-up">connecting</span><span id="m-mem"></span><span id="m-host"></span></div>
+  </header>
+
+  <section class="status" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <h1 class="headline" id="headline">Connecting to netbug</h1>
+    <p class="sub" id="sub">Waiting for the first reading.</p>
+  </section>
+
+  <div class="trace">
+    <canvas id="chart" aria-label="Ping, internet and UDP round-trip times over the last 5 minutes"></canvas>
+  </div>
+  <div class="axis"><span>5 min ago</span><span>Red bands: something failed that second</span><span>now</span></div>
+
+  <div class="readouts">
+    <div class="readout"><div class="k"><i style="background:var(--gw)"></i>Gateway</div><div class="v" id="r-gw">–</div></div>
+    <div class="readout"><div class="k"><i style="background:var(--net)"></i>Cloudflare</div><div class="v" id="r-cf">–</div></div>
+    <div class="readout"><div class="k">Google</div><div class="v" id="r-g">–</div></div>
+    <div class="readout"><div class="k"><i style="background:var(--udp)"></i>UDP</div><div class="v" id="r-udp">–</div></div>
+    <div class="readout"><div class="k">DNS</div><div class="v" id="r-dns">–</div></div>
+    <div class="readout"><div class="k">New TCP</div><div class="v" id="r-tcp">–</div></div>
+  </div>
+
+  <dl class="facts" id="facts"></dl>
+
+  <div class="logs-head">
+    <h2>Events</h2>
+    <label><input type="checkbox" id="quiet"> Show health lines</label>
+  </div>
+  <div class="log-wrap">
+    <div id="log" class="hide-quiet" tabindex="0" aria-label="events.log"></div>
+    <button id="jump" type="button">Jump to latest</button>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue('--' + n).trim();
+
+  let since = 0, offset = -1, lastOk = 0, state = null;
+  const hist = new Map();          // unix s -> [t, gw, cf, g, udp, dns, tcp, fail]
+  let lastProblem = null;          // latest finished outage/lag from events.log
+
+  // ---------- formatting ----------
+  const ms = v => v < 0 ? null : v;
+  const dur = s => {
+    s = Math.max(0, Math.round(s));
+    if (s < 60) return s + ' s';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + ' min' + (s % 60 && m < 10 ? ' ' + (s % 60) + ' s' : '');
+    const h = Math.floor(m / 60);
+    if (h < 48) return h + ' h ' + (m % 60) + ' min';
+    return Math.floor(h / 24) + ' days';
+  };
+  const failNames = { no_iface: 'no network adapter', gw: 'gateway ping', internet: 'internet ping', dns: 'DNS',
+    udp: 'UDP', tcp: 'new TCP connections', udp_high: 'UDP port usage', lag: 'local lag' };
+  const failText = f => f.split('|').filter(Boolean).map(x => failNames[x] || x).join(', ');
+
+  function setReadout(id, v, unit = 'ms') {
+    const el = $(id);
+    if (v === null || v === undefined) { el.textContent = 'lost'; el.className = 'v bad'; return; }
+    el.className = 'v';
+    el.innerHTML = v + '<small>' + unit + '</small>';
+  }
+
+  // ---------- status ----------
+  function renderStatus() {
+    const now = Date.now() / 1000;
+    let st = 'ok', head, sub;
+    const s = state && state.sample;
+    if (!state || now - lastOk > 6) {
+      st = 'stale';
+      head = 'netbug isn’t answering';
+      sub = lastOk ? 'No reply for ' + dur(now - lastOk) + '. Check that the netbug task is running on the laptop.'
+                   : 'Trying to reach the logger on this address.';
+    } else if (!s) {
+      head = 'Starting up'; sub = 'The first reading arrives within a second.';
+    } else if (s.outage) {
+      st = 'down';
+      head = 'Connection is down';
+      sub = 'Failing: ' + failText(s.fail) + '. Ongoing for ' + dur(state.now - s.outage) + '.';
+    } else if (s.lag) {
+      st = 'lag';
+      head = 'Local network is lagging';
+      sub = 'Gateway ping is high or dropping. Ongoing for ' + dur(state.now - s.lag) + '.';
+    } else {
+      head = 'Network is healthy';
+      sub = s.fail ? 'One-off miss this second: ' + failText(s.fail) + '.'
+          : lastProblem ? 'Last problem: ' + lastProblem.what + ', ' + ago(lastProblem.at) + '.'
+          : 'No outages or lag in the recent log.';
+    }
+    document.body.dataset.state = st;
+    if ($('headline').textContent !== head) $('headline').textContent = head;
+    $('sub').textContent = sub;
+    document.title = (st === 'ok' ? '' : st === 'lag' ? '◐ ' : '● ') + 'netbug';
+  }
+
+  function renderState() {
+    const s = state.sample;
+    $('m-up').textContent = 'Running ' + dur(state.now - state.started);
+    $('m-mem').textContent = state.memMb.toFixed(0) + ' MB';
+    $('m-host').textContent = location.host;
+    if (!s) return;
+    const last = [...hist.values()].pop();
+    if (last) {
+      setReadout('r-gw', ms(last[1])); setReadout('r-cf', ms(last[2])); setReadout('r-g', ms(last[3]));
+      setReadout('r-udp', ms(last[4])); setReadout('r-dns', ms(last[5])); setReadout('r-tcp', ms(last[6]));
+    }
+    const facts = [
+      ['Interface', s.iface || 'none'],
+      ['USB Ethernet link', s.link],
+      ['Local IP', s.ip || '–'],
+      ['Gateway', s.gw || '–'],
+      ['Gateway MAC', s.gwMac || '–'],
+      ['Public IP', s.pubIp || '–'],
+      ['UDP NAT mapping', s.udpMap || '–'],
+      ['Packets last second', s.tx + ' out, ' + s.rx + ' in'],
+      ['UDP ports in use', s.udpTotal < 0 ? '–' : s.udpTotal + (s.udpTop ? ' (' + s.udpTop + ')' : '')],
+    ];
+    $('facts').innerHTML = facts.map(([k, v]) =>
+      '<div><dt>' + k + '</dt><dd title="' + esc(v) + '">' + esc(v) + '</dd></div>').join('');
+  }
+
+  // ---------- chart ----------
+  const chart = $('chart'), ctx = chart.getContext('2d');
+  const SPAN = 300, MAXMS = 300;
+  const y = (v, h) => { const r = Math.sqrt(Math.min(v, MAXMS) / MAXMS); return h - 8 - r * (h - 20); };
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1, w = chart.clientWidth, h = chart.clientHeight;
+    if (chart.width !== w * dpr || chart.height !== h * dpr) { chart.width = w * dpr; chart.height = h * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const end = state ? state.now : Date.now() / 1000;
+    const pw = w - 52;               // plot width; the right gutter holds the scale labels
+    const x = t => (1 - (end - t) / SPAN) * pw;
+
+    ctx.font = '11px ' + col('sans');
+    ctx.textAlign = 'right';
+    for (const g of [1, 10, 50, 150, 300]) {
+      const yy = Math.round(y(g, h)) + .5;
+      ctx.strokeStyle = col('rule'); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(pw, yy); ctx.stroke();
+      ctx.fillStyle = col('muted'); ctx.fillText(g + (g === 300 ? '+ ms' : ' ms'), w - 2, yy + 4);
+    }
+
+    const rows = [...hist.values()];
+    const bw = Math.max(1, pw / SPAN);
+    for (const r of rows) {
+      if (!r[7]) continue;
+      const lagOnly = r[7].split('|').every(f => f === 'lag' || f === 'gw' || f === 'udp_high');
+      ctx.fillStyle = lagOnly ? 'rgba(242,179,91,.16)' : 'rgba(255,107,107,.22)';
+      ctx.fillRect(x(r[0]) - bw, 0, bw + .5, h);
+    }
+
+    const line = (i, color, width) => {
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      let pen = false, prev = 0;
+      for (const r of rows) {
+        const v = r[i];
+        if (v < 0 || r[0] - prev > 2) pen = false;
+        prev = r[0];
+        if (v < 0) continue;
+        const px = x(r[0]), py = y(v, h);
+        pen ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        pen = true;
+      }
+      ctx.stroke();
+    };
+    line(4, col('udp'), 1.25);
+    line(2, col('net'), 1.25);
+    line(1, col('gw'), 1.75);
+  }
+
+  // ---------- events ----------
+  const log = $('log');
+  let follow = true, lastDay = '';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const kind = m =>
+    /^(OUTAGE|\s*outage now)/.test(m) ? 'down' :
+    /^LAG/.test(m) ? 'lag' :
+    /^(health:|netbug started|dashboard listening|log size cap)/.test(m) ? 'quiet' : '';
+
+  function addLines(lines) {
+    const frag = document.createDocumentFragment();
+    for (const raw of lines) {
+      const day = raw.slice(0, 10), time = raw.slice(11, 19), msg = raw.slice(21);
+      if (day !== lastDay) {
+        lastDay = day;
+        const d = document.createElement('div');
+        d.className = 'day'; d.textContent = new Date(day + 'T00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+        frag.appendChild(d);
+      }
+      const k = kind(msg);
+      const el = document.createElement('div');
+      el.className = 'l' + (k ? ' ' + k : '');
+      el.innerHTML = '<span class="t">' + esc(time) + '</span><span class="m">' + esc(msg) + '</span>';
+      frag.appendChild(el);
+
+      // a LAG summary logged within 2 min of an outage ending is the same incident: keep the outage
+      let m;
+      const at = new Date(day + 'T' + time).getTime();
+      if ((m = msg.match(/^OUTAGE END after ([\d,]+) s/))) lastProblem = { what: 'outage lasting ' + dur(+m[1].replace(/,/g, '')), at };
+      else if ((m = msg.match(/^LAG .*?\(([\d,]+) s\)/)) && !(lastProblem && lastProblem.outage && at - lastProblem.at < 120000))
+        lastProblem = { what: 'lag lasting ' + dur(+m[1].replace(/,/g, '')), at };
+      if (m && /^OUTAGE/.test(msg)) lastProblem.outage = true;
+    }
+    log.appendChild(frag);
+    while (log.childElementCount > 4000) log.firstElementChild.remove();
+    if (follow) log.scrollTop = log.scrollHeight;
+  }
+  const ago = at => {
+    const s = (Date.now() - at) / 1000;
+    return s < 86400 * 2 ? dur(s) + ' ago' : 'on ' + new Date(at).toLocaleDateString();
+  };
+
+  log.addEventListener('scroll', () => {
+    follow = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+    $('jump').classList.toggle('show', !follow);
+  });
+  $('jump').onclick = () => { log.scrollTop = log.scrollHeight; };
+  $('quiet').onchange = e => {
+    log.classList.toggle('hide-quiet', !e.target.checked);
+    if (follow) log.scrollTop = log.scrollHeight;
+  };
+
+  // ---------- polling ----------
+  async function pollState() {
+    try {
+      const r = await fetch('/api/state?since=' + since, { cache: 'no-store' });
+      state = await r.json();
+      lastOk = Date.now() / 1000;
+      for (const h of state.hist) { hist.set(h[0], h); since = Math.max(since, h[0]); }
+      for (const t of hist.keys()) if (t < state.now - SPAN) hist.delete(t); else break;
+      renderState();
+    } catch (e) { /* shown as "isn't answering" by renderStatus */ }
+    renderStatus();
+    draw();
+  }
+  async function pollEvents() {
+    try {
+      const r = await fetch('/api/events' + (offset >= 0 ? '?from=' + offset : ''), { cache: 'no-store' });
+      const j = await r.json();
+      if (j.reset && offset >= 0) { log.textContent = ''; lastDay = ''; }
+      offset = j.next;
+      if (j.lines.length) addLines(j.lines);
+    } catch (e) { }
+  }
+
+  let timers = [];
+  function start() {
+    stop();
+    pollState(); pollEvents();
+    timers = [setInterval(pollState, 1000), setInterval(pollEvents, 2000)];
+  }
+  function stop() { timers.forEach(clearInterval); timers = []; }
+  document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
+  window.addEventListener('resize', draw);
+  start();
+})();
+</script>
+</body>
+</html>

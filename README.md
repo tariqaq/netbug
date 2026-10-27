@@ -29,6 +29,9 @@ flowchart TD
     C --> M["🔁 Main loop, every 1 s"]
     C --> T["🔗 TLS thread: HEAD on one long-lived connection every 15 s"]
     C --> U["📡 UDP thread: STUN on one long-lived socket every 2 s"]
+    C --> W["🖥️ Dashboard thread: port 8787, all interfaces"]
+    E --> W
+    M -->|"latest sample + 5 min history"| W
 
     M --> P["🔍 Probes: pings, DNS, TCP, link, ARP, UDP usage"]
     P --> K{"🧮 Classify"}
@@ -84,13 +87,28 @@ All output goes to `logs/`, which is gitignored and stays on the machine.
 
 ---
 
+## 🖥️ Live dashboard
+
+Open `http://<laptop-ip>:8787/` from any device on the LAN (or `http://localhost:8787/` on the laptop itself).
+
+- Big status line: healthy, lagging, down, or "netbug isn't answering", plus the last finished outage or lag
+- 5-minute trace of gateway, Cloudflare and UDP round-trip times, with a band on every second that had a failure
+- Latest readings for every probe: interface, IPs, gateway MAC, NAT mapping, packet counts, UDP port usage
+- `events.log` scrolling live. Health lines are hidden unless you tick the box, and it stops following if you scroll up.
+
+The page is read-only and makes no external requests, so it keeps working while the internet is down. It polls only while the tab is visible: `/api/state` every 1 s (only new samples) and `/api/events` every 2 s (only new lines). `tools/dashboard.html` is read from disk on every request, so editing it doesn't need a rebuild.
+
+> ⚠️ Anyone on the LAN can see what the page shows, including your public IP, the gateway MAC and process names.
+
+---
+
 ## 🪶 Footprint
 
 | | |
 |---|---|
 | 🧠 RAM | ~25–37 MB |
 | ⚡ CPU | ~1% of one core (≈0.07% of a 16-thread CPU), BelowNormal priority |
-| 🌐 Network | ~0.75 KB/s total, no traffic to game or voice servers |
+| 🌐 Network | ~0.75 KB/s total, no traffic to game or voice servers. The dashboard adds ~1 KB/s per open tab, on the LAN only. |
 | 💾 Disk | ~6 MB/day of small appends |
 | 🛡️ Safety | Restarts itself past 200 MB private memory, 5000 handles or 100 threads |
 
@@ -106,7 +124,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 #   trigger: at logon · run with highest privileges · no time limit · restart on failure
 ```
 
-Admin rights are only needed so the snapshot can run `pktmon` packet captures.
+Admin rights are needed for two things: the snapshot's `pktmon` packet captures, and serving the dashboard on all interfaces (`http://+:8787/`).
 
 ---
 
@@ -116,6 +134,7 @@ Admin rights are only needed so the snapshot can run `pktmon` packet captures.
 |---|---|
 | `tools/netbug.cs` | The logger |
 | `tools/snapshot.ps1` | Incident snapshot, launched by netbug |
+| `tools/dashboard.html` | Live dashboard page, served by netbug on port 8787 |
 | `tools/redact.ps1` | Builds `REDACTED_<name>.md` from gitignored notes: MACs + terms in `redact.local.txt` → `xxx`, refuses to write if any PII remains |
 | `REDACTED_NETWORK_SCAN.md` | 🔒 Public, redacted copy of the full network scan and findings |
 | `CHANGELOG.md` | 📜 Every change, timestamped in MYT (UTC+08:00) |

@@ -11,6 +11,8 @@
 // 5 s of lag or high UDP usage triggers snapshot.ps1, at most once per 60 s.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
+// A read-only dashboard (tools/dashboard.html + /api/state + /api/events) is served
+// on port 8787 on all interfaces.
 //
 // Build: csc /target:winexe /optimize /out:netbug.exe netbug.cs
 
@@ -73,6 +75,13 @@ class NetBug
     static volatile string udpMap = "";
     static string lastUdpMap = "";
 
+    // dashboard: the main loop publishes its latest sample and keeps the last 300 s for the chart
+    const int DashPort = 8787;
+    static readonly DateTime started = DateTime.Now;
+    static volatile string sampleJson = "null";
+    static readonly string[] hist = new string[300];
+    static int histPos, histCount;
+
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
     const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail";
 
@@ -94,6 +103,7 @@ class NetBug
             Event("netbug started");
             new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(StunLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+            new Thread(DashboardLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             Run();
         }
     }
@@ -228,6 +238,19 @@ class NetBug
                         udpMs.ToString(), udpMap, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr }));
                     lastRow = DateTime.Now;
                 }
+
+                // ---- dashboard ----
+                long now = Unix(DateTime.Now);
+                lock (hist)
+                {
+                    hist[histPos] = string.Format("[{0},{1},{2},{3},{4},{5},{6},{7}]", now, gwMs, cfMs, gMs, udpMs, dnsMs, tcpMs, J(failStr));
+                    histPos = (histPos + 1) % hist.Length;
+                    if (histCount < hist.Length) histCount++;
+                }
+                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14}}}",
+                    now, J(ifaceName), J(ethLink), J(ip == null ? "" : ip.ToString()), J(gw == null ? "" : gw.ToString()), J(gwMac),
+                    txDelta, rxDelta, J(udpMap), udpTotal, J(udpTop), J(pubIp), J(failStr),
+                    inOutage ? Unix(outageStart) : 0, inLag ? Unix(lagStart) : 0);
             }
             catch (Exception ex)
             {
@@ -594,6 +617,110 @@ class NetBug
             i += 4 + ((len + 3) & ~3);
         }
         return "";
+    }
+
+    // Read-only dashboard for anyone on the LAN. GET only: "/" serves tools/dashboard.html (read
+    // from disk on each request), /api/state the latest sample + chart history (?since=<unix s>
+    // returns only newer samples), /api/events new events.log lines (?from=<byte offset>, or the
+    // last 64 KB when omitted). One request at a time on its own thread; the page polls only
+    // while it is visible. The "+" prefix needs admin, which the scheduled task has.
+    static void DashboardLoop()
+    {
+        var listener = new HttpListener();
+        try
+        {
+            listener.Prefixes.Add("http://+:" + DashPort + "/");
+            listener.Start();
+            Event("dashboard listening on port " + DashPort);
+        }
+        catch (Exception ex) { Event("dashboard failed to start: " + ex.Message); return; }
+        while (listener.IsListening)
+        {
+            HttpListenerContext ctx;
+            try { ctx = listener.GetContext(); }
+            catch { Thread.Sleep(1000); continue; }
+            try { Serve(ctx); }
+            catch { }
+            finally { try { ctx.Response.Close(); } catch { } }
+        }
+    }
+
+    static void Serve(HttpListenerContext ctx)
+    {
+        string path = ctx.Request.Url.AbsolutePath, body, type = "application/json";
+        if (ctx.Request.HttpMethod != "GET") { ctx.Response.StatusCode = 405; body = "{}"; }
+        else if (path == "/")
+        {
+            body = File.ReadAllText(Path.Combine(baseDir, "tools", "dashboard.html"));
+            type = "text/html; charset=utf-8";
+        }
+        else if (path == "/api/state")
+        {
+            long since; long.TryParse(ctx.Request.QueryString["since"], out since);
+            var rows = new List<string>();
+            lock (hist)
+                for (int i = 0; i < histCount; i++)
+                {
+                    string h = hist[(histPos - histCount + i + hist.Length) % hist.Length];
+                    if (long.Parse(h.Substring(1, h.IndexOf(',') - 1)) > since) rows.Add(h);
+                }
+            long priv;
+            using (var p = Process.GetCurrentProcess()) priv = p.PrivateMemorySize64;
+            body = string.Format("{{\"now\":{0},\"started\":{1},\"memMb\":{2:F1},\"port\":{3},\"sample\":{4},\"hist\":[{5}]}}",
+                Unix(DateTime.Now), Unix(started), priv / 1048576.0, DashPort, sampleJson, string.Join(",", rows));
+        }
+        else if (path == "/api/events")
+        {
+            long from;
+            if (!long.TryParse(ctx.Request.QueryString["from"], out from)) from = -1;
+            body = EventsJson(from);
+        }
+        else { ctx.Response.StatusCode = 404; body = "{}"; }
+        var bytes = Encoding.UTF8.GetBytes(body);
+        ctx.Response.ContentType = type;
+        ctx.Response.AddHeader("Cache-Control", "no-store");
+        ctx.Response.ContentLength64 = bytes.Length;
+        ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+    }
+
+    // events.log lines after byte offset `from` (at most 256 KB). A missing or out-of-range offset
+    // (e.g. the log was replaced) starts from the last 64 KB, cut to whole lines.
+    static string EventsJson(long from)
+    {
+        string file = Path.Combine(logDir, "events.log");
+        byte[] data; long len; bool tail = false;
+        lock (eventLock)
+        {
+            if (!File.Exists(file)) return "{\"next\":0,\"lines\":[]}";
+            using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                len = fs.Length;
+                if (from < 0 || from > len) { from = Math.Max(0, len - 65536); tail = from > 0; }
+                if (len - from > 262144) { from = len - 262144; tail = true; }
+                data = new byte[len - from];
+                fs.Position = from;
+                int read = 0;
+                while (read < data.Length) { int n = fs.Read(data, read, data.Length - read); if (n == 0) break; read += n; }
+            }
+        }
+        var lines = Encoding.UTF8.GetString(data).Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).AsEnumerable();
+        if (tail) lines = lines.Skip(1);   // first line may be cut in half
+        return string.Format("{{\"next\":{0},\"reset\":{1},\"lines\":[{2}]}}", len, from == 0 || tail ? "true" : "false",
+            string.Join(",", lines.Select(J)));
+    }
+
+    static long Unix(DateTime local) { return (long)(local.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds; }
+
+    static string J(string s)
+    {
+        var sb = new StringBuilder("\"");
+        foreach (char c in s ?? "")
+        {
+            if (c == '"' || c == '\\') sb.Append('\\').Append(c);
+            else if (c < 0x20) sb.AppendFormat("\\u{0:x4}", (int)c);
+            else sb.Append(c);
+        }
+        return sb.Append('"').ToString();
     }
 
     static string CsvPath() { return Path.Combine(logDir, "netbug-" + currentDay + ".csv"); }

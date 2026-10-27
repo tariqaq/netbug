@@ -5,6 +5,17 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 05:19: `HASH` live LAN dashboard
+- netbug serves a read-only dashboard on port 8787 on all interfaces from its own thread (`HttpListener`, GET only):
+  - `/`: `tools/dashboard.html`
+  - `/api/state`: latest sample + 300 s history
+  - `/api/events`: incremental `events.log` tail
+- `tools/dashboard.html`:
+  - status line, 5 min latency trace with failure bands, live readings, scrolling event log
+  - no external requests; polls only while the tab is visible
+- README: dashboard section, flow diagram, footprint, admin note, layout. Scan report: dashboard note.
+- **Machine:** rebuilt `netbug.exe` and restarted the `netbug` task (05:17). Port 8787 is open to the LAN through the Private profile, which has the firewall off. No firewall rule was added.
+
 ### 05:04: `0af7180` AGENTS.md compressed
 - Went from 29 lines / 530 words to 20 lines / 213 words (~800 → ~350 tokens) with no rule dropped.
 - Old rules 3 (code = truth), 4 (docs current) and 6 (comments current) are merged into new rule 3. The old changelog rule 5 is now rule 4. Rule numbers in older entries below refer to the old numbering.

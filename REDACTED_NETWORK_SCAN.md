@@ -255,6 +255,7 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 - The user reports laptop ports, dongle and cable are known-good across other places. **Remaining physical suspect: the room wall port and the hostel cabling/switch behind it.**
 - Leak safety net: netbug writes an hourly `health:` line (private MB, handles, threads, uptime) to `events.log`. If it ever exceeds 200 MB private memory, 5000 handles or 100 threads, it starts a fresh copy and exits. Snapshot processes are separate and don't count toward this.
 - Priority stays BelowNormal on purpose. Ping RTTs are kernel-timed, so priority can't skew them. DNS/UDP/TCP timings would only inflate if all 16 threads were saturated.
+- Live dashboard (live since 2026-10-28 05:17): netbug serves a read-only page on port **8787** on all interfaces (`http://10.255.19.148:8787/` from the hostel LAN). Ethernet is on the Private profile, whose firewall is off, so no firewall rule was added. LAN viewers can see the public IP, gateway MAC, local IP and process names in the UDP top-3.
 
 ## 12. Next actions
 

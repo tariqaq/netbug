@@ -53,6 +53,8 @@ class NetMon
     static DateTime lagStart, lagLastBad;
     static long lagMaxGw;
     static int lagLoss, lagSamples;
+    static string lastTcpReason = "";
+    static int tcpRepeats;
     static IPAddress tcpProbeIp;
     static long lastTx = -1, lastRx = -1;
     static string currentDay = "";
@@ -138,7 +140,7 @@ class NetMon
 
                 // LAN lag: the gateway is normally 0-1 ms away, so a slow or lost gateway ping
                 // together with a slow/lost internet ping means the local segment is choking
-                bool lagNow = gwMs >= LagGwMs || (gwMs < 0 && (cfMs < 0 || gMs < 0));
+                bool lagNow = ni != null && (gwMs >= LagGwMs || (gwMs < 0 && (cfMs < 0 || gMs < 0)));
                 if (lagNow)
                 {
                     if (!inLag) { inLag = true; lagStart = DateTime.Now; lagMaxGw = 0; lagLoss = 0; lagSamples = 0; lagSnapped = false; }
@@ -343,8 +345,16 @@ class NetMon
             double life = (DateTime.Now - opened).TotalSeconds;
             // google closes idle/old keep-alive connections itself; only clean closes after
             // a long life are expected, everything else is worth a line
-            if (!(reason.StartsWith("server") && life > 200))
-                Event(string.Format("persistent TCP died after {0:N0} s, {1} requests: {2}", life, requests, reason));
+            // collapse repeated reconnect failures (e.g. every 5 s while the cable is out) into one line
+            if (requests == 0 && reason == lastTcpReason) tcpRepeats++;
+            else
+            {
+                if (tcpRepeats > 0) Event(string.Format("persistent TCP: previous failure repeated {0} more times", tcpRepeats));
+                tcpRepeats = 0;
+                if (!(reason.StartsWith("server") && life > 200))
+                    Event(string.Format("persistent TCP died after {0:N0} s, {1} requests: {2}", life, requests, reason));
+            }
+            lastTcpReason = reason;
             Thread.Sleep(5000);
         }
     }

@@ -240,6 +240,18 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
   - Since 04:17 it also logs `LAG` events (gateway ≥ 15 ms, or gateway + internet loss) and keeps a long-lived TLS connection to www.google.com (HEAD every 15 s). When that connection dies it logs FIN, RST or timeout.
   - Snapshot pings now use `ping.exe`. The first snapshot (03:57) showed false 0/3 results because `Test-Connection -TimeoutSeconds` is PS7-only.
 
+### 2026-10-28 ~04:30 — driver update + logger verification
+
+- RTL8153 driver updated by the user to Realtek NetAdapterCx **1153.23.20.605** (service `rtu53cx22x64`, `oem22.inf`, signed by Microsoft Windows Hardware Compatibility Publisher). The old 2018 `rtucx22x64` 11.19.20.602 is gone from use.
+  - The new driver raised Rx URBs/buffers from 6/16 to 10/32 and Tx buffers from 18 to 37.
+  - "Allow computer to turn off this device" is still **Disabled** after the update. USB selective suspend is still off in the power plan.
+- netmon came back by itself after the reboot: the task started it at 04:33:43, about 30 s after logon.
+- Unplug test: cable out 04:34:14, back 04:35:03. netmon logged the link down/up, `OUTAGE START`/`END` (50 s) and a full snapshot with a pktmon capture.
+- Logger fixes from the test:
+  - no `LAG` events while there's no interface
+  - repeated persistent-TCP reconnect failures are collapsed into one line
+- The user reports laptop ports, dongle and cable are known-good across other places. **Remaining physical suspect: the room wall port and the hostel cabling/switch behind it.**
+
 ## 12. Recommended next actions (not applied)
 
 - **Turn the Private firewall back on**, or set the hostel network to *Public*. Bind MySQL to `127.0.0.1`.

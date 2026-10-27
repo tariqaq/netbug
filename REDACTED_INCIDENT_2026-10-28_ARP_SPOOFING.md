@@ -155,6 +155,10 @@ It could still be a badly misconfigured device (for example a phone or PC sharin
 | Recovers "by itself" after some minutes | The attacker stops, or the real router's ARP traffic wins again. |
 | **Other residents are affected at the same time** | The tool targets several or all hosts on the flat `/20` (§5.3: other hosts were asking for the gateway). |
 | Windows shows nothing wrong: link up, no driver or DHCP events | Nothing is wrong locally. The laptop is sending perfectly to the wrong MAC. |
+| **The whole internet hangs silently**: Spotify won't load, browser tabs sit on a blank grey page loading forever, **no "no internet" or DNS error page** | Error pages need an answer: a DNS failure reply, a TCP reset or an ICMP "unreachable". A blackhole sends **nothing back**, so every app just waits for its own long timeout. The snapshot showed exactly this: 16 TCP connections stuck in `SynSent`, and DNS timing out after 7 s instead of failing. |
+| It happens roughly **once every 4 days** (user's estimate) | Fits a person running a cutting tool now and then (for example to grab bandwidth for themselves), not a hardware fault, which would be random or constant. |
+| Switching to a phone hotspot *seemed* to fix it while the cable was out (**the user isn't sure about this**) | If so, it fits: the hotspot is a different network with a different gateway, so the hostel spoofer can't touch it. The 05:34 incident showed the same when the laptop fell back to Wi-Fi at 05:36:35 and everything worked instantly. |
+| 10-28 ~02:56: during the first network scan, **every** curl request failed (DNS timeouts of ~11 s, a connect timeout of 21 s, 0 B/s transfers) and then recovered | Same silent-blackhole signature, 2.5 h before the caught incident. Likely the same attacker, but not proven (netbug wasn't running yet). Raw output in `NETWORK_SCAN.md` §10b. |
 | 10-24 03:13: Discord voice heartbeat timeout with **no Windows event at all** | Consistent with the same thing (no gateway MAC history existed then to prove it). |
 
 Earlier suspects, now explained or ruled out:

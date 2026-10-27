@@ -5,6 +5,16 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 06:09: `HASH` docs: missing symptoms and the 02:56 curl failure
+- README "The problem":
+  - frequency is about once every 4 days
+  - the whole internet hangs silently (Spotify, grey loading pages, no error page)
+  - the hotspot workaround, marked as uncertain
+- Scan report:
+  - finding #3 linked to the ARP-spoofing pattern
+  - §10b: the ~02:56 incident row, the raw curl failure output with a reading, and the reported frequency
+- Incident report §6: silent hang explained (a blackhole sends no error back), frequency, hotspot (uncertain), and the 02:56 curl failure as a likely earlier occurrence (not proven).
+
 ### 06:03: `d159f7b` AGENTS log-analysis checklist; Tailscale notes
 - `AGENTS.md`: new **LOG ANALYSIS** section. Every analysis checks that the hostel gateway ARP pin is still `static` and tells the user first if it's gone, with the re-pin command. It also lists every `ARP SPOOFING DETECTED` / `GATEWAY MAC CHANGED` event.
 - README: dashboard over Tailscale (MagicDNS), and when it survives an outage. Scan report: Tailscale section.

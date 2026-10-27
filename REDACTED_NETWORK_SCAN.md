@@ -11,7 +11,7 @@ Location: hostel room, wired via room wall port. Kuala Lumpur, Malaysia.
 |---|---------|----------|
 | 1 | **Not double CGNAT.** Only one NAT layer (hostel MikroTik). The public IP `xxx` is a real TM public IP shared by the whole hostel. | Info |
 | 2 | **Hostel router blocks all third-party DNS**: UDP/TCP 53, DoT 853, and even TCP 443/80 to `1.1.1.1`, `8.8.8.8`, `9.9.9.9`, `cloudflare-dns.com`, `dns.google`. Only the router's own resolver (`10.255.31.254`) works. | High (explains random "no internet" / DNS timeouts) |
-| 3 | **DNS timeouts observed**: event 1014 at 02:56 ("none of the configured DNS servers responded"). During one test burst every hostname lookup failed for ~20 s, then recovered. | High |
+| 3 | **DNS timeouts observed**: event 1014 at 02:56 ("none of the configured DNS servers responded"). During one test burst (~02:56) every request failed for ~20 s, then recovered (raw output in §10b). **In hindsight** this matches the ARP-spoofing pattern of finding #9: DNS and new connections both silently dead at once. | High |
 | 4 | ~~Upload capped~~. **Correction:** Ookla multi-stream gets **940 down / 900 up** (Uni5G Kepong, 1 ms), so the line is really 1 Gbps. Single-stream curl only reached ~450–600 / 50–100. Both Ookla and fast.com sit at 0 for ~30 s before starting, which points to slow setup of the first connection. | Info |
 | 5 | **Ethernet goes through a USB dongle/dock** (Realtek RTL8153B, Ugreen) behind a chain of USB hubs. The driver is from **2018**, and USB power saving is enabled. **Update:** the driver was updated to 1153.23.20.605 and power saving was turned off (see §11). | Medium (possible drop/stall source) |
 | 6 | **Windows Firewall is OFF for the Private profile**, and the hostel LAN is marked *Private*. MySQL (3306/33060), SMB (445), RPC and spacedesk (28252) are open to every device on the hostel LAN. The user keeps this on purpose. | Info (user decision) |
@@ -226,9 +226,24 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 | 10-20 16:49–17:11 | gateway WS closed ~15x in 20 min | nothing network-related; Cloudflare WARP disconnect 17:11 |
 | **10-24 03:13** | **voice heartbeat ACK took 13.7 s → reconnect code 4800 (heartbeat timeout)** | **nothing at all**: no link change, no DHCP, no NIC event |
 | 10-26 19:44–20:21 | gateway WS closed ~12x, voice WS 1006 | user rebooted 20:23; DNS 1014 on msftconnecttest |
+| 10-28 ~02:56 (during this scan) | (user's whole internet hung: Spotify wouldn't load, browser tabs sat on a blank grey page loading forever, no error page) | DNS-Client 1014 at 02:56. The scan's curl test failed on everything (below). |
 | 10-28 04:03:58–04:04:31 | (caught by netbug) | **LAN lag**: gateway RTT 0 → 10–65 ms with loss. Gateway, 1.1.1.1 and 8.8.8.8 often had *identical* RTTs (30/30/30, 65/65/65), so the delay sits on the local segment (hostel LAN or laptop/dongle), not upstream. Own traffic was low. |
 | 10-28 04:13:25–04:13:32 | Claude Code "API Error: Connection lost mid-response" (other session) | netbug saw nothing: gw 0 ms, cf 8 ms, DNS 11 ms, no loss. Either one connection was killed or it was API-side. The persistent-TCP probe was added to catch this class. |
 
+- 10-28 ~02:56 curl test output (curl exit code 6 = could not resolve host):
+  ```
+  https://cloudflare-dns.com   dns=0.010  tcp=0  tls=0  total=21.26 s  FAIL
+  https://dns.google           dns=0      tcp=0  tls=0  total=11.10 s  FAIL
+  https://www.google.com       dns=0      tcp=0  tls=0  total=11.10 s  FAIL
+  https://github.com           dns=0      tcp=0  tls=0  total=0.008 s  FAIL
+  https://www.cloudflare.com                              total=0.012 s  FAIL
+  https://speed.cloudflare.com dns=0      tcp=0  tls=0  total=0.010 s  FAIL
+  download 100 MB: 0 B/s     upload 25 MB: 0 B/s after 11.1 s
+  ```
+  - The ~11 s failures are DNS lookups timing out, and the 21 s one is a connect timing out after a cached lookup (`cloudflare-dns.com` is blocked by the hostel anyway, so that line alone proves nothing). The near-instant ones failed on an already-failed lookup.
+  - Nothing got a reply and nothing was refused: traffic silently went nowhere. That is the same signature as the 05:34 ARP-spoofing blackhole (§10c), and the same "grey page, no error" browser behaviour, because the browser only waits.
+  - Not proven for this one: netbug wasn't running yet, so there's no gateway-MAC record.
+- Frequency reported by the user: about **once every 4 days**.
 - Gateway WebSocket also dies (code 1006) several times a day outside these windows.
 - **UDP exhaustion (4266) times do not match any of these outages.** It's a separate background leak, not the cause.
 - 10-24 shows traffic silently black-holed for 14+ s while Windows saw the link as perfectly fine. That points at the path beyond the laptop (hostel switch/MikroTik) or a NIC TX stall. The netbug logger is set up to tell these apart.

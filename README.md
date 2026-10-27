@@ -8,12 +8,15 @@ Built to hunt a 2-year-old bug on a wired hostel connection: Windows 11, a USB-C
 
 ## 😩 The problem
 
-Every few days, out of nowhere:
+Roughly **once every 4 days**, out of nowhere:
 
 1. 🎙️ Discord voice ping jumps to **5000 ms**. Friends can't hear you, but you still hear them, so outbound traffic is dying while inbound still flows.
 2. 🔄 About 20 s later, Discord spins forever and Valorant rubberbands, then disconnects.
-3. 🔌 Replugging the cable shows **"connected, no internet"**.
-4. ⏳ Minutes later it fixes itself and runs at full gigabit again.
+3. 🌫️ The **whole internet hangs** without saying so: Spotify won't load, and browser tabs sit on a blank grey page loading forever, with no "no internet" or DNS error page.
+4. 🔌 Replugging the cable shows **"connected, no internet"**.
+5. ⏳ Minutes later it fixes itself and runs at full gigabit again.
+
+Switching to a phone hotspot *seemed* to bring things back while the cable was out, but that's not certain.
 
 Nothing in Windows explains it. So netbug watches every layer and timestamps exactly what breaks first.
 

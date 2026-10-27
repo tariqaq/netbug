@@ -5,6 +5,9 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 05:02: AGENTS rule 6: keep code comments current
+- New rule: update comments with every code change, describe current behavior only, search old names case-insensitively after renames, and fix (and report) stale comments found anywhere.
+
 ### 05:00: `1e79c6c` README rewrite + full stale pass
 - README rewritten: problem summary, mermaid flow diagram of how netbug works, check/interval/catches table, log file guide, footprint, build/install, repo layout.
 - `netbug.cs` comments fixed:

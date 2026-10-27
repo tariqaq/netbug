@@ -22,3 +22,8 @@
    - Timestamp each entry with the user's **system clock** (Kuala Lumpur, MYT, UTC+08:00). Get the time via `Get-Date -Format 'yyyy-MM-dd HH:mm'`; never guess it.
    - Include the commit hash when there is one, and mark machine-side changes with **Machine:**.
    - `CHANGELOG.md` is public: no PII (see rule 2).
+6. **Keep code comments current. Never let them go stale.**
+   - Whenever you change code, reread every comment in and around the changed lines. That includes the file header, function headers, and any comment naming the changed thing (intervals, thresholds, file names, triggers, limits). Fix any that no longer match, in the same commit.
+   - Comments state what the code does *now*. No history ("was X", "used to"); history goes in `CHANGELOG.md`.
+   - After a rename, search case-insensitively for the old name in comments, strings and identifiers too, not just code paths.
+   - If you find a stale comment in code you didn't touch, fix it as well and mention it to the user (rule 3).

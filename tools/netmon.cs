@@ -48,6 +48,11 @@ class NetMon
     static string gwMac = "";
     static bool udpWarned;
     static int failStreak;
+    const int LagGwMs = 15;
+    static bool inLag, lagSnapped;
+    static DateTime lagStart, lagLastBad;
+    static long lagMaxGw;
+    static int lagLoss, lagSamples;
     static IPAddress tcpProbeIp;
     static long lastTx = -1, lastRx = -1;
     static string currentDay = "";
@@ -67,6 +72,7 @@ class NetMon
         {
             if (!created) return;   // already running
             Event("netmon started");
+            new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             Run();
         }
     }
@@ -94,6 +100,7 @@ class NetMon
                 long gwMs = pGw.Result, cfMs = pCf.Result, gMs = pG.Result;
 
                 if (tick % 2 == 0) dnsMs = gw != null ? DnsProbe(gw) : -1;
+                if (tcpMs < 0 && tick % 10 != 0) tcpMs = TcpProbe();   // re-check a failed probe every second
                 if (tick % 10 == 0)
                 {
                     tcpMs = TcpProbe();
@@ -129,8 +136,33 @@ class NetMon
                 if (udpTotal >= UdpWarnThreshold && !udpWarned) { Event(string.Format("UDP endpoints high: {0} (top: {1})", udpTotal, udpTop)); udpWarned = true; Snapshot("udp_high"); }
                 if (udpTotal >= 0 && udpTotal < UdpWarnThreshold / 2) udpWarned = false;
 
+                // LAN lag: the gateway is normally 0-1 ms away, so a slow or lost gateway ping
+                // together with a slow/lost internet ping means the local segment is choking
+                bool lagNow = gwMs >= LagGwMs || (gwMs < 0 && (cfMs < 0 || gMs < 0));
+                if (lagNow)
+                {
+                    if (!inLag) { inLag = true; lagStart = DateTime.Now; lagMaxGw = 0; lagLoss = 0; lagSamples = 0; lagSnapped = false; }
+                    lagLastBad = DateTime.Now;
+                    lagSamples++;
+                    if (gwMs < 0) lagLoss++; else lagMaxGw = Math.Max(lagMaxGw, gwMs);
+                    if (!lagSnapped && (DateTime.Now - lagStart).TotalSeconds >= 5)
+                    {
+                        Event(string.Format("LAG ongoing for {0:N0} s: gw max {1} ms, {2} lost gw pings", (DateTime.Now - lagStart).TotalSeconds, lagMaxGw, lagLoss));
+                        Snapshot("lag"); lagSnapped = true;
+                    }
+                }
+                else if (inLag && (DateTime.Now - lagLastBad).TotalSeconds >= 10)
+                {
+                    inLag = false;
+                    double dur = (lagLastBad - lagStart).TotalSeconds + 1;
+                    if (lagSamples >= 3)
+                        Event(string.Format("LAG {0:HH:mm:ss}-{1:HH:mm:ss} ({2:N0} s): {3} bad s, gw max {4} ms, {5} lost gw pings", lagStart, lagLastBad, dur, lagSamples, lagMaxGw, lagLoss));
+                }
+                if (lagNow) fails.Add("lag");
+                failStr = string.Join("|", fails);
+
                 // gw-only ICMP loss is not an outage (the MikroTik rate-limits ICMP); require 2 bad seconds in a row
-                var realFails = fails.Where(f => f != "udp_high" && f != "gw").ToList();
+                var realFails = fails.Where(f => f != "udp_high" && f != "gw" && f != "lag").ToList();
                 failStreak = realFails.Count > 0 ? failStreak + 1 : 0;
                 if (fails.Count > 0) fastUntil = DateTime.Now.AddSeconds(60);
                 if (failStreak >= 2)
@@ -256,6 +288,67 @@ class NetMon
         catch { tcpProbeIp = null; return -1; }
     }
 
+    // Keeps one long-lived TLS connection open and sends a HEAD request on it every 15 s,
+    // like Discord/Claude/game sessions do. Logs how and when the connection dies: a clean
+    // server close (FIN), a reset (RST, often a middlebox killing the flow) or a silent stall.
+    static void PersistentTcpLoop()
+    {
+        const string host = "www.google.com";
+        byte[] req = Encoding.ASCII.GetBytes("HEAD / HTTP/1.1\r\nHost: " + host + "\r\nConnection: keep-alive\r\n\r\n");
+        while (true)
+        {
+            var opened = DateTime.Now;
+            int requests = 0;
+            string reason;
+            try
+            {
+                using (var tcp = new TcpClient())
+                {
+                    tcp.ReceiveTimeout = 5000; tcp.SendTimeout = 5000;
+                    if (!tcp.ConnectAsync(host, 443).Wait(5000)) throw new TimeoutException("connect timed out");
+                    using (var ssl = new System.Net.Security.SslStream(tcp.GetStream()))
+                    {
+                        ssl.ReadTimeout = 5000; ssl.WriteTimeout = 5000;
+                        ssl.AuthenticateAsClient(host);
+                        var buf = new byte[4096];
+                        while (true)
+                        {
+                            var sw = Stopwatch.StartNew();
+                            ssl.Write(req);
+                            var head = new StringBuilder();
+                            while (head.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal) < 0)
+                            {
+                                int n = ssl.Read(buf, 0, buf.Length);
+                                if (n == 0) throw new EndOfStreamException("server closed (FIN)");
+                                head.Append(Encoding.ASCII.GetString(buf, 0, n));
+                            }
+                            requests++;
+                            if (sw.ElapsedMilliseconds > 1500)
+                                Event(string.Format("persistent TCP: slow reply {0} ms on a {1:N0} s old connection", sw.ElapsedMilliseconds, (DateTime.Now - opened).TotalSeconds));
+                            if (head.ToString().IndexOf("Connection: close", StringComparison.OrdinalIgnoreCase) >= 0)
+                                throw new EndOfStreamException("server asked to close");
+                            Thread.Sleep(15000);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                var se = (ex.InnerException as SocketException) ?? (ex as SocketException);
+                if (se != null) reason = se.SocketErrorCode == SocketError.ConnectionReset ? "RESET (RST)" :
+                                         se.SocketErrorCode == SocketError.TimedOut ? "TIMEOUT (no reply 5 s)" : "socket " + se.SocketErrorCode;
+                else if (ex is IOException && ex.Message.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0) reason = "TIMEOUT (no reply 5 s)";
+                else reason = ex.GetType().Name + ": " + ex.Message;
+            }
+            double life = (DateTime.Now - opened).TotalSeconds;
+            // google closes idle/old keep-alive connections itself; only clean closes after
+            // a long life are expected, everything else is worth a line
+            if (!(reason.StartsWith("server") && life > 200))
+                Event(string.Format("persistent TCP died after {0:N0} s, {1} requests: {2}", life, requests, reason));
+            Thread.Sleep(5000);
+        }
+    }
+
     static string Arp(IPAddress target, IPAddress src)
     {
         var mac = new byte[6]; int len = 6;
@@ -346,8 +439,10 @@ class NetMon
     static string Csv(string s) { return (s ?? "").Replace(",", ";"); }
     static void Row(string line) { File.AppendAllText(CsvPath(), line + "\r\n"); }
 
+    static readonly object eventLock = new object();
     static void Event(string msg)
     {
-        File.AppendAllText(Path.Combine(logDir, "events.log"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg + "\r\n");
+        lock (eventLock)   // called from the main loop and the persistent TCP thread
+            File.AppendAllText(Path.Combine(logDir, "events.log"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg + "\r\n");
     }
 }

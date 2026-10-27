@@ -81,10 +81,11 @@ class NetBug
         snapDir = Path.Combine(logDir, "snapshots");
         Directory.CreateDirectory(snapDir);
 
-        bool created;
-        using (new Mutex(true, "Global\\netbug", out created))
+        using (var mutex = new Mutex(false, "Global\\netbug"))
         {
-            if (!created) return;   // already running
+            // wait a little so a self-restart (see Health) can take over from the exiting instance
+            try { if (!mutex.WaitOne(15000)) return; }   // another instance is running
+            catch (AbandonedMutexException) { }
             Event("netbug started");
             new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(StunLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
@@ -124,6 +125,7 @@ class NetBug
                 }
                 if (tick % 300 == 5) RefreshPublicIp();
                 if (tick % 600 == 7) EnforceSizeCap();
+                if (tick % 600 == 9) Health(tick % 3600 == 9);
 
                 long txDelta = 0, rxDelta = 0;
                 if (ni != null)
@@ -495,6 +497,26 @@ class NetBug
             Event(string.Format("log size cap: deleted {0} oldest files, logs/ now {1:N0} MB", deleted, total / 1048576.0));
         }
         catch (Exception ex) { Event("size cap error: " + ex.Message); }
+    }
+
+    // Leak safety net: logs own RAM/handles/threads hourly, and if they ever grow past sane
+    // limits, starts a fresh copy of itself and exits (the new copy waits for the mutex).
+    const long MaxPrivateBytes = 200L * 1024 * 1024;
+    const int MaxHandles = 5000, MaxThreads = 100;
+    static void Health(bool logIt)
+    {
+        using (var p = Process.GetCurrentProcess())
+        {
+            long priv = p.PrivateMemorySize64; int handles = p.HandleCount, threads = p.Threads.Count;
+            if (logIt) Event(string.Format("health: private {0:N1} MB, handles {1}, threads {2}, up {3:N1} h",
+                priv / 1048576.0, handles, threads, (DateTime.Now - p.StartTime).TotalHours));
+            if (priv > MaxPrivateBytes || handles > MaxHandles || threads > MaxThreads)
+            {
+                Event(string.Format("health limit exceeded (private {0:N0} MB, handles {1}, threads {2}): restarting netbug", priv / 1048576, handles, threads));
+                Process.Start(new ProcessStartInfo(p.MainModule.FileName) { UseShellExecute = false, WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory });
+                Environment.Exit(0);
+            }
+        }
     }
 
     // Runs on its own thread so a dead UDP path (up to 2 x 1.5 s timeouts) never slows the 1 s main loop.

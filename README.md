@@ -1,24 +1,122 @@
-# netbug
+# 🐛 netbug
 
-Diagnosing intermittent network drops on a wired hostel connection (Windows 11, USB-C RTL8153 dongle, MikroTik-gatewayed LAN, TM Unifi upstream).
+A tiny always-on Windows logger that catches **intermittent network drops** the moment they happen and records enough evidence to say *where* the problem is.
 
-Symptom: every few days, outbound traffic dies while inbound keeps flowing for a bit. Discord voice goes to 5000 ms (friends can't hear you, you can still hear them), then Discord and games lose connection entirely. Replugging the cable shows "connected, no internet" until it recovers by itself minutes later.
+Built to hunt a 2-year-old bug on a wired hostel connection: Windows 11, a USB-C RTL8153 gigabit dongle, a MikroTik-gatewayed LAN, and TM Unifi upstream.
 
-## tools/
+---
 
-| File | What it does |
-|---|---|
-| `netbug.cs` | Always-on logger (~35 MB RAM, ~1% of one core, BelowNormal priority). Each second it pings the gateway, 1.1.1.1 and 8.8.8.8. It queries DNS via the gateway every 2 s. Every 10 s it does a TCP connect and records UDP port usage per process and the gateway MAC. It checks the public IP every 5 min. It keeps one long-lived TLS connection to see how connections die (FIN/RST/timeout). A long-lived UDP socket sends a STUN request to Cloudflare (Google as fallback) every 2 s. That checks the UDP path that voice/game traffic uses, and it logs when the NAT changes our public port mapping. It logs OUTAGE and LAG events and triggers `snapshot.ps1`, at most once per 60 s. It writes an hourly self-health line and restarts itself past 200 MB private memory, 5000 handles or 100 threads. |
-| `snapshot.ps1` | Detailed dump at the moment of an outage: adapter counters, NCSI state, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, recent system events, and a 15 s `pktmon` capture when run as admin. |
-| `redact.ps1` | Regenerates `REDACTED_<name>.md` for every gitignored `.md`. MAC addresses and the literal terms in the gitignored `redact.local.txt` are replaced with `xxx`, and it refuses to write a copy that still contains PII. |
+## 😩 The problem
 
-Build and install (admin PowerShell):
+Every few days, out of nowhere:
 
-```powershell
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize /out:tools\netbug.exe tools\netbug.cs
-# then register tools\netbug.exe as an "at logon, run with highest privileges" scheduled task
+1. 🎙️ Discord voice ping jumps to **5000 ms**. Friends can't hear you, but you still hear them, so outbound traffic is dying while inbound still flows.
+2. 🔄 About 20 s later, Discord spins forever and Valorant rubberbands, then disconnects.
+3. 🔌 Replugging the cable shows **"connected, no internet"**.
+4. ⏳ Minutes later it fixes itself and runs at full gigabit again.
+
+Nothing in Windows explains it. So netbug watches every layer and timestamps exactly what breaks first.
+
+---
+
+## ⚙️ How it works
+
+```mermaid
+flowchart TD
+    A["🔑 Windows logon"] --> B["📅 Task Scheduler: task 'netbug' (highest privileges)"]
+    B --> C["🐛 netbug.exe (BelowNormal priority)"]
+
+    C --> M["🔁 Main loop, every 1 s"]
+    C --> T["🔗 TLS thread: HEAD on one long-lived connection every 15 s"]
+    C --> U["📡 UDP thread: STUN on one long-lived socket every 2 s"]
+
+    M --> P["🔍 Probes: pings, DNS, TCP, link, ARP, UDP usage"]
+    P --> K{"🧮 Classify"}
+
+    K -->|"✅ all good"| R1["📝 CSV row every 5 s"]
+    K -->|"⚠️ anything failing"| R2["📝 CSV row every 1 s, for 60 s"]
+    K -->|"🐢 gateway ≥ 15 ms, or gateway + internet loss"| L["LAG event"]
+    K -->|"📈 ≥ 3000 UDP ports in use"| H["UDP usage high event"]
+    H --> S
+    K -->|"🚨 2 bad seconds in a row"| O["OUTAGE START → END events"]
+
+    L -->|"lasts ≥ 5 s"| S["📸 snapshot.ps1 (max 1 per 60 s)"]
+    O --> S
+
+    T -->|"FIN / RST / timeout"| E["🗒️ events.log"]
+    U -->|"NAT mapping changed"| E
+    L --> E
+    O --> E
+    S --> D["📁 logs/snapshots/"]
 ```
 
-Output goes to `logs/` (gitignored): `netbug-<date>.csv`, `events.log`, `snapshots/`. Files older than 30 days are deleted automatically, and `logs/` is capped at 500 MB: the oldest snapshots go first, then the oldest CSVs.
+---
 
-See `CHANGELOG.md` for every change (MYT timestamps) and `AGENTS.md` for the repo rules.
+## 🔍 What it checks
+
+| ⏱️ Every | 🔍 Check | 🎯 Catches |
+|---|---|---|
+| 1 s | Ping gateway, `1.1.1.1`, `8.8.8.8` | LAN lag, internet loss |
+| 1 s | Active interface, dongle link state, tx/rx packet counters | Cable/link drops, hotspot switch, one-way traffic |
+| 2 s | DNS query to the router | Resolver stalls ("sites load forever") |
+| 2 s | STUN over one long-lived UDP socket | UDP path loss, **NAT mapping changes** (what kills voice/game sessions) |
+| 10 s (every 1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
+| 10 s | UDP ports per process, gateway MAC via ARP | Port leaks, gateway swap/spoof |
+| 15 s | HEAD on one long-lived TLS connection | Connections silently killed (FIN / RST / timeout) |
+| 5 min | Public IP | ISP / PPPoE reconnects |
+| 1 h | Own RAM / handles / threads | Leaks (auto-restarts past limits) |
+
+🚨 **Outage** = no interface, both internet pings, DNS, TCP or UDP failing **2 seconds in a row**. Gateway-only ping loss is ignored, because the router rate-limits ICMP.
+
+---
+
+## 🗒️ What gets logged
+
+All output goes to `logs/`, which is gitignored and stays on the machine.
+
+| 📄 File | 📋 Contents |
+|---|---|
+| `netbug-<date>.csv` | One row per 5 s (per 1 s around failures). Columns: interface, link, IP, gateway + MAC, ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures |
+| `events.log` | Human-readable timeline: `OUTAGE START/END`, `LAG`, link/interface changes, gateway MAC / public IP / NAT mapping changes, TCP connection deaths, high UDP usage, hourly `health:` lines |
+| `snapshots/` | Full dump per incident: adapter counters, NCSI state, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, recent system events, plus a 15 s `pktmon` packet capture |
+
+🧹 Files older than **30 days** are deleted, and `logs/` is hard-capped at **500 MB**: the oldest snapshots go first, then the oldest CSVs.
+
+---
+
+## 🪶 Footprint
+
+| | |
+|---|---|
+| 🧠 RAM | ~25–37 MB |
+| ⚡ CPU | ~1% of one core (≈0.07% of a 16-thread CPU), BelowNormal priority |
+| 🌐 Network | ~0.75 KB/s total, no traffic to game or voice servers |
+| 💾 Disk | ~6 MB/day of small appends |
+| 🛡️ Safety | Restarts itself past 200 MB private memory, 5000 handles or 100 threads |
+
+---
+
+## 🛠️ Build & install
+
+```powershell
+# build (uses the C# compiler that ships with Windows)
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize /out:tools\netbug.exe tools\netbug.cs
+
+# then, in an admin PowerShell, register tools\netbug.exe as a scheduled task:
+#   trigger: at logon · run with highest privileges · no time limit · restart on failure
+```
+
+Admin rights are only needed so the snapshot can run `pktmon` packet captures.
+
+---
+
+## 📦 Repo layout
+
+| 📄 Path | 📋 What |
+|---|---|
+| `tools/netbug.cs` | The logger |
+| `tools/snapshot.ps1` | Incident snapshot, launched by netbug |
+| `tools/redact.ps1` | Builds `REDACTED_<name>.md` from gitignored notes: MACs + terms in `redact.local.txt` → `xxx`, refuses to write if any PII remains |
+| `REDACTED_NETWORK_SCAN.md` | 🔒 Public, redacted copy of the full network scan and findings |
+| `CHANGELOG.md` | 📜 Every change, timestamped in MYT (UTC+08:00) |
+| `AGENTS.md` | 📏 Rules for anyone (or any AI agent) working on this repo |

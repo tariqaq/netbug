@@ -87,7 +87,7 @@ Wi-Fi DNS (last network): `192.168.50.1`.
 | Upload (Cloudflare, 3 runs) | **50 / 103 / 66 Mbps** |
 | Path MTU | 1492 (1464 B ICMP payload OK, 1472 rejected by gw) |
 
-Note: these are single-stream curl tests. Multi-stream tests could push download higher. The upload cap is still clear.
+Note: these are single-stream curl tests. **Update:** Ookla multi-stream measured 940 down / 900 up, so there is no upload cap. The line is a real 1 Gbps.
 
 ## 5. Firewalling done by the hostel network
 
@@ -112,13 +112,13 @@ So the MikroTik forces all DNS through itself. The Windows DoH config (Quad9/Goo
 | Chip | Realtek **RTL8153B** (USB\VID_0BDA&PID_8153&REV_31FD) |
 | Bus desc | "USB 10/100/1000 LAN" |
 | Vendor | Ugreen (by MAC OUI) |
-| Driver | `rtucx22x64` **11.19.20.602 (2018-03-30)**, `oem131.inf` |
+| Driver | `rtucx22x64` **11.19.20.602 (2018-03-30)**, `oem131.inf` at scan time. **Now:** `rtu53cx22x64` 1153.23.20.605 (see §11) |
 | Also in driver store | 11.15.327.2024 (2016), 10.19.705.2017, and 1030.52.731.2025 (2025, Realtek Net) |
 | USB path | Intel USB 3.20 xHCI → Root hub → **VIA hub 2109:0817** → **Genesys GL3523 hub 05E3:0625** → RTL8153 (port 3) |
 | Other filter drivers in stack | **USBPcap** |
 | Previous instance | "Controller #2" (serial xxx), now absent. This is the second dongle/port seen. |
 
-Power settings (Ethernet 7):
+Power settings (Ethernet 7) at scan time. **Now:** turn-off-device and USB selective suspend are disabled; Rx/Tx URBs are 10/3 and buffers 32/37 (see §11):
 
 | Setting | Value |
 |---|---|

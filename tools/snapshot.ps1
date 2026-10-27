@@ -1,5 +1,6 @@
 # snapshot.ps1 - detailed network state dump, launched by netbug.exe when an
-# outage starts. Runs once per outage, so it can afford heavier commands.
+# outage starts, lag lasts 5 s or UDP usage gets high (at most once per 60 s),
+# so it can afford heavier commands.
 
 param([Parameter(Mandatory)][string]$Out)
 
@@ -70,7 +71,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
             @{ n = 'msg'; e = { ($_.Message -split "`n")[0] } } -AutoSize | Out-String -Width 250
 
     if ($isAdmin) {
-        "`n--- 15 s packet capture: ICMP/DNS/ARP to gateway (pktmon) ---"
+        "`n--- 15 s packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon) ---"
         $etl = [IO.Path]::ChangeExtension($Out, '.etl')
         pktmon stop 2>&1 | Out-Null
         pktmon filter remove | Out-Null

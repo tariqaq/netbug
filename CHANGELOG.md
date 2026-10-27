@@ -5,6 +5,20 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 05:00: README rewrite + full stale pass
+- README rewritten: problem summary, mermaid flow diagram of how netbug works, check/interval/catches table, log file guide, footprint, build/install, repo layout.
+- `netbug.cs` comments fixed:
+  - the header now lists every snapshot trigger (outage, 5 s lag, high UDP usage)
+  - the outage-rule comment now covers lag and UDP-high
+  - the persistent-TCP logging comment is merged and reworded
+  - the DNS probe label prefix changed from `nm` to `nb` (leftover from the netmon name)
+- `snapshot.ps1`: the header lists all triggers + the 60 s limit, and the capture section title matches its filters (ARP + gateway + 1.1.1.1).
+- Scan report: the upload-cap note is corrected, and the driver/power tables are marked "at scan time" with current values.
+- **Machine:** rebuilt `netbug.exe` and restarted the `netbug` task.
+
+### 04:58: `231b6ca` changelog timestamp fix
+- The changelog's own entry was set to the exact system time (04:57) and its commit hash.
+
 ### 04:57: `75774e5` changelog + docs rules
 - Added `CHANGELOG.md`, reconstructed from git history and session actions.
 - `AGENTS.md` rule 4: keep all docs/`.md` files up to date. Rule 5: log every change here with a system-clock timestamp.

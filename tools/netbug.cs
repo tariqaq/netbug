@@ -7,8 +7,8 @@
 // long-lived UDP socket doing STUN every 2 s (UDP RTT + NAT mapping).
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
 // any failure. Outage/LAG start/end, link, interface, gateway MAC, public IP, NAT
-// mapping, TCP-connection deaths and UDP-usage changes go to events.log, and an
-// outage (or 5 s of lag) triggers snapshot.ps1 at most once per 60 s.
+// mapping, TCP-connection deaths and UDP-usage changes go to events.log. An outage,
+// 5 s of lag or high UDP usage triggers snapshot.ps1, at most once per 60 s.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
 //
@@ -192,7 +192,8 @@ class NetBug
                 if (lagNow) fails.Add("lag");
                 failStr = string.Join("|", fails);
 
-                // gw-only ICMP loss is not an outage (the MikroTik rate-limits ICMP); require 2 bad seconds in a row
+                // An outage needs 2 bad seconds in a row. Gateway-only ICMP loss doesn't count (the
+                // MikroTik rate-limits ICMP), and lag / high UDP usage have their own events.
                 var realFails = fails.Where(f => f != "udp_high" && f != "gw" && f != "lag").ToList();
                 failStreak = realFails.Count > 0 ? failStreak + 1 : 0;
                 if (fails.Count > 0) fastUntil = DateTime.Now.AddSeconds(60);
@@ -288,7 +289,7 @@ class NetBug
             {
                 udp.Client.ReceiveTimeout = 1500;
                 var q = new List<byte> { (byte)rng.Next(256), (byte)rng.Next(256), 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0 };
-                foreach (var label in new[] { "nm" + rng.Next(100000000), "example", "com" })
+                foreach (var label in new[] { "nb" + rng.Next(100000000), "example", "com" })
                 {
                     q.Add((byte)label.Length);
                     q.AddRange(Encoding.ASCII.GetBytes(label));
@@ -372,9 +373,9 @@ class NetBug
                 else reason = ex.GetType().Name + ": " + ex.Message;
             }
             double life = (DateTime.Now - opened).TotalSeconds;
-            // google closes idle/old keep-alive connections itself; only clean closes after
-            // a long life are expected, everything else is worth a line
-            // collapse repeated reconnect failures (e.g. every 5 s while the cable is out) into one line
+            // Repeated reconnect failures (e.g. every 5 s while the cable is out) collapse into one
+            // line. Google closes old keep-alive connections itself, so a clean server close after
+            // 200+ s is expected and not logged; everything else is.
             if (requests == 0 && reason == lastTcpReason) tcpRepeats++;
             else
             {

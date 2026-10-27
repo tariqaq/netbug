@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 05:19: `HASH` live LAN dashboard
+### 05:19: `5220988` live LAN dashboard
 - netbug serves a read-only dashboard on port 8787 on all interfaces from its own thread (`HttpListener`, GET only):
   - `/`: `tools/dashboard.html`
   - `/api/state`: latest sample + 300 s history

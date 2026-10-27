@@ -17,7 +17,7 @@ Location: hostel room, wired via room wall port. Kuala Lumpur, Malaysia.
 | 6 | **Windows Firewall is OFF for the Private profile**, and the hostel LAN is marked *Private*. MySQL (3306/33060), SMB (445), RPC and spacedesk (28252) are open to every device on the hostel LAN. The user keeps this on purpose. | Info (user decision) |
 | 7 | Tcpip event 4266: **UDP ephemeral ports exhausted** 45 times since 2026-08-09. **Update:** none of these times match a known outage, so it's a separate background leak (see §10b). netbug flags it if UDP endpoints reach 3000 or more. | Low |
 | 8 | Path MTU = **1492** (TM Unifi PPPoE). The router handles PMTUD correctly. | Info |
-| 9 | **ROOT CAUSE FOUND (10-28 05:34): ARP spoofing on the hostel LAN.** Another device (`10.255.18.145`, MAC `xx-xx-xx-xx-xx-xx`, locally administered/randomized) sent unicast ARP replies claiming to be the gateway `10.255.31.254`. The laptop's ARP cache was poisoned and all traffic went to that device and died for 150 s. Other hosts were asking for the gateway at the same time. See §10c. | **Critical** |
+| 9 | **ROOT CAUSE FOUND (10-28 05:34): ARP spoofing on the hostel LAN.** Another device (`10.255.18.145`, MAC `xx-xx-xx-xx-xx-xx`, locally administered/randomized) sent unicast ARP replies claiming to be the gateway `10.255.31.254`. The laptop's ARP cache was poisoned and all traffic went to that device and died for 150 s. Other hosts were asking for the gateway at the same time. See §10c and the full write-up `INCIDENT_2026-10-28_ARP_SPOOFING.md`. **Mitigated 05:50:** gateway MAC pinned (§11). | **Critical** |
 
 ---
 
@@ -235,6 +235,8 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 
 ## 10c. 2026-10-28 05:34 incident: gateway ARP spoofing (caught live by netbug)
 
+Full report: `INCIDENT_2026-10-28_ARP_SPOOFING.md`. Report for the hostel: `RCC_REPORT.md`.
+
 Timeline (`logs/events.log`, CSV, snapshot `2026-10-28_05-34-06_outage`):
 
 | Time | What |
@@ -283,6 +285,22 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - Priority stays BelowNormal on purpose. Ping RTTs are kernel-timed, so priority can't skew them. DNS/UDP/TCP timings would only inflate if all 16 threads were saturated.
 - Live dashboard (live since 2026-10-28 05:17): netbug serves a read-only page on port **8787** on all interfaces (`http://10.255.19.148:8787/` from the hostel LAN). Ethernet is on the Private profile, whose firewall is off, so no firewall rule was added. LAN viewers can see the public IP, gateway MAC, local IP and process names in the UDP top-3.
 
+### 2026-10-28 05:50 — ARP spoofing defence (after the 05:34 incident)
+
+- **Gateway MAC pinned** (user-approved): `netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx store=persistent`. `Get-NetNeighbor` shows `xx-xx-xx-xx-xx-xx Permanent` in both the active store and PersistentStore.
+  - `2C-C8-1B` is Routerboard.com (MikroTik). This MAC was the gateway from the 02:35 scan until the attack.
+  - Windows now ignores spoofed ARP replies for the gateway, which protects the laptop's outbound traffic.
+  - It does not protect inbound traffic if the router's entry for the laptop is poisoned too. Only the hostel can fix that.
+  - The pin applies only to the adapter named `Ethernet 7`. If Windows renames the dongle (another USB port), re-run the command with the new name. netbug logs the ARP entry turning `dynamic`.
+  - Undo: `netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`. Needed if the hostel replaces the router; netbug then logs "gateway is pinned … the pin is stale".
+- **netbug:**
+  - `GATEWAY MAC CHANGED` alert plus an immediate snapshot
+  - `gw_arp` CSV column and events (static/dynamic)
+  - stale-pin hint during outages
+  - `arpwatch.ps1`: a 10 s ARP-only capture every 5 min, reporting `ARP SPOOFING DETECTED` even while the pin hides attacks from Windows
+  - snapshots list every MAC that claimed the gateway
+  - the dashboard turns red for 30 min after a spoofing alert
+
 ## 12. Next actions
 
 - ~~Turn the Private firewall back on.~~ Won't do: the user keeps it off intentionally.
@@ -290,6 +308,7 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - ~~Plug the dongle straight into the laptop to rule out hubs.~~ Not needed: the user confirmed ports, dongle and cable are fine.
 - ~~Run a long-term monitor.~~ Done: netbug.
 - ~~Wait for the next real incident.~~ Caught on 10-28 05:34 (§10c).
-- **Open (needs user OK):** pin the real gateway MAC with a static ARP entry on Ethernet 7, so spoofed replies are ignored.
-- **Open:** report `10.255.18.145` / `xx-xx-xx-xx-xx-xx` with the timeline to the hostel RCC. On the MikroTik, its DHCP lease and bridge host table show the port or AP. Ask for ARP spoofing protection (DHCP snooping + ARP inspection, or `arp=reply-only` plus static leases, and client isolation).
-- **Open (proposal):** have netbug treat a gateway MAC change as an alert of its own (event + snapshot right away, and red on the dashboard).
+- ~~Pin the real gateway MAC with a static ARP entry on Ethernet 7.~~ Done at 05:50 (§11).
+- ~~Make netbug treat a gateway MAC change as an alert of its own.~~ Done. netbug also shows the pin status and runs an ARP watch every 5 min (§11).
+- **Open (user):** send `RCC_REPORT.md` to the hostel RCC. It covers finding `10.255.18.145` / `xx-xx-xx-xx-xx-xx` on the MikroTik and turning on ARP spoofing protection.
+- **Open:** if the hostel ever replaces the MikroTik, remove the pin: `netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`. netbug flags this case.

@@ -17,6 +17,8 @@ Every few days, out of nowhere:
 
 Nothing in Windows explains it. So netbug watches every layer and timestamps exactly what breaks first.
 
+> 🎯 **Found it (2026-10-28 05:34):** another device on the hostel LAN was **ARP spoofing the gateway**. It told the laptop "I'm the router", then swallowed every packet. netbug caught the gateway MAC change, the outage and the spoofed ARP replies live. Write-up: [`REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`](REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md). Report for the hostel: [`REDACTED_RCC_REPORT.md`](REDACTED_RCC_REPORT.md).
+
 ---
 
 ## ⚙️ How it works
@@ -30,6 +32,10 @@ flowchart TD
     C --> T["🔗 TLS thread: HEAD on one long-lived connection every 15 s"]
     C --> U["📡 UDP thread: STUN on one long-lived socket every 2 s"]
     C --> W["🖥️ Dashboard thread: port 8787, all interfaces"]
+    C --> AW["🕵️ ARP watch: 10 s ARP capture every 5 min (arpwatch.ps1)"]
+    AW -->|"another MAC claims the gateway IP"| SP["ARP SPOOFING DETECTED"]
+    SP --> S
+    SP --> E
     E --> W
     M -->|"latest sample + 5 min history"| W
 
@@ -42,6 +48,9 @@ flowchart TD
     K -->|"📈 ≥ 3000 UDP ports in use"| H["UDP usage high event"]
     H --> S
     K -->|"🚨 2 bad seconds in a row"| O["OUTAGE START → END events"]
+    K -->|"🕵️ same gateway IP, new MAC"| G["GATEWAY MAC CHANGED event"]
+    G --> S
+    G --> E
 
     L -->|"lasts ≥ 5 s"| S["📸 snapshot.ps1 (max 1 per 60 s)"]
     O --> S
@@ -64,7 +73,8 @@ flowchart TD
 | 2 s | DNS query to the router | Resolver stalls ("sites load forever") |
 | 2 s | STUN over one long-lived UDP socket | UDP path loss, **NAT mapping changes** (what kills voice/game sessions) |
 | 10 s (every 1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
-| 10 s | UDP ports per process, gateway MAC via ARP | Port leaks, gateway swap/spoof |
+| 10 s | UDP ports per process, gateway MAC via ARP, gateway ARP entry type (static = pinned / dynamic) | Port leaks, **gateway MAC change = possible ARP spoofing** (alert + snapshot), pin removed |
+| 5 min | 10 s ARP-only `pktmon` capture (`arpwatch.ps1`) | **Any other device claiming the gateway IP**, even while a pinned entry makes Windows ignore it |
 | 15 s | HEAD on one long-lived TLS connection | Connections silently killed (FIN / RST / timeout) |
 | 5 min | Public IP | ISP / PPPoE reconnects |
 | 1 h | Own RAM / handles / threads | Leaks (auto-restarts past limits) |
@@ -79,9 +89,9 @@ All output goes to `logs/`, which is gitignored and stays on the machine.
 
 | 📄 File | 📋 Contents |
 |---|---|
-| `netbug-<date>.csv` | One row per 5 s (per 1 s around failures). Columns: interface, link, IP, gateway + MAC, ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures |
-| `events.log` | Human-readable timeline: `OUTAGE START/END`, `LAG`, link/interface changes, gateway MAC / public IP / NAT mapping changes, TCP connection deaths, high UDP usage, hourly `health:` lines |
-| `snapshots/` | Full dump per incident: adapter counters, NCSI state, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, recent system events, plus a 15 s `pktmon` packet capture |
+| `netbug-<date>.csv` | One row per 5 s (per 1 s around failures). Columns: interface, link, IP, gateway + MAC + ARP entry type (`gw_arp`), ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures |
+| `events.log` | Human-readable timeline: `OUTAGE START/END`, `LAG`, `GATEWAY MAC CHANGED`, `ARP SPOOFING DETECTED`, link/interface changes, gateway MAC / ARP entry / public IP / NAT mapping changes, TCP connection deaths, high UDP usage, hourly `health:` lines |
+| `snapshots/` | Full dump per incident: adapter counters, NCSI state, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, recent system events, plus a 15 s `pktmon` packet capture and a list of every MAC that claimed to be the gateway in it |
 
 🧹 Files older than **30 days** are deleted, and `logs/` is hard-capped at **500 MB**: the oldest snapshots go first, then the oldest CSVs.
 
@@ -91,10 +101,10 @@ All output goes to `logs/`, which is gitignored and stays on the machine.
 
 Open `http://<laptop-ip>:8787/` from any device on the LAN (or `http://localhost:8787/` on the laptop itself).
 
-- Big status line: healthy, lagging, down, or "netbug isn't answering", plus the last finished outage or lag
-- 5-minute trace of gateway, Cloudflare and UDP round-trip times, with a band on every second that had a failure
-- Latest readings for every probe: interface, IPs, gateway MAC, NAT mapping, packet counts, UDP port usage
-- `events.log` scrolling live: outages in red, lag in orange, hourly health lines in cyan (untick the box to hide them). It stops following if you scroll up.
+- Big status line: healthy, lagging (orange), down (red), **possible ARP spoofing** (red, for 30 min after an alert) or "netbug isn't answering", plus the last finished outage or lag
+- 5-minute trace of gateway, Cloudflare and UDP round-trip times. Failures are shaded red (outage) or orange (lag), with a solid strip on top so they stand out
+- Latest readings for every probe: interface, IPs, gateway MAC with pin status and the last ARP watch result (red during an alert), NAT mapping, packet counts, UDP port usage
+- `events.log` scrolling live: outages and spoofing alerts in red, lag in orange, hourly health lines in cyan (untick the box to hide them). It stops following if you scroll up.
 - Labels are bold with a colon and values are regular weight, so they're easy to tell apart
 
 Pure black for AMOLED, white text, SF Pro on Apple devices and Inter (`tools/fonts/inter.woff2`, served by netbug) everywhere else. It lays out for desktop, tablet and phone.
@@ -110,7 +120,7 @@ The page is read-only and makes no external requests, so it keeps working while 
 | | |
 |---|---|
 | 🧠 RAM | ~25–37 MB |
-| ⚡ CPU | ~1% of one core (≈0.07% of a 16-thread CPU), BelowNormal priority |
+| ⚡ CPU | ~1% of one core (≈0.07% of a 16-thread CPU), BelowNormal priority. ARP watch adds ~0.5 s of CPU every 5 min (~0.15% of one core averaged). |
 | 🌐 Network | ~0.75 KB/s total, no traffic to game or voice servers. The dashboard adds under 1 KB/s per open tab, on the LAN only. |
 | 💾 Disk | ~6 MB/day of small appends |
 | 🛡️ Safety | Restarts itself past 200 MB private memory, 5000 handles or 100 threads |
@@ -127,7 +137,18 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 #   trigger: at logon · run with highest privileges · no time limit · restart on failure
 ```
 
-Admin rights are needed for two things: the snapshot's `pktmon` packet captures, and serving the dashboard on all interfaces (`http://+:8787/`).
+Admin rights are needed for three things: `pktmon` packet captures (snapshots and ARP watch), and serving the dashboard on all interfaces (`http://+:8787/`).
+
+### 🛡️ Pinning the gateway MAC (ARP spoofing defence)
+
+On a LAN where someone ARP-spoofs the gateway, pin the real gateway MAC so Windows ignores fake replies (admin):
+
+```powershell
+netsh interface ipv4 add neighbors "<adapter name>" <gateway ip> <real gateway mac> store=persistent   # pin
+netsh interface ipv4 delete neighbors "<adapter name>" <gateway ip>                                     # unpin
+```
+
+netbug shows the pin status (`gw_arp` = `static`) and keeps reporting spoofing attempts through ARP watch. If the gateway becomes unreachable while pinned (for example the router was replaced), the outage event says the pin may be stale and prints the unpin command.
 
 ---
 
@@ -138,6 +159,9 @@ Admin rights are needed for two things: the snapshot's `pktmon` packet captures,
 | `tools/netbug.cs` | The logger |
 | `tools/snapshot.ps1` | Incident snapshot, launched by netbug |
 | `tools/dashboard.html` | Live dashboard page, served by netbug on port 8787 |
+| `tools/arpwatch.ps1` | 10 s ARP capture every 5 min: prints every MAC that claimed the gateway IP |
+| `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md` | 🔒 Full incident report: the 05:34 ARP spoofing attack, evidence, mitigation |
+| `REDACTED_RCC_REPORT.md` | 🔒 Report for the hostel RCC: who to look for and how to stop it |
 | `tools/fonts/` | Inter font for the dashboard (SIL Open Font License, `OFL.txt`) |
 | `tools/redact.ps1` | Builds `REDACTED_<name>.md` from gitignored notes: MACs + terms in `redact.local.txt` → `xxx`, refuses to write if any PII remains |
 | `REDACTED_NETWORK_SCAN.md` | 🔒 Public, redacted copy of the full network scan and findings |

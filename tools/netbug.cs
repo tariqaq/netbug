@@ -8,7 +8,12 @@
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
 // any failure. Outage/LAG start/end, link, interface, gateway MAC, public IP, NAT
 // mapping, TCP-connection deaths and UDP-usage changes go to events.log. An outage,
-// 5 s of lag or high UDP usage triggers snapshot.ps1, at most once per 60 s.
+// 5 s of lag, high UDP usage, a gateway MAC change or detected ARP spoofing triggers
+// snapshot.ps1, at most once per 60 s.
+// ARP spoofing defence: every 10 s the gateway's ARP entry type is read (static = pinned,
+// dynamic = learned). A new MAC for the same gateway IP is logged as GATEWAY MAC CHANGED.
+// Every 5 min arpwatch.ps1 captures 10 s of ARP and reports any other MAC claiming the
+// gateway IP (ARP SPOOFING DETECTED), even while a pinned entry makes Windows ignore it.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
 // A read-only dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served
@@ -37,6 +42,9 @@ class NetBug
     [DllImport("iphlpapi.dll")]
     static extern int SendARP(int destIp, int srcIp, byte[] mac, ref int macLen);
 
+    [DllImport("iphlpapi.dll")]
+    static extern int GetIpNetTable(IntPtr table, ref int size, bool order);
+
     const int UdpWarnThreshold = 3000;   // Windows has 16384 dynamic UDP ports
     const string TcpProbeHost = "github.com";
     const int RetentionDays = 30;
@@ -53,6 +61,14 @@ class NetBug
     static string udpTop = "";
     static int tcpMs = 0, dnsMs = 0;
     static string gwMac = "";
+    // ARP spoofing defence: the gateway's ARP entry type (static = pinned, dynamic = learned),
+    // a loud alert when the gateway MAC changes while the gateway IP stays the same, and a
+    // 10 s ARP-only capture every 5 min (arpwatch.ps1) that reports anyone else claiming the gateway IP
+    static string gwArp = "", lastGwArp = "", lastGwMacIp = "";
+    static volatile string gwAlert = "";
+    static DateTime gwAlertAt = DateTime.MinValue;
+    static volatile bool arpWatchRunning;
+    static volatile string arpWatch = "";
     static bool udpWarned;
     static int failStreak;
     const int LagGwMs = 15;
@@ -85,7 +101,7 @@ class NetBug
     static DateTime dashMemAt = DateTime.MinValue;
 
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
-    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail";
+    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail";
 
     static void Main()
     {
@@ -139,7 +155,9 @@ class NetBug
                     tcpMs = TcpProbe();
                     UdpUsage(out udpTotal, out udpTop);
                     gwMac = gw != null && ip != null ? Arp(gw, ip) : "";
+                    gwArp = gw != null && ni != null ? ArpEntryType(gw, ni) : "";
                 }
+                if (tick % 300 == 150 && gw != null && gwMac.Length == 17) ArpWatchStart(gw, gwMac);
                 if (tick % 300 == 5) RefreshPublicIp();
                 if (tick % 600 == 7) EnforceSizeCap();
                 if (tick % 600 == 9) Health(tick % 3600 == 9);
@@ -174,7 +192,25 @@ class NetBug
                 // ---- transitions ----
                 if (ifaceName != lastIface) { Event(string.Format("active interface: '{0}' -> '{1}' ip={2} gw={3}", lastIface, ifaceName, ip, gw)); lastIface = ifaceName; lastTx = -1; }
                 if (ethLink != lastEthLink) { Event(string.Format("USB ethernet link: {0} -> {1}", lastEthLink == "" ? "?" : lastEthLink, ethLink)); lastEthLink = ethLink; }
-                if (gwMac != "" && gwMac != lastGwMac) { Event(string.Format("gateway MAC: {0} -> {1}", lastGwMac == "" ? "?" : lastGwMac, gwMac)); lastGwMac = gwMac; }
+                if (gwMac != "" && gwMac != lastGwMac)
+                {
+                    // same gateway IP, different real MAC: someone else is answering for the router
+                    string gwIp = gw == null ? "" : gw.ToString();
+                    if (lastGwMac.Length == 17 && gwMac.Length == 17 && gwIp == lastGwMacIp)
+                    {
+                        SetGwAlert(string.Format("gateway {0} changed MAC {1} -> {2} at {3:HH:mm:ss}", gwIp, lastGwMac, gwMac, DateTime.Now));
+                        Event(string.Format("GATEWAY MAC CHANGED, possible ARP spoofing: {0} {1} -> {2} (ARP entry {3})", gwIp, lastGwMac, gwMac, gwArp));
+                        Snapshot("gw_mac");
+                    }
+                    else Event(string.Format("gateway MAC: {0} -> {1}", lastGwMac == "" ? "?" : lastGwMac, gwMac));
+                    lastGwMac = gwMac; lastGwMacIp = gwIp;
+                }
+                if (gwArp != "" && gwArp != lastGwArp)
+                {
+                    Event(string.Format("gateway ARP entry for {0}: {1} -> {2}{3}", gw, lastGwArp == "" ? "?" : lastGwArp, gwArp,
+                        gwArp == "static" ? " (pinned to " + gwMac + ", spoofed ARP replies are ignored)" : ""));
+                    lastGwArp = gwArp;
+                }
                 if (pubIp != "" && pubIp != lastPubIp) { Event(string.Format("public IP: {0} -> {1}", lastPubIp == "" ? "?" : lastPubIp, pubIp)); lastPubIp = pubIp; }
                 if (udpTotal >= UdpWarnThreshold && !udpWarned) { Event(string.Format("UDP endpoints high: {0} (top: {1})", udpTotal, udpTop)); udpWarned = true; Snapshot("udp_high"); }
                 if (udpTotal >= 0 && udpTotal < UdpWarnThreshold / 2) udpWarned = false;
@@ -214,8 +250,10 @@ class NetBug
                     if (!inOutage)
                     {
                         inOutage = true; outageStart = DateTime.Now; outageWhat = failStr;
-                        Event(string.Format("OUTAGE START [{0}] iface='{1}' gw_ms={2} cf_ms={3} g_ms={4} dns_ms={5} tcp_ms={6} tx/rx pkts last s={7}/{8} gw_mac={9}",
-                            failStr, ifaceName, gwMs, cfMs, gMs, dnsMs, tcpMs, txDelta, rxDelta, gwMac));
+                        Event(string.Format("OUTAGE START [{0}] iface='{1}' gw_ms={2} cf_ms={3} g_ms={4} dns_ms={5} tcp_ms={6} tx/rx pkts last s={7}/{8} gw_mac={9} gw_arp={10}",
+                            failStr, ifaceName, gwMs, cfMs, gMs, dnsMs, tcpMs, txDelta, rxDelta, gwMac, gwArp));
+                        if (gwArp == "static" && fails.Contains("gw"))
+                            Event(string.Format("  gateway is pinned to {0}: if the hostel replaced its router, the pin is stale (remove it: netsh interface ipv4 delete neighbors \"{1}\" {2})", gwMac, ifaceName, gw));
                         Snapshot("outage");
                     }
                     else if (failStr != outageWhat)
@@ -235,7 +273,7 @@ class NetBug
                 if (fast || (DateTime.Now - lastRow).TotalSeconds >= 5)
                 {
                     Row(string.Join(",", new string[] {
-                        DateTime.Now.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac,
+                        DateTime.Now.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac, gwArp,
                         gwMs.ToString(), cfMs.ToString(), gMs.ToString(), dnsMs.ToString(), tcpMs.ToString(),
                         udpMs.ToString(), udpMap, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr }));
                     lastRow = DateTime.Now;
@@ -249,10 +287,11 @@ class NetBug
                     histPos = (histPos + 1) % hist.Length;
                     if (histCount < hist.Length) histCount++;
                 }
-                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14}}}",
+                if (gwAlert != "" && (DateTime.Now - gwAlertAt).TotalMinutes >= 30) gwAlert = "";   // alert shows for 30 min
+                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14},\"gwArp\":{15},\"gwAlert\":{16},\"arpWatch\":{17}}}",
                     now, J(ifaceName), J(ethLink), J(ip == null ? "" : ip.ToString()), J(gw == null ? "" : gw.ToString()), J(gwMac),
                     txDelta, rxDelta, J(udpMap), udpTotal, J(udpTop), J(pubIp), J(failStr),
-                    inOutage ? Unix(outageStart) : 0, inLag ? Unix(lagStart) : 0);
+                    inOutage ? Unix(outageStart) : 0, inLag ? Unix(lagStart) : 0, J(gwArp), J(gwAlert), J(arpWatch));
             }
             catch (Exception ex)
             {
@@ -419,6 +458,86 @@ class NetBug
         var mac = new byte[6]; int len = 6;
         int r = SendARP(BitConverter.ToInt32(target.GetAddressBytes(), 0), BitConverter.ToInt32(src.GetAddressBytes(), 0), mac, ref len);
         return r == 0 ? BitConverter.ToString(mac, 0, len) : "arp_fail";
+    }
+
+    // Type of the gateway's entry in the IPv4 ARP table of the active interface: "static" (pinned
+    // with netsh, ignores ARP replies), "dynamic" (learned, can be poisoned), "invalid", "other" or "".
+    static string ArpEntryType(IPAddress gw, NetworkInterface ni)
+    {
+        int ifIndex;
+        try { ifIndex = ni.GetIPProperties().GetIPv4Properties().Index; } catch { return ""; }
+        int target = BitConverter.ToInt32(gw.GetAddressBytes(), 0);
+        int size = 0;
+        GetIpNetTable(IntPtr.Zero, ref size, false);
+        if (size <= 0) return "";
+        IntPtr buf = Marshal.AllocHGlobal(size);
+        try
+        {
+            if (GetIpNetTable(buf, ref size, false) != 0) return "";
+            int n = Marshal.ReadInt32(buf);
+            for (int i = 0; i < n; i++)
+            {
+                int row = 4 + i * 24;   // MIB_IPNETROW: index, physAddrLen, physAddr[8], addr, type
+                if (Marshal.ReadInt32(buf, row) != ifIndex || Marshal.ReadInt32(buf, row + 16) != target) continue;
+                switch (Marshal.ReadInt32(buf, row + 20))
+                {
+                    case 4: return "static";
+                    case 3: return "dynamic";
+                    case 2: return "invalid";
+                    default: return "other";
+                }
+            }
+            return "";
+        }
+        finally { Marshal.FreeHGlobal(buf); }
+    }
+
+    static void SetGwAlert(string text) { gwAlertAt = DateTime.Now; gwAlert = text; }
+
+    // Runs tools/arpwatch.ps1 in the background (needs admin for pktmon): a 10 s ARP-only capture
+    // on the NICs, printing "<mac> <count>" for every MAC that claimed the gateway IP. Any MAC other
+    // than the expected one is logged as ARP spoofing. Skipped while a snapshot may be using pktmon.
+    static void ArpWatchStart(IPAddress gw, string expectMac)
+    {
+        string script = Path.Combine(baseDir, "tools", "arpwatch.ps1");
+        if (arpWatchRunning || !File.Exists(script) || (DateTime.Now - lastSnapshot).TotalSeconds < 90) return;
+        arpWatchRunning = true;
+        Task.Run(() =>
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("powershell.exe",
+                    string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Gw {1} -Work \"{2}\"", script, gw, Path.Combine(logDir, "arpwatch")))
+                { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
+                string output;
+                using (var p = Process.Start(psi))
+                {
+                    try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+                    output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(60000);
+                }
+                var rogue = new List<string>();
+                int good = 0;
+                foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var parts = line.Trim().Split(' ');
+                    if (parts.Length != 2 || parts[0].Length != 17) continue;
+                    if (string.Equals(parts[0], expectMac, StringComparison.OrdinalIgnoreCase)) good += int.Parse(parts[1]);
+                    else rogue.Add(parts[0] + " x" + parts[1]);
+                }
+                if (rogue.Count > 0)
+                {
+                    arpWatch = string.Format("spoofing seen {0:HH:mm}: {1}", DateTime.Now, string.Join(", ", rogue));
+                    SetGwAlert(string.Format("ARP spoofing seen at {0:HH:mm:ss}: {1} claimed to be gateway {2}", DateTime.Now, string.Join(", ", rogue), gw));
+                    Event(string.Format("ARP SPOOFING DETECTED: gateway {0} claimed by {1} in a 10 s capture (real {2}: {3} claims, ARP entry {4})",
+                        gw, string.Join(", ", rogue), expectMac, good, gwArp));
+                    Snapshot("arp_spoof");
+                }
+                else arpWatch = string.Format("clean at {0:HH:mm}", DateTime.Now);
+            }
+            catch (Exception ex) { arpWatch = "error: " + ex.Message; }
+            finally { arpWatchRunning = false; }
+        });
     }
 
     // Counts UDP endpoints (IPv4 + IPv6) per owning process.

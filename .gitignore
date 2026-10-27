@@ -2,3 +2,5 @@ logs/
 NETWORK_SCAN.md
 tools/*.exe
 redact.local.txt
+INCIDENT_2026-10-28_ARP_SPOOFING.md
+RCC_REPORT.md

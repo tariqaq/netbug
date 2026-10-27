@@ -1,6 +1,6 @@
 # snapshot.ps1 - detailed network state dump, launched by netbug.exe when an
-# outage starts, lag lasts 5 s or UDP usage gets high (at most once per 60 s),
-# so it can afford heavier commands.
+# outage starts, lag lasts 5 s, UDP usage gets high, the gateway MAC changes or
+# arpwatch sees ARP spoofing (at most once per 60 s), so it can afford heavier commands.
 
 param([Parameter(Mandatory)][string]$Out)
 
@@ -21,8 +21,10 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
     "`n--- ip config ---"
     Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Out-String -Width 220
 
-    "`n--- neighbors (non-unreachable) ---"
-    Get-NetNeighbor -AddressFamily IPv4 | Where-Object { $_.State -notin 'Unreachable', 'Permanent' } |
+    $gw = (Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).IPv4DefaultGateway.NextHop
+
+    "`n--- neighbors (non-unreachable; Permanent only for the gateway = pinned) ---"
+    Get-NetNeighbor -AddressFamily IPv4 | Where-Object { $_.State -ne 'Unreachable' -and ($_.State -ne 'Permanent' -or $_.IPAddress -eq $gw) } |
         Format-Table InterfaceAlias, IPAddress, LinkLayerAddress, State -AutoSize | Out-String
 
     "`n--- adapter counters (2 reads, 3 s apart) ---"
@@ -37,7 +39,6 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
     }
 
     "`n--- probes ---"
-    $gw = (Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).IPv4DefaultGateway.NextHop
     "gateway $gw"
     # ping.exe, not Test-Connection: -TimeoutSeconds doesn't exist in Windows PowerShell 5.1
     foreach ($t in @($gw, '1.1.1.1', '8.8.8.8', '180.74.19.193')) {
@@ -83,7 +84,20 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
         1..5 | ForEach-Object { ping -n 1 -w 500 1.1.1.1 | Out-Null; ping -n 1 -w 500 $gw | Out-Null; Start-Sleep 2 }
         pktmon stop | Out-Null
         pktmon filter remove | Out-Null
-        pktmon etl2txt $etl --out ([IO.Path]::ChangeExtension($Out, '.pkt.txt')) | Out-Null
+        $pkt = [IO.Path]::ChangeExtension($Out, '.pkt.txt')
+        pktmon etl2txt $etl --out $pkt | Out-Null
         "saved: $etl"
+
+        # same rule as arpwatch.ps1: every MAC that claimed the gateway IP (frames are logged twice)
+        "`n--- who claimed to be the gateway $gw in the capture (more than one MAC = ARP spoofing) ---"
+        $gwRe = [regex]::Escape($gw); $claims = @{}; $prev = ''
+        foreach ($line in [IO.File]::ReadLines($pkt)) {
+            if (-not $line.StartsWith("`t") -or $line -eq $prev) { continue }
+            $prev = $line; $mac = $null
+            if ($line -match "Reply $gwRe is-at ((?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2})") { $mac = $Matches[1] }
+            elseif ($line -match "^\s*((?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}) > .*Request who-has \S+ (?:\(\S+\) )?tell $gwRe,") { $mac = $Matches[1] }
+            if ($mac) { $claims[$mac.ToUpper()]++ }
+        }
+        if ($claims.Count) { foreach ($k in $claims.Keys) { "{0}  {1} frame(s)" -f $k, $claims[$k] } } else { "nobody (no ARP for the gateway seen)" }
     }
 } *> $Out

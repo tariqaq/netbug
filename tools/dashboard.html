@@ -57,6 +57,9 @@ header { display: flex; align-items: baseline; justify-content: space-between; g
 .headline { font: 700 clamp(30px, 6vw, 56px)/1.05 var(--display); letter-spacing: -0.035em; margin: 0; }
 .sub { margin: 10px 0 0; font-size: 17px; line-height: 1.45; max-width: 60ch; }
 body[data-state="lag"] .dot { background: var(--lag); }
+body[data-state="lag"] .headline { color: var(--lag); }
+body[data-state="down"] .headline, body[data-state="stale"] .headline { color: var(--down); }
+.fact dd.alert { color: var(--down); }
 body[data-state="down"] .dot, body[data-state="stale"] .dot { background: var(--down); }
 body[data-state="lag"] .dot, body[data-state="down"] .dot { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
@@ -150,7 +153,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
   <div class="trace">
     <canvas id="chart" aria-label="Gateway, Cloudflare and UDP round-trip times over the last 5 minutes"></canvas>
   </div>
-  <div class="axis"><span>5 min ago</span><span class="mid"><b>Shaded:</b> seconds with a failure</span><span>Now</span></div>
+  <div class="axis"><span>5 min ago</span><span class="mid"><b>Red:</b> outage. <b>Orange:</b> local lag</span><span>Now</span></div>
 
   <div class="readouts">
     <div class="readout"><div class="k"><i style="background:var(--gw)"></i>Gateway:</div><div class="v" id="r-gw">–</div></div>
@@ -178,7 +181,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
   const $ = id => document.getElementById(id);
   const css = getComputedStyle(document.documentElement);
   const C = {};                    // palette read once, not on every chart draw
-  for (const n of ['line', 'ink', 'gw', 'net', 'udp', 'sans']) C[n] = css.getPropertyValue('--' + n).trim();
+  for (const n of ['line', 'ink', 'gw', 'net', 'udp', 'sans', 'lag', 'down']) C[n] = css.getPropertyValue('--' + n).trim();
   // DOM writes only when the content changed, so an unchanged second costs no layout
   const put = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
   const putText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
@@ -229,7 +232,11 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     } else if (s.outage) {
       st = 'down';
       head = 'Connection is down';
-      sub = 'Failing: ' + failText(s.fail) + '. Ongoing for ' + dur(state.now - s.outage) + '.';
+      sub = 'Failing: ' + failText(s.fail) + '. Ongoing for ' + dur(state.now - s.outage) + '.' + (s.gwAlert ? ' Possible ARP spoofing: ' + s.gwAlert + '.' : '');
+    } else if (s.gwAlert) {
+      st = 'down';
+      head = 'Possible ARP spoofing';
+      sub = s.gwAlert + '. Shown for 30 minutes. See the events below.';
     } else if (s.lag) {
       st = 'lag';
       head = 'Local network is lagging';
@@ -267,15 +274,17 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
       ['USB Ethernet link', esc(s.link)],
       ['Local IP', esc(s.ip || '–')],
       ['Gateway', esc(s.gw || '–')],
-      ['Gateway MAC', esc(s.gwMac || '–')],
+      ['Gateway MAC', esc(s.gwMac || '–') + '<span>' +
+        (s.gwArp === 'static' ? 'Pinned (static ARP entry)' : s.gwArp === 'dynamic' ? 'Learned (dynamic ARP entry, can be spoofed)' : 'ARP entry: ' + esc(s.gwArp || 'unknown')) +
+        (s.arpWatch ? '. ARP watch: ' + esc(s.arpWatch) : '') + '</span>', !!s.gwAlert],
       ['Public IP', esc(s.pubIp || '–')],
       ['UDP NAT mapping', nat],
       ['Packets in the last second', esc(s.tx + ' sent, ' + s.rx + ' received')],
       ['UDP ports in use', s.udpTotal < 0 ? '–' : s.udpTotal + (top ? '<span>' + esc(top) + '</span>' : '')],
     ];
     // the last one (UDP ports + per-process list) is the longest: full width on phones
-    put($('facts'), facts.map(([k, v], i) =>
-      '<div class="fact' + (i === facts.length - 1 ? ' wide' : '') + '"><dt>' + k + ':</dt><dd>' + v + '</dd></div>').join(''));
+    put($('facts'), facts.map(([k, v, alert], i) =>
+      '<div class="fact' + (i === facts.length - 1 ? ' wide' : '') + '"><dt>' + k + ':</dt><dd' + (alert ? ' class="alert"' : '') + '>' + v + '</dd></div>').join(''));
   }
 
   // ---------- chart ----------
@@ -310,9 +319,11 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
       if (r[7]) {
         const lagOnly = r[7].split('|').every(f => f === 'lag' || f === 'gw' || f === 'udp_high');
         const x0 = prevT !== null && r[0] - prevT <= 10 ? x(prevT) : x(r[0]) - bw;
-        ctx.fillStyle = lagOnly ? 'rgba(255,159,10,.2)' : 'rgba(255,69,58,.28)';
         const a = Math.round(x0), b = Math.round(x(r[0]));   // whole pixels: no overlap seams
+        ctx.fillStyle = lagOnly ? 'rgba(255,159,10,.32)' : 'rgba(255,69,58,.45)';
         ctx.fillRect(a, 0, Math.max(1, b - a), h);
+        ctx.fillStyle = lagOnly ? C.lag : C.down;               // solid strip on top: visible at a glance
+        ctx.fillRect(a, 0, Math.max(1, b - a), 4);
       }
       prevT = r[0];
     }
@@ -341,7 +352,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
   const log = $('log');
   let follow = true, lastDay = '';
   const kind = m =>
-    /^(OUTAGE|\s*outage now)/.test(m) ? 'down' :
+    /^(OUTAGE|\s*outage now|GATEWAY MAC CHANGED|ARP SPOOFING|\s*gateway is pinned)/.test(m) ? 'down' :
     /^LAG/.test(m) ? 'lag' :
     /^health:/.test(m) ? 'quiet' : '';
 

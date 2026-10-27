@@ -5,6 +5,30 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 05:59: `HASH` ARP spoofing: incident report, RCC report, gateway pin, netbug detection
+- **Root cause found:** at 05:34:03 a LAN device (`10.255.18.145`, randomized MAC) ARP-spoofed the gateway `10.255.31.254` and blackholed all traffic for 150 s.
+  - Full write-up: `INCIDENT_2026-10-28_ARP_SPOOFING.md` (local) / `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`
+  - Hostel report: `RCC_REPORT.md` (local) / `REDACTED_RCC_REPORT.md`
+  - Both originals are gitignored (they contain MACs).
+- **Machine (user-approved), 05:50:** pinned the gateway MAC with `netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 <MikroTik MAC> store=persistent`. Verified Permanent in the active and persistent stores.
+- netbug:
+  - `GATEWAY MAC CHANGED, possible ARP spoofing` event plus an immediate snapshot when the same gateway IP gets a new real MAC
+  - new `gw_arp` CSV column (static/dynamic from `GetIpNetTable`), with change events
+  - outage events include `gw_arp`, plus a stale-pin hint with the unpin command when the pinned gateway is unreachable
+  - every 5 min, `tools/arpwatch.ps1` (new) runs a 10 s ARP-only pktmon capture. Any other MAC claiming the gateway IP gives `ARP SPOOFING DETECTED` plus a snapshot. It works even while the pin hides attacks from Windows.
+- `snapshot.ps1`: lists every MAC that claimed the gateway in its capture; the neighbor table includes the pinned gateway entry.
+- Dashboard:
+  - "Possible ARP spoofing" red state for 30 min
+  - pin status and ARP watch result under Gateway MAC
+  - headline colored by state (red / orange)
+  - stronger outage and lag bands with a solid strip on top
+  - spoofing lines red in the log
+- Verified:
+  - arpwatch parser on the real incident capture: 2 spoofed replies from the attacker
+  - live arpwatch: clean, 11 s, ~0.3 s CPU
+  - mocked alert rendering
+- Scan report: finding #9, §10c, §11 and §12 updated. README: problem note, flow, checks, logs, dashboard, pinning how-to, footprint, layout.
+
 ### 05:39: `87367ed` dashboard readability + render efficiency; 05:34 incident analysed
 - Labels are bold with a colon (readouts, details, header meta); values are regular weight.
 - Health lines are shown by default, in cyan. Only `health:` lines count as health lines now (startup lines show normally).

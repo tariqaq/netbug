@@ -96,7 +96,9 @@ Open `http://<laptop-ip>:8787/` from any device on the LAN (or `http://localhost
 - Latest readings for every probe: interface, IPs, gateway MAC, NAT mapping, packet counts, UDP port usage
 - `events.log` scrolling live. Health lines are hidden unless you tick the box, and it stops following if you scroll up.
 
-The page is read-only and makes no external requests, so it keeps working while the internet is down. It polls only while the tab is visible: `/api/state` every 1 s (only new samples) and `/api/events` every 2 s (only new lines). `tools/dashboard.html` is read from disk on every request, so editing it doesn't need a rebuild.
+Pure black for AMOLED, white text, SF Pro on Apple devices and Inter (`tools/fonts/inter.woff2`, served by netbug) everywhere else. It lays out for desktop, tablet and phone.
+
+The page is read-only and makes no external requests, so it keeps working while the internet is down. It polls only while the tab is visible: `/api/state` every 1 s (only new samples, ~0.4 KB) and `/api/events` every 2 s (only new lines). Each request costs netbug ~0.15 ms of CPU; with no tab open the dashboard costs nothing. `tools/dashboard.html` is read from disk on every request, so editing it doesn't need a rebuild.
 
 > ⚠️ Anyone on the LAN can see what the page shows, including your public IP, the gateway MAC and process names.
 
@@ -108,7 +110,7 @@ The page is read-only and makes no external requests, so it keeps working while 
 |---|---|
 | 🧠 RAM | ~25–37 MB |
 | ⚡ CPU | ~1% of one core (≈0.07% of a 16-thread CPU), BelowNormal priority |
-| 🌐 Network | ~0.75 KB/s total, no traffic to game or voice servers. The dashboard adds ~1 KB/s per open tab, on the LAN only. |
+| 🌐 Network | ~0.75 KB/s total, no traffic to game or voice servers. The dashboard adds under 1 KB/s per open tab, on the LAN only. |
 | 💾 Disk | ~6 MB/day of small appends |
 | 🛡️ Safety | Restarts itself past 200 MB private memory, 5000 handles or 100 threads |
 
@@ -135,6 +137,7 @@ Admin rights are needed for two things: the snapshot's `pktmon` packet captures,
 | `tools/netbug.cs` | The logger |
 | `tools/snapshot.ps1` | Incident snapshot, launched by netbug |
 | `tools/dashboard.html` | Live dashboard page, served by netbug on port 8787 |
+| `tools/fonts/` | Inter font for the dashboard (SIL Open Font License, `OFL.txt`) |
 | `tools/redact.ps1` | Builds `REDACTED_<name>.md` from gitignored notes: MACs + terms in `redact.local.txt` → `xxx`, refuses to write if any PII remains |
 | `REDACTED_NETWORK_SCAN.md` | 🔒 Public, redacted copy of the full network scan and findings |
 | `CHANGELOG.md` | 📜 Every change, timestamped in MYT (UTC+08:00) |

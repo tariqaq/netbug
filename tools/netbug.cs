@@ -11,7 +11,7 @@
 // 5 s of lag or high UDP usage triggers snapshot.ps1, at most once per 60 s.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
-// A read-only dashboard (tools/dashboard.html + /api/state + /api/events) is served
+// A read-only dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served
 // on port 8787 on all interfaces.
 //
 // Build: csc /target:winexe /optimize /out:netbug.exe netbug.cs
@@ -81,6 +81,8 @@ class NetBug
     static volatile string sampleJson = "null";
     static readonly string[] hist = new string[300];
     static int histPos, histCount;
+    static double dashMemMb;
+    static DateTime dashMemAt = DateTime.MinValue;
 
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
     const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail";
@@ -620,7 +622,8 @@ class NetBug
     }
 
     // Read-only dashboard for anyone on the LAN. GET only: "/" serves tools/dashboard.html (read
-    // from disk on each request), /api/state the latest sample + chart history (?since=<unix s>
+    // from disk on each request), /fonts/inter.woff2 the page font (cached by the browser for a
+    // year), /api/state the latest sample + chart history (?since=<unix s>
     // returns only newer samples), /api/events new events.log lines (?from=<byte offset>, or the
     // last 64 KB when omitted). One request at a time on its own thread; the page polls only
     // while it is visible. The "+" prefix needs admin, which the scheduled task has.
@@ -654,6 +657,15 @@ class NetBug
             body = File.ReadAllText(Path.Combine(baseDir, "tools", "dashboard.html"));
             type = "text/html; charset=utf-8";
         }
+        else if (path == "/fonts/inter.woff2")
+        {
+            var font = File.ReadAllBytes(Path.Combine(baseDir, "tools", "fonts", "inter.woff2"));
+            ctx.Response.ContentType = "font/woff2";
+            ctx.Response.AddHeader("Cache-Control", "public, max-age=31536000, immutable");
+            ctx.Response.ContentLength64 = font.Length;
+            ctx.Response.OutputStream.Write(font, 0, font.Length);
+            return;
+        }
         else if (path == "/api/state")
         {
             long since; long.TryParse(ctx.Request.QueryString["since"], out since);
@@ -664,10 +676,14 @@ class NetBug
                     string h = hist[(histPos - histCount + i + hist.Length) % hist.Length];
                     if (long.Parse(h.Substring(1, h.IndexOf(',') - 1)) > since) rows.Add(h);
                 }
-            long priv;
-            using (var p = Process.GetCurrentProcess()) priv = p.PrivateMemorySize64;
+            // reading process memory makes Windows enumerate every process, so refresh it only every 10 s
+            if ((DateTime.Now - dashMemAt).TotalSeconds >= 10)
+            {
+                using (var p = Process.GetCurrentProcess()) dashMemMb = p.PrivateMemorySize64 / 1048576.0;
+                dashMemAt = DateTime.Now;
+            }
             body = string.Format("{{\"now\":{0},\"started\":{1},\"memMb\":{2:F1},\"port\":{3},\"sample\":{4},\"hist\":[{5}]}}",
-                Unix(DateTime.Now), Unix(started), priv / 1048576.0, DashPort, sampleJson, string.Join(",", rows));
+                Unix(DateTime.Now), Unix(started), dashMemMb, DashPort, sampleJson, string.Join(",", rows));
         }
         else if (path == "/api/events")
         {

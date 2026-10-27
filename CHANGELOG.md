@@ -5,6 +5,17 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 05:30: `HASH` dashboard redesign + server CPU fix
+- Pure black (AMOLED) and white text. Apple system colors for status and traces. SF Pro on Apple devices, Inter elsewhere.
+- Inter is bundled in `tools/fonts/` (SIL OFL) and served at `/fonts/inter.woff2` with a 1-year cache, so the page still makes no external requests.
+- Details are a 3-column grid of label-over-value cells, so no value is cut off:
+  - 2 columns under 600 px, with UDP ports full width
+  - the NAT mapping and per-process UDP list are shown in full
+- Phone layout: the event log puts the time above each line.
+- The status line re-renders as soon as events load, so "last problem" no longer lags a second behind.
+- `/api/state` caches the memory figure for 10 s (reading it enumerated every process). Measured CPU per request: ~1.7 ms before, ~0.15 ms after. Idle CPU is unchanged at ~1.4% of one core.
+- **Machine:** rebuilt `netbug.exe` and restarted the `netbug` task.
+
 ### 05:19: `5220988` live LAN dashboard
 - netbug serves a read-only dashboard on port 8787 on all interfaces from its own thread (`HttpListener`, GET only):
   - `/`: `tools/dashboard.html`

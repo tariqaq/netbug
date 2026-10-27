@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 05:59: `HASH` ARP spoofing: incident report, RCC report, gateway pin, netbug detection
+### 05:59: `fb2f9ab` ARP spoofing: incident report, RCC report, gateway pin, netbug detection
 - **Root cause found:** at 05:34:03 a LAN device (`10.255.18.145`, randomized MAC) ARP-spoofed the gateway `10.255.31.254` and blackholed all traffic for 150 s.
   - Full write-up: `INCIDENT_2026-10-28_ARP_SPOOFING.md` (local) / `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`
   - Hostel report: `RCC_REPORT.md` (local) / `REDACTED_RCC_REPORT.md`

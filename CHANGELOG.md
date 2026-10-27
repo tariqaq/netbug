@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 05:30: `HASH` dashboard redesign + server CPU fix
+### 05:30: `a998f6a` dashboard redesign + server CPU fix
 - Pure black (AMOLED) and white text. Apple system colors for status and traces. SF Pro on Apple devices, Inter elsewhere.
 - Inter is bundled in `tools/fonts/` (SIL OFL) and served at `/fonts/inter.woff2` with a 1-year cache, so the page still makes no external requests.
 - Details are a 3-column grid of label-over-value cells, so no value is cut off:

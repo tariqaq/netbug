@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 05:00: README rewrite + full stale pass
+### 05:00: `1e79c6c` README rewrite + full stale pass
 - README rewritten: problem summary, mermaid flow diagram of how netbug works, check/interval/catches table, log file guide, footprint, build/install, repo layout.
 - `netbug.cs` comments fixed:
   - the header now lists every snapshot trigger (outage, 5 s lag, high UDP usage)
@@ -16,7 +16,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - Scan report: the upload-cap note is corrected, and the driver/power tables are marked "at scan time" with current values.
 - **Machine:** rebuilt `netbug.exe` and restarted the `netbug` task.
 
-### 04:58: `231b6ca` changelog timestamp fix
+### 04:57: `231b6ca` changelog timestamp fix
 - The changelog's own entry was set to the exact system time (04:57) and its commit hash.
 
 ### 04:57: `75774e5` changelog + docs rules

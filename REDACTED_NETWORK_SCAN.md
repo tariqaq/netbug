@@ -250,6 +250,8 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 - Logger fixes from the test:
   - no `LAG` events while there's no interface
   - repeated persistent-TCP reconnect failures are collapsed into one line
+- Added a UDP path check: a long-lived UDP socket sends STUN to `stun.cloudflare.com:3478` (fallback `stun.l.google.com:19302`) every 2 s. RTT is ~9 ms. `UDP NAT mapping changed` is logged when the public port for the same local socket changes, which is what would break a running Discord/Valorant UDP session. New CSV columns are `udp_ms` and `udp_map`; the pre-upgrade CSV was kept as `netbug-2026-10-28-old-044708.csv`.
+- `logs/` hard cap is 500 MB: the oldest snapshots are deleted first, then the oldest CSVs. Normal growth is ~3 MB/day of CSV plus ~0.6 MB per snapshot.
 - The user reports laptop ports, dongle and cable are known-good across other places. **Remaining physical suspect: the room wall port and the hostel cabling/switch behind it.**
 
 ## 12. Recommended next actions (not applied)

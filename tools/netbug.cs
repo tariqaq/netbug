@@ -59,6 +59,18 @@ class NetBug
     static long lastTx = -1, lastRx = -1;
     static string currentDay = "";
 
+    // UDP path check: one long-lived UDP socket (like a Discord/Valorant voice flow) sends a
+    // STUN binding request every 2 s and reads back the public ip:port the NAT mapped it to.
+    static readonly string[] StunServers = { "stun.cloudflare.com:3478", "stun.l.google.com:19302" };
+    static UdpClient stunSock;
+    static readonly Dictionary<string, IPAddress> stunIps = new Dictionary<string, IPAddress>();
+    static volatile int udpMs = 0;
+    static volatile string udpMap = "";
+    static string lastUdpMap = "";
+
+    const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
+    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail";
+
     static void Main()
     {
         using (var self = Process.GetCurrentProcess()) self.PriorityClass = ProcessPriorityClass.BelowNormal;
@@ -75,6 +87,7 @@ class NetBug
             if (!created) return;   // already running
             Event("netbug started");
             new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+            new Thread(StunLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             Run();
         }
     }
@@ -110,6 +123,7 @@ class NetBug
                     gwMac = gw != null && ip != null ? Arp(gw, ip) : "";
                 }
                 if (tick % 300 == 5) RefreshPublicIp();
+                if (tick % 600 == 7) EnforceSizeCap();
 
                 long txDelta = 0, rxDelta = 0;
                 if (ni != null)
@@ -126,6 +140,14 @@ class NetBug
                 if (gw != null && gwMs < 0) fails.Add("gw");
                 if (cfMs < 0 && gMs < 0) fails.Add("internet");
                 if (dnsMs < 0) fails.Add("dns");
+                if (udpMs < 0) fails.Add("udp");
+                if (udpMap != "" && udpMap != lastUdpMap)
+                {
+                    // a changed public port on the same local socket means the NAT dropped the
+                    // old mapping: exactly what breaks a running voice/game UDP session
+                    if (lastUdpMap != "") Event(string.Format("UDP NAT mapping changed: {0} -> {1}", lastUdpMap, udpMap));
+                    lastUdpMap = udpMap;
+                }
                 if (tcpMs < 0) fails.Add("tcp");
                 if (udpTotal >= UdpWarnThreshold) fails.Add("udp_high");
                 string failStr = string.Join("|", fails);
@@ -195,7 +217,7 @@ class NetBug
                     Row(string.Join(",", new string[] {
                         DateTime.Now.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac,
                         gwMs.ToString(), cfMs.ToString(), gMs.ToString(), dnsMs.ToString(), tcpMs.ToString(),
-                        txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr }));
+                        udpMs.ToString(), udpMap, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr }));
                     lastRow = DateTime.Now;
                 }
             }
@@ -431,6 +453,7 @@ class NetBug
             using (var p = Process.Start(psi)) { p.PriorityClass = ProcessPriorityClass.BelowNormal; }
         }
         catch (Exception ex) { Event("snapshot failed: " + ex.Message); }
+        EnforceSizeCap();
     }
 
     static void RotateIfNewDay()
@@ -439,10 +462,110 @@ class NetBug
         if (day == currentDay) return;
         currentDay = day;
         string csv = CsvPath();
+        if (File.Exists(csv) && File.ReadLines(csv).FirstOrDefault() != CsvHeader)
+        {
+            // columns changed (new netbug version): keep the old file under another name
+            string old = Path.Combine(logDir, "netbug-" + currentDay + "-old-" + DateTime.Now.ToString("HHmmss") + ".csv");
+            File.Move(csv, old);
+        }
         if (!File.Exists(csv))
-            File.WriteAllText(csv, "time,iface,eth_link,ip,gw,gw_mac,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail\r\n");
+            File.WriteAllText(csv, CsvHeader + "\r\n");
         foreach (var f in Directory.GetFiles(logDir).Concat(Directory.GetFiles(snapDir)))
             if (File.GetLastWriteTime(f) < DateTime.Now.AddDays(-RetentionDays)) { try { File.Delete(f); } catch { } }
+        EnforceSizeCap();
+    }
+
+    // Keeps logs/ under LogCapBytes: deletes the oldest snapshot files first, then the oldest
+    // CSVs (never today's CSV or events.log).
+    static void EnforceSizeCap()
+    {
+        try
+        {
+            var all = new DirectoryInfo(logDir).GetFiles("*", SearchOption.AllDirectories);
+            long total = all.Sum(f => f.Length);
+            if (total <= LogCapBytes) return;
+            var victims = all.Where(f => f.DirectoryName == snapDir).OrderBy(f => f.LastWriteTime)
+                .Concat(all.Where(f => f.DirectoryName != snapDir && f.Extension == ".csv" && f.FullName != CsvPath()).OrderBy(f => f.LastWriteTime));
+            int deleted = 0;
+            foreach (var f in victims)
+            {
+                if (total <= LogCapBytes * 9 / 10) break;
+                try { long len = f.Length; f.Delete(); total -= len; deleted++; } catch { }
+            }
+            Event(string.Format("log size cap: deleted {0} oldest files, logs/ now {1:N0} MB", deleted, total / 1048576.0));
+        }
+        catch (Exception ex) { Event("size cap error: " + ex.Message); }
+    }
+
+    // Runs on its own thread so a dead UDP path (up to 2 x 1.5 s timeouts) never slows the 1 s main loop.
+    static void StunLoop()
+    {
+        while (true)
+        {
+            var sw = Stopwatch.StartNew();
+            string m;
+            int ms = StunProbe(out m);
+            udpMs = ms;
+            if (ms >= 0) udpMap = m;
+            int sleep = 2000 - (int)sw.ElapsedMilliseconds;
+            if (sleep > 0) Thread.Sleep(sleep);
+        }
+    }
+
+    // Returns RTT in ms (or -1) and "<server tag>=<public ip:port>" as seen by that server.
+    static int StunProbe(out string mapped)
+    {
+        mapped = "";
+        foreach (var server in StunServers)
+        {
+            try
+            {
+                if (stunSock == null) { stunSock = new UdpClient(0); stunSock.Client.ReceiveTimeout = 1500; }
+                var parts = server.Split(':');
+                IPAddress ip;
+                // resolve once and cache, so a DNS outage isn't mistaken for a UDP path outage
+                if (!stunIps.TryGetValue(server, out ip))
+                {
+                    ip = Dns.GetHostAddresses(parts[0]).First(a => a.AddressFamily == AddressFamily.InterNetwork);
+                    stunIps[server] = ip;
+                }
+                var tid = new byte[12]; rng.NextBytes(tid);
+                var req = new byte[] { 0, 1, 0, 0, 0x21, 0x12, 0xA4, 0x42 }.Concat(tid).ToArray();
+                var sw = Stopwatch.StartNew();
+                stunSock.Send(req, req.Length, new IPEndPoint(ip, int.Parse(parts[1])));
+                while (sw.ElapsedMilliseconds < 1500)
+                {
+                    var from = new IPEndPoint(IPAddress.Any, 0);
+                    byte[] r = stunSock.Receive(ref from);   // throws on timeout
+                    if (r.Length < 20 || r[0] != 0x01 || r[1] != 0x01 || !r.Skip(8).Take(12).SequenceEqual(tid)) continue;   // stale reply
+                    mapped = (server.StartsWith("stun.cloudflare") ? "cf=" : "g=") + ParseXorMapped(r);
+                    return (int)sw.ElapsedMilliseconds;
+                }
+            }
+            catch (SocketException se)
+            {
+                // timeouts are expected on a dead path; anything else means the socket is broken
+                if (se.SocketErrorCode != SocketError.TimedOut && stunSock != null) { stunSock.Close(); stunSock = null; }
+            }
+            catch { }
+        }
+        return -1;
+    }
+
+    static string ParseXorMapped(byte[] r)
+    {
+        int i = 20;
+        while (i + 4 <= r.Length)
+        {
+            int type = (r[i] << 8) | r[i + 1], len = (r[i + 2] << 8) | r[i + 3];
+            if (type == 0x0020 && len >= 8 && r[i + 5] == 0x01)   // XOR-MAPPED-ADDRESS, IPv4
+            {
+                int port = ((r[i + 6] << 8) | r[i + 7]) ^ 0x2112;
+                return string.Format("{0}.{1}.{2}.{3}:{4}", r[i + 8] ^ 0x21, r[i + 9] ^ 0x12, r[i + 10] ^ 0xA4, r[i + 11] ^ 0x42, port);
+            }
+            i += 4 + ((len + 3) & ~3);
+        }
+        return "";
     }
 
     static string CsvPath() { return Path.Combine(logDir, "netbug-" + currentDay + ".csv"); }

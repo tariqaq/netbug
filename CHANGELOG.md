@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 06:09: `HASH` docs: missing symptoms and the 02:56 curl failure
+### 06:09: `cc48fa7` docs: missing symptoms and the 02:56 curl failure
 - README "The problem":
   - frequency is about once every 4 days
   - the whole internet hangs silently (Spotify, grey loading pages, no error page)

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 06:03: `HASH` AGENTS log-analysis checklist; Tailscale notes
+### 06:03: `d159f7b` AGENTS log-analysis checklist; Tailscale notes
 - `AGENTS.md`: new **LOG ANALYSIS** section. Every analysis checks that the hostel gateway ARP pin is still `static` and tells the user first if it's gone, with the re-pin command. It also lists every `ARP SPOOFING DETECTED` / `GATEWAY MAC CHANGED` event.
 - README: dashboard over Tailscale (MagicDNS), and when it survives an outage. Scan report: Tailscale section.
 - **Machine (by user), 05:48:** installed Tailscale (default settings, no exit node, local network access allowed). Verified the dashboard answers on the Tailscale IP and that netbug ignores the adapter (no default route).

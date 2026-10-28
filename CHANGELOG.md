@@ -15,8 +15,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - `arpwatch.ps1` parsing moved into `ArpCapture`, shared by ARP watch and the check.
 - Double-clicking netbug.exe without admin asks for UAC, starts an elevated copy and opens the page in the normal (non-admin) browser. If netbug already runs, it only opens the page.
 - Portable mode for a lone exe:
-  - page, font and scripts are embedded as resources and unpacked to `%ProgramData%
-etbug`
+  - page, font and scripts are embedded as resources and unpacked to `%ProgramData%\netbug`
   - dashboard on localhost only
   - **Stop netbug** button
 - Build command now embeds the resources (README, netbug.cs header).

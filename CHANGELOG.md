@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 16:11: `HASH` incident video v1
+### 16:11: `60ba315` incident video v1
 - Fixed the title misalignment: the 110 px headline was wider than its 1400 px box, and kinetograph falls back to left alignment for text that overflows. Centred text now gets a near-full-width box.
 - Chip labels (times, notes) are vertically centred in their pills.
 - More of kinetograph in use:

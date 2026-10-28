@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 15:35: `HASH` second ARP-spoofing attack (15:28) confirmed; netbug trusted gateway MAC
+### 15:35: `82c38dd` second ARP-spoofing attack (15:28) confirmed; netbug trusted gateway MAC
 - **Incident #2:**
   - At 15:28:54 netbug logged `GATEWAY MAC CHANGED` (`2C-C8-…` to `7A-EC-…`) plus a snapshot. The 155 s outage ended when the user unplugged at 15:31:31.
   - Same device and IP as 05:34: 42 packets out, 0 back, 3 spoofed replies, 4 other victims, and the attacker caught looking up a victim.

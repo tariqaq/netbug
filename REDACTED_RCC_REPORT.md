@@ -66,7 +66,7 @@ The fastest stop-gap is to **find and disconnect the device**: block `xx:xx:xx:x
 
 ## What I've done on my side
 
-- Pinned the real gateway MAC on my laptop (a static ARP entry), so it ignores fake replies.
+- Briefly pinned the real gateway MAC on my laptop (a static ARP entry, so it ignores fake replies). I then removed it on purpose, so the next occurrence can be captured and confirmed unprotected.
 - Running a monitor that logs any device claiming to be the gateway, with exact timestamps. I can send you future occurrences (MAC, IP, time) if that helps catch it.
 
 Happy to share the raw logs and packet capture.

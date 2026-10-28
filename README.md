@@ -73,7 +73,7 @@ flowchart TD
 |---|---|---|
 | 1 s | Ping gateway, `1.1.1.1`, `8.8.8.8` | LAN lag, internet loss |
 | 1 s | Active interface, dongle link state, tx/rx packet counters | Cable/link drops, hotspot switch, one-way traffic |
-| 2 s | DNS query to the router | Resolver stalls ("sites load forever") |
+| 2 s (every 1 s after a failure) | DNS query to the router | Resolver stalls ("sites load forever") |
 | 2 s | STUN over one long-lived UDP socket | UDP path loss, **NAT mapping changes** (what kills voice/game sessions) |
 | 10 s (every 1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
 | 10 s | UDP ports per process, gateway MAC via ARP, gateway ARP entry type (static = pinned / dynamic) | Port leaks, **gateway MAC change = possible ARP spoofing** (alert + snapshot), pin removed |
@@ -147,6 +147,8 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 Admin rights are needed for three things: `pktmon` packet captures (snapshots and ARP watch), and serving the dashboard on all interfaces (`http://+:8787/`).
 
 ### 🛡️ Pinning the gateway MAC (ARP spoofing defence)
+
+> ℹ️ **Not applied on this laptop right now.** The pin was used 05:50–15:12 on 2026-10-28, then removed on purpose so the next drop can be confirmed before any fix goes in.
 
 On a LAN where someone ARP-spoofs the gateway, pin the real gateway MAC so Windows ignores fake replies (admin):
 

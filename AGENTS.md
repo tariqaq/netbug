@@ -21,6 +21,8 @@
 
 ## LOG ANALYSIS (every time the user asks to analyze logs)
 
-1. **Check the gateway ARP pin.** The hostel gateway `10.255.31.254` should be `static` on the wired adapter. Check the `gw_arp` CSV column, the `gateway ARP entry` events and `Get-NetNeighbor -IPAddress 10.255.31.254`.
-   - If it's `dynamic` or missing while on hostel Ethernet (for example the dongle was renamed), **tell the user first** and give the re-pin command (`INCIDENT_2026-10-28_ARP_SPOOFING.md` §8).
+1. **No fix is applied on purpose.** The gateway ARP pin was removed on 2026-10-28 15:12 at the user's request. The next incident must first be confirmed as the same issue. Expect `gw_arp=dynamic`. Report it if it is `static` (someone re-pinned).
 2. Search `events.log` for `ARP SPOOFING DETECTED` and `GATEWAY MAC CHANGED`, and report each with its time and MAC.
+3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway.
+   - If it matches, propose a fix (re-pin: `INCIDENT_2026-10-28_ARP_SPOOFING.md` §8) and **wait for the user's OK** before applying anything.
+   - If it doesn't match, look for the actual layer that broke.

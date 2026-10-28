@@ -1,8 +1,9 @@
 // netbug - lightweight always-on network health logger.
 //
 // Probes every second (gateway ping, 1.1.1.1 + 8.8.8.8 ping), DNS via the
-// gateway every 2 s, a TCP connect + UDP port usage + gateway MAC every 10 s
-// (a failed TCP connect is retried every second), and the public IP every 5 min.
+// gateway every 2 s (a failed query is retried the next second), a TCP connect +
+// UDP port usage + gateway MAC every 10 s (a failed TCP connect is retried every
+// second), and the public IP every 5 min.
 // Background threads keep one long-lived TLS connection (HEAD every 15 s) and one
 // long-lived UDP socket doing STUN every 2 s (UDP RTT + NAT mapping).
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
@@ -148,7 +149,7 @@ class NetBug
                 Task.WaitAll(pGw, pCf, pG);
                 long gwMs = pGw.Result, cfMs = pCf.Result, gMs = pG.Result;
 
-                if (tick % 2 == 0) dnsMs = gw != null ? DnsProbe(gw) : -1;
+                if (tick % 2 == 0 || dnsMs < 0) dnsMs = gw != null ? DnsProbe(gw) : -1;   // a failed probe is re-checked the next second
                 if (tcpMs < 0 && tick % 10 != 0) tcpMs = TcpProbe();   // re-check a failed probe every second
                 if (tick % 10 == 0)
                 {
@@ -180,9 +181,11 @@ class NetBug
                 if (udpMs < 0) fails.Add("udp");
                 if (udpMap != "" && udpMap != lastUdpMap)
                 {
-                    // a changed public port on the same local socket means the NAT dropped the
-                    // old mapping: exactly what breaks a running voice/game UDP session
-                    if (lastUdpMap != "") Event(string.Format("UDP NAT mapping changed: {0} -> {1}", lastUdpMap, udpMap));
+                    // a changed public ip:port on the same local socket means the NAT dropped the
+                    // old mapping: exactly what breaks a running voice/game UDP session. Only the
+                    // server tag changing (Cloudflare missed once, Google answered) is not logged.
+                    if (lastUdpMap != "" && MapAddr(udpMap) != MapAddr(lastUdpMap))
+                        Event(string.Format("UDP NAT mapping changed: {0} -> {1}", lastUdpMap, udpMap));
                     lastUdpMap = udpMap;
                 }
                 if (tcpMs < 0) fails.Add("tcp");
@@ -445,7 +448,9 @@ class NetBug
             {
                 if (tcpRepeats > 0) Event(string.Format("persistent TCP: previous failure repeated {0} more times", tcpRepeats));
                 tcpRepeats = 0;
-                if (!(reason.StartsWith("server") && life > 200))
+                // reason is e.g. "EndOfStreamException: server asked to close" or "...: server closed (FIN)"
+                bool serverClose = reason.IndexOf(": server ", StringComparison.Ordinal) >= 0;
+                if (!(serverClose && life > 200))
                     Event(string.Format("persistent TCP died after {0:N0} s, {1} requests: {2}", life, requests, reason));
             }
             lastTcpReason = reason;
@@ -857,6 +862,9 @@ class NetBug
         }
         return sb.Append('"').ToString();
     }
+
+    // "cf=1.2.3.4:5678" -> "1.2.3.4:5678"
+    static string MapAddr(string map) { return map.Substring(map.IndexOf('=') + 1); }
 
     static string CsvPath() { return Path.Combine(logDir, "netbug-" + currentDay + ".csv"); }
     static string Csv(string s) { return (s ?? "").Replace(",", ";"); }

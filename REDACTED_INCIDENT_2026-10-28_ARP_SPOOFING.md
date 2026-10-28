@@ -18,7 +18,7 @@ Other machines on the LAN were asking for the gateway at the same moment, so the
 This is **ARP spoofing / ARP cache poisoning**. It is what tools like NetCut, arpspoof, Bettercap or "WiFiKill" do, and it is common on flat hostel and campus LANs. It explains the symptom pattern the user has had for ~2 years (§6).
 
 **Response:**
-- The gateway's MAC is now **pinned** on the laptop (a static ARP entry), so Windows ignores spoofed replies (§8).
+- The gateway's MAC was **pinned** on the laptop (a static ARP entry) at 05:50, then **removed at 15:12 at the user's request** (§8). The next incident will first be checked against this one, and a fix applied only if it's the same issue.
 - netbug now raises an alert for a changed gateway MAC, shows whether the gateway is pinned, and runs a periodic ARP watch that detects spoofing even while the pin protects the laptop (§9).
 - A write-up for the hostel RCC is in `RCC_REPORT.md` (§10).
 
@@ -186,9 +186,19 @@ A randomized MAC can change, but it usually stays the same per Wi-Fi network on 
 
 ---
 
-## 8. Mitigation applied on the laptop: gateway MAC pinned
+## 8. Mitigation: gateway MAC pin (applied 05:50, removed 15:12)
 
-**Machine change, approved by the user, 2026-10-28 05:50:**
+**Current status: NOT applied.** The user removed it on purpose at 2026-10-28 15:12.
+- The plan is to let the next drop happen unprotected and analyze it with netbug, to confirm it's the same ARP-spoofing issue rather than assume so. Only then is a fix applied, with the user's OK.
+- Removed with `netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`.
+- Verified afterwards: the gateway entry was back to `Reachable` (dynamic) with the real MikroTik MAC, nothing remained in the PersistentStore, and netbug logged `gateway ARP entry for 10.255.31.254: ? -> dynamic`.
+- Overnight (06:13–15:00, ~9 h, pinned) there were no spoofing alerts, no gateway MAC changes and no real outages.
+
+Everything netbug does to *detect* spoofing (§9) stays on, since that's how the next incident gets compared.
+
+The rest of this section documents the pin as it was applied, for re-use.
+
+**Machine change, approved by the user, 2026-10-28 05:50 (removed 15:12):**
 
 ```
 netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx store=persistent

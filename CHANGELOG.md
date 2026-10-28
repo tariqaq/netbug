@@ -5,6 +5,18 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 15:14: `HASH` gateway pin removed; 3 netbug log fixes
+- **Machine (user's request), 15:12:** removed the gateway ARP pin (`netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`).
+  - Verified: the entry is dynamic/Reachable with the real MikroTik MAC, the PersistentStore is empty, and netbug logs `gw_arp=dynamic`.
+  - Reason: confirm the next drop is the same ARP-spoofing issue before applying any fix. All spoofing detection stays on.
+- netbug fixes (found in the overnight log review):
+  - A server closing the long-lived TLS connection after 200+ s is no longer logged, matching the comment. The check looked for a reason *starting* with "server", but the reason reads `EndOfStreamException: server asked to close`, so Google's hourly close was logged every hour.
+  - `UDP NAT mapping changed` is logged only when the public ip:port changes, not when only the STUN server tag flips (`cf=` to `g=` with the same address).
+  - A failed DNS probe is re-checked the next second (like TCP), so one lost DNS reply no longer counts as a 2 s outage.
+- **Machine:** rebuilt `netbug.exe` and restarted the `netbug` task.
+- `AGENTS.md` LOG ANALYSIS: no fix is applied on purpose; expect `gw_arp=dynamic`. Each outage is compared with the 05:34 signature, and a fix is proposed and applied only with the user's OK.
+- Docs: incident report §1/§8, RCC report, scan report (finding #9, §11 removal entry, §12), and README (pin not applied, DNS retry).
+
 ### 06:09: `cc48fa7` docs: missing symptoms and the 02:56 curl failure
 - README "The problem":
   - frequency is about once every 4 days

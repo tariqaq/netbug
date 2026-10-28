@@ -17,7 +17,7 @@ Location: hostel room, wired via room wall port. Kuala Lumpur, Malaysia.
 | 6 | **Windows Firewall is OFF for the Private profile**, and the hostel LAN is marked *Private*. MySQL (3306/33060), SMB (445), RPC and spacedesk (28252) are open to every device on the hostel LAN. The user keeps this on purpose. | Info (user decision) |
 | 7 | Tcpip event 4266: **UDP ephemeral ports exhausted** 45 times since 2026-08-09. **Update:** none of these times match a known outage, so it's a separate background leak (see §10b). netbug flags it if UDP endpoints reach 3000 or more. | Low |
 | 8 | Path MTU = **1492** (TM Unifi PPPoE). The router handles PMTUD correctly. | Info |
-| 9 | **ROOT CAUSE FOUND (10-28 05:34): ARP spoofing on the hostel LAN.** Another device (`10.255.18.145`, MAC `xx-xx-xx-xx-xx-xx`, locally administered/randomized) sent unicast ARP replies claiming to be the gateway `10.255.31.254`. The laptop's ARP cache was poisoned and all traffic went to that device and died for 150 s. Other hosts were asking for the gateway at the same time. See §10c and the full write-up `INCIDENT_2026-10-28_ARP_SPOOFING.md`. **Mitigated 05:50:** gateway MAC pinned (§11). | **Critical** |
+| 9 | **ROOT CAUSE FOUND (10-28 05:34): ARP spoofing on the hostel LAN.** Another device (`10.255.18.145`, MAC `xx-xx-xx-xx-xx-xx`, locally administered/randomized) sent unicast ARP replies claiming to be the gateway `10.255.31.254`. The laptop's ARP cache was poisoned and all traffic went to that device and died for 150 s. Other hosts were asking for the gateway at the same time. See §10c and the full write-up `INCIDENT_2026-10-28_ARP_SPOOFING.md`. **Pin applied 05:50, removed 15:12 at the user's request** until the next incident confirms it's the same issue (§11). | **Critical** |
 
 ---
 
@@ -322,6 +322,14 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - Adapter `Tailscale` (100.x address) is on the **Private** profile, with no default route. netbug's interface picker ignores it. The dashboard listener (`http://+:8787/`) answers on the Tailscale IP (verified HTTP 200).
 - The 05:59:44 1 s "outage" on Wi-Fi was a gateway + internet ICMP blip with DNS and TCP fine and no system events. It was unrelated to Tailscale (installed 05:48).
 
+### 2026-10-28 15:12 — gateway MAC pin removed (user's request)
+
+- `netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`. Verified: the entry is `Reachable` (dynamic) with the real MikroTik MAC, the PersistentStore is empty, and netbug logs `gw_arp=dynamic`.
+- Reason: don't apply a fix until the next drop is analyzed and confirmed to be the same ARP-spoofing issue.
+- All detection stays on: the gateway-MAC-change alert, `gw_arp`, ARP watch, and the snapshot ARP analysis.
+- While pinned (06:13–15:00) there were no spoofing alerts and no real outages. There were 14 single-second "both internet pings lost" blips and 6 single TCP-connect timeouts, all recovered the next second.
+- Other machine changes are unchanged: NIC power-off disabled and USB selective suspend off (§11, separate user request), driver updated, Tailscale installed.
+
 ## 12. Next actions
 
 - ~~Turn the Private firewall back on.~~ Won't do: the user keeps it off intentionally.
@@ -329,7 +337,7 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - ~~Plug the dongle straight into the laptop to rule out hubs.~~ Not needed: the user confirmed ports, dongle and cable are fine.
 - ~~Run a long-term monitor.~~ Done: netbug.
 - ~~Wait for the next real incident.~~ Caught on 10-28 05:34 (§10c).
-- ~~Pin the real gateway MAC with a static ARP entry on Ethernet 7.~~ Done at 05:50 (§11).
+- ~~Pin the real gateway MAC with a static ARP entry on Ethernet 7.~~ Done at 05:50, **removed at 15:12** at the user's request (§11).
 - ~~Make netbug treat a gateway MAC change as an alert of its own.~~ Done. netbug also shows the pin status and runs an ARP watch every 5 min (§11).
 - **Open (user):** send `RCC_REPORT.md` to the hostel RCC. It covers finding `10.255.18.145` / `xx-xx-xx-xx-xx-xx` on the MikroTik and turning on ARP spoofing protection.
-- **Open:** if the hostel ever replaces the MikroTik, remove the pin: `netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`. netbug flags this case.
+- **Open:** wait for the next drop, then analyze it. If it matches the 05:34 ARP-spoofing signature, propose re-pinning (incident report §8) and apply it only with the user's OK.

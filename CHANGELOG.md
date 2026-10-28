@@ -5,6 +5,23 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 17:44: `PENDING` incident video v3: cinematic cut
+- Restrained true-crime documentary style, still ~2 minutes (2:04).
+- New voice: `en-US-ChristopherNeural` (news/documentary) at +10%, replacing Andrew. The script is tightened, with present tense for the attack and "Same device. Same address. Same lie." as three separate lines.
+- `scripts/tts.py` now records `speech`, where each line's last word ends. The film times lines from that, not from the clip length (~0.8 s of trailing silence).
+- Look:
+  - a cold open (05:34:03 types in, a heartbeat trace goes flat)
+  - chapter cards (PART I/II/III)
+  - a fixed film-grain texture, vignette, letterbox bars on the open, cards and end card
+  - a 3% push-in per scene, camera shake and colour fringe on hits
+  - a soft red spotlight on the impostor, slams for the second attack, checkmarks stamping in the comparison
+- Sound, all synthesized (nothing downloaded): a score per scene mood (D minor, resolving to F major at the fix) and new effects (impacts, horn hits, risers, whooshes, glitches, clock, heartbeat, flatline, lock, stamps). Shared reverb and compressor bus; music ducks ~7.5 dB under the voice.
+- Mix -17.3 LUFS, peak -1.1 dBFS. `NETBUG_SOLO=music|sfx|voice` mutes the other stems for measuring.
+- Ducking uses anchored linear ramps: `setTargetAtTime` on the duck gain misbehaves in node-web-audio-api (the first test render hit 0.2 LUFS).
+- New: `video/src/cinema.tsx`, `video/src/sound.ts`, `video/src/score.ts`, and `video/tasks.md` (build tracker).
+- The committed copy is now `video/incident-v3-redacted.mp4`, replacing v2. v2 is tagged `video-v2` (`eac8d45`). Local renders: `out/incident-v3-full.mp4` (real MACs) and `out/incident-v3-redacted.mp4`, ~54 s each on the RTX 4060.
+- Rendered at 3 Mbit/s (~49 MB). The first push was rejected: a 12 Mbit/s cap with animated grain gave a 181 MB file, over GitHub's 100 MB limit. The grain is now a fixed texture, and the bitrate cap is lower.
+
 ### 16:14: `eac8d45` incident video v2: softer glow
 - Every glow is reduced to roughly a third or half of its strength, with smaller radii:
   - headlines: 14 px, x0.45

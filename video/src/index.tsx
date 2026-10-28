@@ -1,22 +1,25 @@
-// Incident explainer: the two ARP-spoofing attacks of 2026-10-28 and the gateway pin fix.
+// Incident explainer (v3, the cinematic cut): the two ARP-spoofing attacks of 2026-10-28 and the gateway pin fix.
 //
-// Timing comes from public/vo/timing.json (written by scripts/tts.py): every narration line
-// starts at a fixed frame, and scenes and animations are keyed to lines and to single words,
-// so what's on screen happens when it is said. MACs come from the composition props:
+// Timing comes from public/vo/timing.json (written by scripts/tts.py): every narration line starts at a fixed frame
+// and lasts until its last word ends (`speech`), and scenes, sound and animations are keyed to lines and to single
+// words, so what's on screen and what you hear happen when it is said. MACs come from the composition props:
 // data.example.json (redacted, the default) or data.local.json (real values, gitignored).
 //
+// The look (vignette, letterbox, camera, chapter cards) is in cinema.tsx; sound effects in sound.ts; music in score.ts.
 // Render: see README.md in this folder.
 
 import React from 'react';
 import {
   AbsoluteFill, Audio, Composition, Ellipse, Layer, Path, Rect, Sequence, Text,
-  interpolate, registerRoot, spring, staticFile, useCurrentFrame, Easing, glow,
+  interpolate, registerRoot, spring, staticFile, useCurrentFrame, Easing, glow, grain, chromaticAberration,
 } from 'remotion';
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono';
-import { onFrame } from '@kinetographdev/audio';
 import timing from '../public/vo/timing.json';
 import example from '../data.example.json';
+import { W, H, Vignette, Letterbox, ChapterCard, camera, type Hit } from './cinema';
+import { cue, setDuck, soloMutes, type Sfx } from './sound';
+import { scoreSection, type Mood } from './score';
 
 loadInter('normal', { weights: ['400', '600', '800'] });
 loadMono('normal', { weights: ['500'] });
@@ -24,8 +27,6 @@ const SANS = 'Inter';
 const MONO = 'JetBrains Mono';
 
 const FPS = 30;
-const W = 1920;
-const H = 1080;
 
 const C = {
   bg: '#000000', ink: '#ffffff', line: '#2c2c2e', panel: '#111113',
@@ -37,26 +38,32 @@ type Data = typeof example;
 // ---------------------------------------------------------------- timeline
 
 type Word = { text: string; start: number; end: number };
-type Line = { id: string; text: string; ms: number; words: Word[] };
+type Line = { id: string; text: string; ms: number; speech: number; words: Word[] };
 type Placed = Line & { from: number; frames: number };
+type SceneDef = { id: string; lines: string[]; lead?: number; card?: [string, string] };
 
-const SCENES: { id: string; lines: string[] }[] = [
-  { id: 'title', lines: ['title1', 'title2'] },
+const CARD = 40;        // chapter card length (frames)
+const SCENES: SceneDef[] = [
+  { id: 'cold', lines: [], lead: 92 },
+  { id: 'title', lines: ['title1', 'title2'], lead: 4 },
   { id: 'normal', lines: ['normal1', 'normal2'] },
-  { id: 'attack1', lines: ['a1_1', 'a1_2', 'a1_3'] },
+  { id: 'attack1', lines: ['a1_1', 'a1_2', 'a1_3'], lead: CARD + 6, card: ['PART I', '05:34 · the first attack'] },
   { id: 'symptoms', lines: ['sym1', 'sym2'] },
   { id: 'timeline1', lines: ['a1_end'] },
-  { id: 'test', lines: ['test1', 'test2'] },
-  { id: 'attack2', lines: ['a2_1', 'a2_2'] },
-  { id: 'compare', lines: ['cmp'] },
-  { id: 'fix', lines: ['fix1', 'fix2'] },
+  { id: 'test', lines: ['test1', 'test2'], lead: CARD + 6, card: ['PART II', '15:12 · the test'] },
+  { id: 'attack2', lines: ['a2_dev', 'a2_addr', 'a2_lie', 'a2_count', 'a2_more'] },
+  { id: 'compare', lines: ['cmp1', 'cmp2'] },
+  { id: 'fix', lines: ['fix1', 'fix2'], lead: CARD + 6, card: ['PART III', 'the fix'] },
   { id: 'rcc', lines: ['rcc'] },
 ];
 
-const LEAD = 15;        // frames before the first line
-const GAP = 10;         // between lines of a scene
-const SCENE_GAP = 20;   // between scenes
-const OUTRO = 120;      // end card after the last line
+const LEAD = 8;         // frames from a scene's start to its first line
+const TAIL = 6;         // after a line's last word
+const GAP = 6;          // between lines of a scene
+const SCENE_TAIL = 10;  // after a scene's last line, before the next scene
+const OUTRO = 96;       // end card after the last line
+// held silences after a line, for weight
+const PAUSE: Record<string, number> = { a1_3: 16, test1: 8, a2_dev: 4, a2_addr: 4, a2_lie: 8, cmp1: 6, cmp2: 18 };
 
 const sec = (ms: number) => Math.round((ms / 1000) * FPS);
 const byId = new Map((timing.lines as Line[]).map((l) => [l.id, l]));
@@ -64,22 +71,27 @@ const byId = new Map((timing.lines as Line[]).map((l) => [l.id, l]));
 const placed: Placed[] = [];
 const sceneFrom: Record<string, number> = {};
 {
-  let cursor = LEAD;
-  SCENES.forEach((s, si) => {
-    if (si > 0) cursor += SCENE_GAP - GAP;
-    sceneFrom[s.id] = cursor - (si === 0 ? LEAD : 8);
-    for (const id of s.lines) {
+  let cursor = 0;
+  for (const s of SCENES) {
+    sceneFrom[s.id] = cursor;
+    cursor += s.lead ?? LEAD;
+    s.lines.forEach((id, i) => {
       const l = byId.get(id);
       if (!l) throw new Error('timing.json has no line ' + id);
-      const frames = sec(l.ms);
+      const frames = sec(l.speech);
       placed.push({ ...l, from: cursor, frames });
-      cursor += frames + GAP;
-    }
-  });
-  sceneFrom.end = cursor - GAP + 12;
+      cursor += frames + TAIL + (PAUSE[id] ?? 0) + (i < s.lines.length - 1 ? GAP : 0);
+    });
+    if (s.lines.length) cursor += SCENE_TAIL;
+  }
+  sceneFrom.end = cursor;
 }
 const TOTAL = sceneFrom.end + OUTRO;
 const lineOf = (id: string) => placed.find((p) => p.id === id)!;
+const sceneTo = (id: string) => {
+  const i = SCENES.findIndex((s) => s.id === id);
+  return i < SCENES.length - 1 ? sceneFrom[SCENES[i + 1].id] : TOTAL;
+};
 
 /** Absolute frame of a line's start, or of word `w` in it (`w` may be the word's text). */
 const at = (id: string, w?: number | string): number => {
@@ -89,13 +101,17 @@ const at = (id: string, w?: number | string): number => {
   if (idx < 0) throw new Error(`word "${w}" not in ${id}`);
   return l.from + sec(l.words[idx].start);
 };
+const endOf = (id: string) => lineOf(id).from + lineOf(id).frames;
 
 // ---------------------------------------------------------------- helpers
 
 const ease = Easing.bezier(0.2, 0.8, 0.2, 1);
+const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 /** 0 -> 1 from frame `a` over `d` frames. */
-const prog = (f: number, a: number, d = 12) => interpolate(f, [a, a + d], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease });
+const prog = (f: number, a: number, d = 12) => interpolate(f, [a, a + d], [0, 1], { ...clamp, easing: ease });
 const pop = (f: number, a: number) => (f < a ? 0 : spring({ frame: f - a, fps: FPS, config: { damping: 15, stiffness: 160 } }));
+/** Lands hard: a spring with almost no bounce, for slams. */
+const slam = (f: number, a: number) => (f < a ? 0 : spring({ frame: f - a, fps: FPS, config: { damping: 22, stiffness: 320 } }));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 /** Text centred on (cx, y). Text wider than `w` would fall back to left alignment, so `w` defaults to almost the full width. */
@@ -104,6 +120,16 @@ const CText: React.FC<{ cx: number; y: number; w?: number; size: number; color?:
     <Text x={cx - w / 2} y={y} maxWidth={w} align="center" font={font} weight={weight} size={size} color={color} opacity={opacity} lineHeight={1.2}
           effects={glowAmt > 0 ? [glow({ radius: 14, color, intensity: 0.45 * glowAmt })] : []}>{children}</Text>
   );
+
+/** Centred text whose letters rise in one after another from frame `from`. */
+const Reveal: React.FC<{ f: number; from: number; y: number; size: number; text: string; color?: string; weight?: number; font?: string; stagger?: number }> =
+  ({ f, from, y, size, text, color = C.ink, weight = 800, font = SANS, stagger = 1.2 }) => {
+    const chars = Array.from(text).map((_, i) => {
+      const p = prog(f, from + i * stagger, 14);
+      return { opacity: p, y: (1 - p) * size * 0.25 };
+    });
+    return <Text x={80} y={y} maxWidth={W - 160} align="center" font={font} weight={weight} size={size} color={color} lineHeight={1.2} chars={chars}>{text}</Text>;
+  };
 
 /** A device card centred on (cx, cy). */
 const Device: React.FC<{ cx: number; cy: number; title: string; sub: string; color: string; show?: number; glow?: number; w?: number }> =
@@ -144,7 +170,7 @@ const Packets: React.FC<{ f: number; a: [number, number]; b: [number, number]; s
       const t = (f - s) / travel;
       if (t < 0 || t > (drop ? 1.25 : 1)) continue;
       const tt = Math.min(1, t);
-      const o = drop ? interpolate(t, [0.85, 1.25], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : interpolate(t, [0, 0.1, 0.9, 1], [0, 1, 1, 0]);
+      const o = drop ? interpolate(t, [0.85, 1.25], [1, 0], clamp) : interpolate(t, [0, 0.1, 0.9, 1], [0, 1, 1, 0]);
       dots.push(<Ellipse key={s} x={lerp(a[0], b[0], tt) - 9} y={lerp(a[1], b[1], tt) - 9} width={18} height={18} fill={color} opacity={o} />);
     }
     return <Layer motionBlur={{ samples: 6, shutter: 0.8 }} effects={[glow({ radius: 6, color, intensity: 0.4 })]}>{dots}</Layer>;
@@ -152,9 +178,8 @@ const Packets: React.FC<{ f: number; a: [number, number]; b: [number, number]; s
 
 /** A straight link line between two points. */
 const Link: React.FC<{ a: [number, number]; b: [number, number]; color?: string; opacity?: number; dash?: boolean }> =
-  ({ a, b, color = C.line, opacity = 1, dash }) => (
-    <Path d={`M ${a[0]} ${a[1]} L ${b[0]} ${b[1]}`} opacity={opacity}
-          stroke={{ color, width: 4, ...(dash ? { dashArray: [12, 14] } : {}) }} />
+  ({ a, b, color = C.line, opacity = 1 }) => (
+    <Path d={`M ${a[0]} ${a[1]} L ${b[0]} ${b[1]}`} opacity={opacity} stroke={{ color, width: 4 }} />
   );
 
 /** The laptop's ARP table card under the laptop. */
@@ -174,23 +199,43 @@ const ArpCard: React.FC<{ cx: number; y: number; ip: string; mac: string; color:
     </Layer>
   );
 
-const Counter: React.FC<{ x: number; y: number; sent: number; back: number; show: number }> = ({ x, y, sent, back, show }) => (
+const Counter: React.FC<{ x: number; y: number; sent: number; back: number; show: number; zero: number }> = ({ x, y, sent, back, show, zero }) => (
   <Layer x={x} y={y} opacity={show}>
-    <Rect width={420} height={130} radius={22} fill={C.panel} stroke={{ color: C.line, width: 2 }} />
+    <Rect width={420} height={130} radius={22} fill={C.panel} stroke={{ color: zero > 0 ? C.bad : C.line, width: 2 }} />
     <Text x={0} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.ink}>{String(sent)}</Text>
     <Text x={0} y={92} maxWidth={210} align="center" font={SANS} weight={600} size={20} color={C.ink}>packets sent</Text>
-    <Text x={210} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.bad} effects={[glow({ radius: 10, color: C.bad, intensity: 0.45 * show })]}>{String(back)}</Text>
+    <Layer x={315} y={50} scale={lerp(1, 1.18, zero * (1 - zero) * 4)} origin={[0, 0]}>
+      <Text x={-105} y={-32} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.bad} effects={[glow({ radius: 10, color: C.bad, intensity: 0.45 * show })]}>{String(back)}</Text>
+    </Layer>
     <Text x={210} y={92} maxWidth={210} align="center" font={SANS} weight={600} size={20} color={C.bad}>came back</Text>
   </Layer>
 );
 
 const Chip: React.FC<{ x: number; y: number; text: string; color: string; show: number; w?: number; font?: string; size?: number }> =
   ({ x, y, text, color, show, w = 220, font = MONO, size = 26 }) => (
-    <Layer x={x} y={y} opacity={show} scale={lerp(0.8, 1, show)} origin="center">
+    <Layer x={x} y={y} opacity={Math.min(1, show)} scale={lerp(1.25, 1, Math.min(1, show))} origin="center">
       <Rect width={w} height={52} radius={26} fill="transparent" stroke={{ color, width: 2 }} />
       <Text x={0} y={(52 - size) / 2} maxWidth={w} align="center" font={font} weight={font === MONO ? 500 : 600} size={size} color={color} lineHeight={1}>{text}</Text>
     </Layer>
   );
+
+/** A soft pool of coloured light under a point. */
+const Spot: React.FC<{ cx: number; cy: number; r: number; color: string; amt: number }> = ({ cx, cy, r, color, amt }) =>
+  amt <= 0.001 ? null : (
+    <Rect x={cx - r} y={cy - r} width={2 * r} height={2 * r} opacity={amt} fill={{
+      type: 'radial', cx: r, cy: r, r, stops: [{ offset: 0, color }, { offset: 1, color: 'rgba(0,0,0,0)' }],
+    }} />
+  );
+
+/** Faint drifting dot grid behind the network diagrams. */
+const Field: React.FC<{ f: number; amt?: number }> = ({ f, amt = 1 }) => {
+  const dots: React.ReactNode[] = [];
+  const ox = (f * 0.25) % 80;
+  for (let x = 0; x < W; x += 80) for (let y = 40; y < H; y += 80) {
+    dots.push(<Ellipse key={`${x}:${y}`} x={((x + ox) % W) - 2} y={y - 2} width={4} height={4} fill="#ffffff" opacity={0.07 * amt} />);
+  }
+  return <Layer>{dots}</Layer>;
+};
 
 // diagram positions (card centres)
 const LAP: [number, number] = [330, 300];
@@ -201,21 +246,68 @@ const ATT: [number, number] = [960, 620];
 const HOP_A: [number, number] = [480, 372];
 const HOP_B: [number, number] = [802, 598];
 
+// ---------------------------------------------------------------- cold open
+
+const COLD = {
+  type: 10,                 // "05:34:03" types in from here, 3 frames a character
+  line: 22, lineEnd: 70,    // the monitor line draws across
+  beats: [0.3, 0.55],       // heartbeats along the line
+  flat: 0.66,               // where it goes flat
+};
+const coldFlatAt = Math.round(lerp(COLD.line, COLD.lineEnd, COLD.flat));
+
+/** The monitor trace: y offset at u (0..1). */
+const ecg = (u: number) => {
+  for (const c of COLD.beats) {
+    const d = (u - c) * 100;
+    if (d > -2 && d < -1) return -8;
+    if (d >= -0.4 && d < 0) return 16;
+    if (d >= 0 && d < 0.5) return -110;
+    if (d >= 0.5 && d < 1.1) return 46;
+  }
+  return 0;
+};
+
+const ColdOpen: React.FC<{ f: number }> = ({ f }) => {
+  const text = '05:34:03';
+  const n = Math.max(0, Math.min(text.length, Math.floor((f - COLD.type) / 3) + 1));
+  const p = interpolate(f, [COLD.line, COLD.lineEnd], [0, 1], clamp);
+  const x0 = 360, x1 = 1560, y0 = 720;
+  const pts = (a: number, b: number) => {
+    const out: string[] = [];
+    for (let i = 0; i <= 600; i++) {
+      const u = i / 600;
+      if (u < a || u > b) continue;
+      out.push(`${out.length ? 'L' : 'M'} ${(x0 + (x1 - x0) * u).toFixed(1)} ${(y0 + ecg(u)).toFixed(1)}`);
+    }
+    return out.join(' ');
+  };
+  const dead = f >= coldFlatAt;
+  return (
+    <Layer>
+      <Text x={0} y={330} maxWidth={W} align="center" font={MONO} weight={500} size={150} color={dead ? C.bad : C.ink}>{text.slice(0, n)}</Text>
+      <Text x={0} y={500} maxWidth={W} align="center" font={SANS} weight={600} size={26} color={C.ink} opacity={prog(f, COLD.line, 12)}>Hostel internet, 28 October 2026</Text>
+      {p > 0 && <Path d={pts(0, Math.min(p, COLD.flat))} stroke={{ color: C.ok, width: 4 }} effects={[glow({ radius: 8, color: C.ok, intensity: 0.35 })]} />}
+      {p > COLD.flat && <Path d={pts(COLD.flat, p)} stroke={{ color: C.bad, width: 4 }} effects={[glow({ radius: 8, color: C.bad, intensity: 0.35 })]} />}
+      <CText cx={W / 2} y={790} size={30} weight={800} color={C.bad} opacity={prog(f, coldFlatAt + 6, 8)}>no reply</CText>
+    </Layer>
+  );
+};
+
 // ---------------------------------------------------------------- scenes
 
 const Title: React.FC<{ f: number }> = ({ f }) => {
-  const a = pop(f, at('title1'));
-  const t1 = pop(f, at('title2', '5:34'));
-  const t2 = pop(f, at('title2', '3:28'));
-  const out = 1 - prog(f, at('title2', 'both'), 20) * 0.3;
+  const a = at('title1');
+  const t1 = pop(f, at('title2', 'twice'));
+  const t2 = pop(f, at('title2', 'twice') + 8);
   return (
-    <Layer opacity={out}>
-      <CText cx={W / 2} y={250} size={110} weight={800} opacity={a}>Two attacks in one day</CText>
-      <CText cx={W / 2} y={400} size={34} weight={600} opacity={a}>Hostel LAN, 28 October 2026</CText>
-      <Chip x={W / 2 - 300} y={520} w={260} text="05:34" color={C.bad} show={t1} size={36} />
-      <Chip x={W / 2 + 40} y={520} w={260} text="15:28" color={C.bad} show={t2} size={36} />
-      <CText cx={W / 2 - 170} y={600} w={300} size={24} weight={600} opacity={t1}>morning</CText>
-      <CText cx={W / 2 + 170} y={600} w={300} size={24} weight={600} opacity={t2}>afternoon</CText>
+    <Layer>
+      <Reveal f={f} from={a} y={300} size={120} text="Two attacks. One day." />
+      <CText cx={W / 2} y={460} size={32} weight={600} opacity={prog(f, at('title1') + 20, 16)}>Hostel LAN, 28 October 2026</CText>
+      <Chip x={W / 2 - 300} y={560} w={260} text="05:34" color={C.bad} show={t1} size={36} />
+      <Chip x={W / 2 + 40} y={560} w={260} text="15:28" color={C.bad} show={t2} size={36} />
+      <CText cx={W / 2 - 170} y={640} w={300} size={24} weight={600} opacity={t1}>morning</CText>
+      <CText cx={W / 2 + 170} y={640} w={300} size={24} weight={600} opacity={t2}>afternoon</CText>
     </Layer>
   );
 };
@@ -228,6 +320,7 @@ const Normal: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
   const ripple = (f - at('normal1', 'asks')) / 30;
   return (
     <Layer>
+      <Field f={f} amt={show} />
       <Link a={LAP} b={RT} opacity={show} />
       <Link a={RT} b={NET} opacity={show} />
       <Device cx={LAP[0]} cy={LAP[1]} title="Laptop" sub={d.laptopIp} color={C.ink} show={show} />
@@ -235,7 +328,7 @@ const Normal: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
       <Device cx={NET[0]} cy={NET[1]} title="Internet" sub="TM Unifi fibre" color={C.ok} show={show} />
       {ripple > 0 && ripple < 1.5 && [0, 0.35].map((o) => {
         const r = Math.max(0, ripple - o) * 520;
-        return <Ellipse key={o} x={LAP[0] - r} y={LAP[1] - r} width={2 * r} height={2 * r} fill="transparent" stroke={{ color: C.ink, width: 3 }} opacity={interpolate(ripple - o, [0, 1], [0.5, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />;
+        return <Ellipse key={o} x={LAP[0] - r} y={LAP[1] - r} width={2 * r} height={2 * r} fill="transparent" stroke={{ color: C.ink, width: 3 }} opacity={interpolate(ripple - o, [0, 1], [0.5, 0], clamp)} />;
       })}
       <Bubble cx={LAP[0] + 40} cy={140} text="Who is the router?" color={C.ink} show={ask} w={380} />
       <Bubble cx={RT[0]} cy={140} text="That's me" sub={d.gwMac} color={C.router} show={reply} w={400} />
@@ -247,41 +340,59 @@ const Normal: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
   );
 };
 
+/** Word anchors for the two attacks. */
+const A1 = () => ({
+  base: at('a1_1'), att: at('a1_1', 'another'), lie: at('a1_1', 'message'), flip: at('a1_2', 'believed'),
+  victims: at('a1_2', 'two'), swallow: at('a1_3', 'every'), count: at('a1_3', '71'), zero: at('a1_3', 'zero'),
+});
+const A2 = () => ({
+  base: at('a2_dev'), att: at('a2_dev'), addr: at('a2_addr'), lie: at('a2_lie'), flip: at('a2_lie') + 4,
+  victims: at('a2_more', 'four'), swallow: at('a2_lie') + 6, count: at('a2_count'), zero: at('a2_count', 'zero'), scan: at('a2_more', 'looking'),
+});
+
 const Attack: React.FC<{ f: number; d: Data; second?: boolean }> = ({ f, d, second }) => {
-  const L = second ? { a: 'a2_1', b: 'a2_2' } : { a: 'a1_1', b: 'a1_2', c: 'a1_3' };
-  const base = at(L.a);
-  const show = prog(f, base - 8, 14);
-  const att = second ? pop(f, at('a2_1', 'device')) : pop(f, at('a1_1', 'another'));
-  const lie = second ? pop(f, at('a2_1', 'lie')) : pop(f, at('a1_1', 'message'));
-  const flip = second ? prog(f, at('a2_1', 'lie'), 8) : prog(f, at('a1_2', 'believed'), 8);
+  const k = second ? A2() : A1();
+  const show = prog(f, k.base - 8, 14);
+  const att = second ? slam(f, k.att) : pop(f, k.att);
+  const lie = pop(f, k.lie);
+  const flip = prog(f, k.flip, 8);
+  const dim = prog(f, k.att, 16);
   const victims = second ? d.victims2 : d.victims1;
-  const vOn = second ? at('a2_2', 'four') : at('a1_2', 'two');
-  const swallowFrom = second ? at('a2_1', '42') : at('a1_3', 'every');
-  const countFrom = second ? at('a2_1', '42') : at('a1_3', '71');
   const total = second ? 42 : 71;
-  const sent = Math.round(interpolate(f, [countFrom - 30, countFrom], [0, total], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }));
-  const scan = second ? pop(f, at('a2_2', 'looking')) : 0;
-  const clock = pop(f, base);
+  const sent = Math.round(interpolate(f, [k.count - 30, k.count], [0, total], clamp));
+  const scan = second ? pop(f, A2().scan) : 0;
   const mac = flip > 0.5 ? d.attMac : d.gwMac;
+  const macChip = second ? slam(f, A2().addr) : att;
+  const rest = 1 - 0.45 * dim;
   return (
     <Layer>
-      <Link a={LAP} b={RT} opacity={show * (1 - flip * 0.75)} />
-      <Link a={RT} b={NET} opacity={show} />
-      <Link a={HOP_A} b={HOP_B} color={C.bad} opacity={flip} dash />
+      <Field f={f} amt={show * rest} />
+      <Spot cx={ATT[0]} cy={ATT[1]} r={380} color="rgba(255,69,58,0.035)" amt={dim} />
+      <Layer opacity={rest}>
+        <Link a={LAP} b={RT} opacity={show * (1 - flip * 0.75)} />
+        <Link a={RT} b={NET} opacity={show} />
+        <Device cx={RT[0]} cy={RT[1]} title="Hostel router" sub={`MikroTik ${d.gwIp}`} color={C.router} show={show} w={340} />
+        <Device cx={NET[0]} cy={NET[1]} title="Internet" sub="TM Unifi fibre" color={C.ok} show={show} />
+      </Layer>
+      <Link a={HOP_A} b={HOP_B} color={C.bad} opacity={flip} />
       <Device cx={LAP[0]} cy={LAP[1]} title="Laptop" sub={d.laptopIp} color={C.ink} show={show} />
-      <Device cx={RT[0]} cy={RT[1]} title="Hostel router" sub={`MikroTik ${d.gwIp}`} color={C.router} show={show} w={340} />
-      <Device cx={NET[0]} cy={NET[1]} title="Internet" sub="TM Unifi fibre" color={C.ok} show={show} />
-      <Device cx={ATT[0]} cy={ATT[1]} title="Impostor" sub={`${d.attIp}`} color={C.bad} show={att} glow={lie} w={320} />
-      <Chip x={ATT[0] - 160} y={ATT[1] + 90} w={320} text={d.attMac} color={C.bad} show={att} size={22} />
+      <Device cx={ATT[0]} cy={ATT[1]} title="Impostor" sub={`${d.attIp}`} color={C.bad} show={Math.min(1, att)} glow={lie} w={320} />
+      <Chip x={ATT[0] - 160} y={ATT[1] + 90} w={320} text={d.attMac} color={C.bad} show={macChip} size={22} />
       <Bubble cx={ATT[0]} cy={462} text={`"I am ${d.gwIp}"`} sub={d.attMac} color={C.bad} show={lie} w={430} />
       <ArpCard cx={LAP[0]} y={420} ip={d.gwIp} mac={mac} color={flip > 0.5 ? C.bad : C.router} flash={flip} />
-      <Chip x={60} y={40} w={250} text={second ? '15:28:54' : '05:34:03'} color={C.bad} show={clock} size={30} />
-      {second && <Chip x={330} y={40} w={300} text="same device" color={C.bad} show={att} font={SANS} size={24} />}
+      <Chip x={60} y={40} w={250} text={second ? '15:28:54' : '05:34:03'} color={C.bad} show={pop(f, k.base - 4)} size={30} />
+      {second && (
+        <>
+          <Chip x={330} y={40} w={250} text="same device" color={C.bad} show={slam(f, A2().att)} font={SANS} size={24} />
+          <Chip x={600} y={40} w={270} text="same address" color={C.bad} show={slam(f, A2().addr)} font={SANS} size={24} />
+          <Chip x={890} y={40} w={210} text="same lie" color={C.bad} show={slam(f, A2().lie)} font={SANS} size={24} />
+        </>
+      )}
       {/* other victims */}
       {victims.map((ip, i) => {
         const vx = 1330 + (i % 2) * 300;
         const vy = 560 + Math.floor(i / 2) * 140;
-        const on = pop(f, vOn + i * 4);
+        const on = pop(f, k.victims + i * 5);
         const target = second && ip === '10.255.23.47';
         return (
           <Layer key={ip} opacity={on}>
@@ -292,8 +403,8 @@ const Attack: React.FC<{ f: number; d: Data; second?: boolean }> = ({ f, d, seco
         );
       })}
       {second && <Bubble cx={1490} cy={460} text="who-has 10.255.23.47?" sub={`from ${d.attIp}`} color={C.warn} show={scan} w={460} />}
-      <Packets f={f} a={HOP_A} b={HOP_B} start={swallowFrom} color={C.ok} drop every={5} travel={22} />
-      <Counter x={70} y={590} sent={sent} back={0} show={prog(f, countFrom - 34, 10)} />
+      <Packets f={f} a={HOP_A} b={HOP_B} start={k.swallow} color={C.ok} drop every={5} travel={22} />
+      <Counter x={70} y={590} sent={sent} back={0} show={prog(f, k.count - 34, 10)} zero={prog(f, k.zero, 10)} />
     </Layer>
   );
 };
@@ -304,7 +415,7 @@ const Symptoms: React.FC<{ f: number }> = ({ f }) => {
   const c3 = pop(f, at('sym1', 'pages'));
   const big = pop(f, at('sym2'));
   const spin = (f / 30) * 360;
-  const ping = Math.round(interpolate(f, [at('sym1', 'discord'), at('sym1', 'milliseconds')], [38, 5000], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }));
+  const ping = Math.round(interpolate(f, [at('sym1', 'discord'), at('sym1', 'milliseconds')], [38, 5000], clamp));
   const card = (x: number, show: number, head: string, body: React.ReactNode) => (
     <Layer x={x} y={130} opacity={show} scale={lerp(0.9, 1, show)} origin="center">
       <Rect width={500} height={360} radius={28} fill={C.panel} stroke={{ color: C.line, width: 2 }} />
@@ -335,23 +446,24 @@ const Symptoms: React.FC<{ f: number }> = ({ f }) => {
 
 const Timeline1: React.FC<{ f: number }> = ({ f }) => {
   const s = at('a1_end');
+  const pulled = at('a1_end', 'pulled');
   // positions are spread for reading, not to scale (the first three are 17 s apart, the last 2.5 min)
-  const marks: [string, string, number, string][] = [
-    ['05:34:03', 'router address swapped', 0, C.bad],
-    ['05:34:06', 'outage starts', 0.22, C.bad],
-    ['05:34:20', 'everything dead', 0.44, C.bad],
-    ['05:36:35', 'cable pulled, 150 s later', 1, C.ok],
+  const marks: [string, string, number, string, number][] = [
+    ['05:34:03', 'router address swapped', 0, C.bad, s + 6],
+    ['05:34:06', 'outage starts', 0.22, C.bad, s + 16],
+    ['05:34:20', 'everything dead', 0.44, C.bad, s + 26],
+    ['05:36:35', 'cable pulled, 150 s later', 1, C.ok, pulled],
   ];
   const x0 = 200, x1 = 1720;
-  const fill = prog(f, s, sec(lineOf('a1_end').ms) - 20);
+  const fill = prog(f, s, pulled - s);
   return (
     <Layer>
       <CText cx={W / 2} y={120} size={44} weight={800} opacity={prog(f, s - 6)}>Attack 1: 150 seconds offline</CText>
       <Rect x={x0} y={400} width={x1 - x0} height={10} radius={5} fill={C.line} />
       <Rect x={x0} y={400} width={(x1 - x0) * fill} height={10} radius={5} fill={C.bad} />
-      {marks.map(([t, label, off, col], i) => {
+      {marks.map(([t, label, off, col, when], i) => {
         const x = x0 + (x1 - x0) * off;
-        const show = prog(f, s + 8 + i * 22, 10);
+        const show = prog(f, when, 10);
         const up = i % 2 === 0;
         return (
           <Layer key={t} opacity={show}>
@@ -366,22 +478,25 @@ const Timeline1: React.FC<{ f: number }> = ({ f }) => {
   );
 };
 
+/** 15:12 -> 15:28, one minute per tick, between "waited" and "3:28". */
+const testClock = () => ({ from: at('test1', 'waited') + 6, to: at('test2', '3:28') });
+
 const Test: React.FC<{ f: number }> = ({ f }) => {
-  const a = pop(f, at('test1'));
-  const b = pop(f, at('test2'));
+  const a = pop(f, at('test1', 'removed'));
+  const { from, to } = testClock();
+  const b = prog(f, from - 8, 10);
   const again = pop(f, at('test2', 'again'));
-  const t = interpolate(f, [at('test2') - 10, at('test2', '3:28')], [12, 28], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const t = Math.round(interpolate(f, [from, to], [12, 28], clamp));
   return (
     <Layer>
       <Chip x={W / 2 - 320} y={180} w={640} text="15:12  protection removed on purpose" color={C.warn} show={a} font={SANS} size={26} />
-      <CText cx={W / 2} y={300} size={200} weight={800} font={SANS} opacity={b} color={again > 0.5 ? C.bad : C.ink}>{`15:${String(Math.round(t)).padStart(2, '0')}`}</CText>
+      <CText cx={W / 2} y={300} size={200} weight={800} font={SANS} opacity={b} color={again > 0.5 ? C.bad : C.ink}>{`15:${String(t).padStart(2, '0')}`}</CText>
       <CText cx={W / 2} y={560} size={80} weight={800} color={C.bad} opacity={again} glowAmt={again}>It happened again.</CText>
     </Layer>
   );
 };
 
 const Compare: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
-  const s = at('cmp');
   const rows: [string, string, string][] = [
     ['Router address swapped to', d.attMac, d.attMac],
     ['Impostor IP', d.attIp, d.attIp],
@@ -390,14 +505,16 @@ const Compare: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
     ['Real router seen', 'never', 'never'],
     ['Other devices hit', '2', '4'],
   ];
-  const fin = pop(f, at('cmp', 'purpose'));
+  const fin = slam(f, at('cmp2', 'purpose'));
   return (
     <Layer>
-      <Text x={160} y={70} font={SANS} weight={600} size={26} color={C.ink}>Check:</Text>
-      <Text x={860} y={70} maxWidth={400} align="center" font={SANS} weight={800} size={30} color={C.ink}>05:34</Text>
-      <Text x={1260} y={70} maxWidth={400} align="center" font={SANS} weight={800} size={30} color={C.ink}>15:28</Text>
+      <Text x={160} y={70} font={SANS} weight={600} size={26} color={C.ink} opacity={prog(f, at('cmp1') - 6)}>Check:</Text>
+      <Text x={860} y={70} maxWidth={400} align="center" font={SANS} weight={800} size={30} color={C.ink} opacity={prog(f, at('cmp1') - 6)}>05:34</Text>
+      <Text x={1260} y={70} maxWidth={400} align="center" font={SANS} weight={800} size={30} color={C.ink} opacity={prog(f, at('cmp1') - 6)}>15:28</Text>
       {rows.map(([k, a, b], i) => {
-        const show = prog(f, s + 6 + i * 9, 8);
+        const when = compareRow(i);
+        const show = prog(f, when, 8);
+        const tick = slam(f, when + 3);
         const y = 140 + i * 74;
         return (
           <Layer key={k} opacity={show}>
@@ -405,13 +522,25 @@ const Compare: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
             <Text x={160} y={y + 10} font={SANS} weight={600} size={26} color={C.ink}>{k}</Text>
             <Text x={860} y={y + 10} maxWidth={400} align="center" font={MONO} weight={500} size={26} color={C.bad}>{a}</Text>
             <Text x={1260} y={y + 10} maxWidth={400} align="center" font={MONO} weight={500} size={26} color={C.bad}>{b}</Text>
-            <Text x={1680} y={y + 4} font={SANS} weight={800} size={34} color={C.ok}>✓</Text>
+            <Layer x={1697} y={y + 25} scale={lerp(1.8, 1, Math.min(1, tick))} opacity={Math.min(1, tick)} origin={[0, 0]}>
+              <Text x={-17} y={-21} font={SANS} weight={800} size={34} color={C.ok}>✓</Text>
+            </Layer>
           </Layer>
         );
       })}
-      <CText cx={W / 2} y={620} size={52} weight={800} color={C.bad} opacity={fin} glowAmt={fin}>Same device. On purpose.</CText>
+      <Layer x={W / 2} y={650} scale={lerp(1.3, 1, Math.min(1, fin))} opacity={Math.min(1, fin)} origin={[0, 0]}>
+        <CText cx={0} y={-31} size={52} weight={800} color={C.bad} glowAmt={fin}>Same device. On purpose.</CText>
+      </Layer>
     </Layer>
   );
+};
+/** Frame each comparison row lands: spread over the first line. */
+const compareRow = (i: number) => at('cmp1') + 4 + Math.round(i * (lineOf('cmp1').frames - 10) / 6);
+
+const fixShots = () => {
+  const out: number[] = [];
+  for (let s = at('fix1', 'fake'); s < at('fix2') + 12; s += 22) out.push(s);
+  return out;
 };
 
 const Fix: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
@@ -422,18 +551,19 @@ const Fix: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
   const c1 = pop(f, at('fix2', 'only'));
   const c2 = pop(f, at('fix2', 'outgoing'));
   // fake replies bounce off the laptop's locked entry
-  const shots: React.ReactNode[] = [];
-  for (let s = at('fix1', 'fake'); s < f; s += 22) {
+  const shots = fixShots().filter((s) => s < f).map((s) => {
     const t = (f - s) / 26;
-    if (t > 1.6) continue;
+    if (t > 1.6) return null;
     const go = Math.min(1, t);
     const back = Math.max(0, t - 1);
     const x = lerp(HOP_B[0], HOP_A[0] + 40, go) + back * 160;
     const y = lerp(HOP_B[1], HOP_A[1] + 60, go) + back * 120;
-    shots.push(<Ellipse key={s} x={x - 10} y={y - 10} width={20} height={20} fill={C.bad} opacity={interpolate(t, [0, 0.1, 1, 1.6], [0, 1, 1, 0])} />);
-  }
+    return <Ellipse key={s} x={x - 10} y={y - 10} width={20} height={20} fill={C.bad} opacity={interpolate(t, [0, 0.1, 1, 1.6], [0, 1, 1, 0])} />;
+  });
   return (
     <Layer>
+      <Field f={f} amt={show} />
+      <Spot cx={LAP[0]} cy={LAP[1] + 120} r={380} color="rgba(48,209,88,0.05)" amt={lock} />
       <Link a={LAP} b={RT} opacity={show} />
       <Link a={RT} b={NET} opacity={show} />
       <Device cx={LAP[0]} cy={LAP[1]} title="Laptop" sub={d.laptopIp} color={C.ink} show={show} />
@@ -474,9 +604,9 @@ const Rcc: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
         ))}
       </Layer>
       <Layer opacity={endIn}>
-        <CText cx={W / 2} y={300} size={96} weight={800}>netbug</CText>
-        <CText cx={W / 2} y={440} size={32} weight={600}>Full report, logs and packet captures available on request</CText>
-        <CText cx={W / 2} y={500} size={28} font={MONO} weight={500} color={C.router}>github.com/tariqaq/netbug</CText>
+        <Reveal f={f} from={sceneFrom.end + 6} y={330} size={96} text="netbug" stagger={2} />
+        <CText cx={W / 2} y={470} size={32} weight={600} opacity={prog(f, sceneFrom.end + 24, 16)}>Full report, logs and packet captures available on request</CText>
+        <CText cx={W / 2} y={530} size={28} font={MONO} weight={500} color={C.router} opacity={prog(f, sceneFrom.end + 34, 16)}>github.com/tariqaq/netbug</CText>
       </Layer>
     </Layer>
   );
@@ -515,71 +645,92 @@ const Captions: React.FC<{ f: number }> = ({ f }) => {
   );
 };
 
-// ---------------------------------------------------------------- sound
+// ---------------------------------------------------------------- hits, sound and score
 
-// Subtle synthesized effects, well under the voice. Each is (frame, kind).
-const SFX: [number, 'pop' | 'alarm' | 'thud' | 'lock' | 'whoosh'][] = [
-  [at('normal1', 'asks'), 'pop'], [at('normal2', 'answers'), 'pop'],
-  [at('a1_1', 'another'), 'alarm'], [at('a1_1', 'message'), 'pop'], [at('a1_3', 'zero'), 'thud'],
-  [at('test2', 'again'), 'thud'],
-  [at('a2_1', 'device'), 'alarm'], [at('a2_1', 'zero'), 'thud'], [at('a2_2', 'looking'), 'pop'],
-  [at('fix1', 'pin'), 'lock'],
-  ...SCENES.slice(1).map((s) => [sceneFrom[s.id] + 2, 'whoosh'] as [number, 'whoosh']),
-];
-for (const [frame, kind] of SFX) {
-  onFrame(frame, (ctx, t) => {
-    const g = ctx.createGain();
-    g.connect(ctx.destination);
-    if (kind === 'pop' || kind === 'lock') {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(kind === 'pop' ? 760 : 1200, t);
-      o.frequency.exponentialRampToValueAtTime(kind === 'pop' ? 1140 : 600, t + 0.07);
-      g.gain.setValueAtTime(kind === 'pop' ? 0.06 : 0.09, t);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.12);
-      o.connect(g); o.start(t); o.stop(t + 0.13);
-    } else if (kind === 'thud') {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(90, t);
-      o.frequency.exponentialRampToValueAtTime(40, t + 0.35);
-      g.gain.setValueAtTime(0.22, t);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.4);
-      o.connect(g); o.start(t); o.stop(t + 0.42);
-    } else if (kind === 'alarm') {
-      const o = ctx.createOscillator();
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass'; lp.frequency.value = 900;
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(220, t);
-      o.frequency.linearRampToValueAtTime(150, t + 0.5);
-      g.gain.setValueAtTime(0.0005, t);
-      g.gain.exponentialRampToValueAtTime(0.05, t + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.55);
-      o.connect(lp).connect(g); o.start(t); o.stop(t + 0.56);
-    } else {
-      const len = Math.floor(ctx.sampleRate * 0.35);
-      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const ch = buf.getChannelData(0);
-      let seed = frame * 9301 + 49297;
-      for (let i = 0; i < len; i++) { seed = (seed * 9301 + 49297) % 233280; ch[i] = (seed / 233280) * 2 - 1; }
-      const src = ctx.createBufferSource();
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass'; bp.Q.value = 0.8;
-      bp.frequency.setValueAtTime(400, t);
-      bp.frequency.exponentialRampToValueAtTime(2400, t + 0.3);
-      src.buffer = buf;
-      g.gain.setValueAtTime(0.0005, t);
-      g.gain.exponentialRampToValueAtTime(0.035, t + 0.12);
-      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.34);
-      src.connect(bp).connect(g); src.start(t); src.stop(t + 0.35);
-    }
-  });
+/** Moments that hit: each shakes the camera, fringes the picture and plays a sound. */
+const HITS: (Hit & { sfx?: Sfx[]; gain?: number })[] = [];
+const hit = (f: number, shake: number, fringe: number, sfx: Sfx[] = [], gain = 1) => HITS.push({ f, shake, fringe, sfx, gain });
+const fx = (f: number, kind: Sfx, gain = 1, len?: number) => cue(f, kind, { gain, ...(len ? { len } : {}) });
+{
+  // cold open: clock ticks while the time types in, two heartbeats on the trace, then it flatlines
+  [2, 22, 42, 62, 82].forEach((t, i) => fx(t, i % 2 ? 'tock' : 'tick', 0.8));
+  for (let i = 0; i < 8; i++) fx(COLD.type + i * 3, 'type', 0.9);
+  for (const c of COLD.beats) {
+    const t = lerp(COLD.line, COLD.lineEnd, c);
+    fx(t - 1, 'heartbeat', 0.9); fx(t, 'beep', 1);
+  }
+  fx(coldFlatAt, 'flatline', 1, 1.5);
+  fx(at('title1') - 32, 'riser', 0.8, 32 / FPS);
+  hit(at('title1'), 10, 4, ['bigImpact']);
+
+  // title chips, then into the network
+  fx(at('title2', 'twice'), 'stamp', 0.8); fx(at('title2', 'twice') + 8, 'stamp', 0.8);
+  fx(sceneFrom.normal, 'whoosh', 0.8);
+  fx(at('normal1', 'asks'), 'pop'); fx(at('normal2', 'answers'), 'pop');
+
+  // part I
+  const a1 = A1();
+  fx(sceneFrom.attack1, 'whoosh', 0.7); hit(sceneFrom.attack1 + 8, 0, 0, ['impact'], 0.5);
+  hit(a1.att, 4, 0, ['braam'], 1);
+  hit(a1.lie, 6, 6, ['glitch']);
+  fx(a1.flip, 'glitch', 0.6);
+  for (let i = 0; i < 2; i++) fx(a1.victims + i * 5, 'thud', 0.8);
+  hit(a1.zero, 8, 3, ['impact']); fx(a1.zero + 4, 'flatline', 0.8, 1.2);
+
+  fx(sceneFrom.timeline1, 'whoosh', 0.6);
+  hit(at('a1_end', 'pulled'), 6, 2, ['impact'], 0.8);
+
+  // part II
+  fx(sceneFrom.test, 'whoosh', 0.7); hit(sceneFrom.test + 8, 0, 0, ['impact'], 0.5);
+  {
+    const { from, to } = testClock();
+    for (let m = 1; m <= 16; m++) fx(lerp(from, to, m / 16), m % 2 ? 'tick' : 'tock', 0.7);
+  }
+  hit(at('test2', 'again'), 8, 4, ['bigImpact']);
+  const a2 = A2();
+  hit(a2.att, 7, 2, ['impact']);
+  hit(a2.addr, 7, 2, ['impact']);
+  hit(a2.lie, 9, 6, ['braam', 'glitch']);
+  fx(a2.count, 'stamp', 0.7);
+  hit(a2.zero, 6, 2, ['impact'], 0.8);
+  for (let i = 0; i < 4; i++) fx(a2.victims + i * 5, 'thud', 0.7);
+  fx(a2.scan, 'pop', 1.2);
+
+  // the comparison: each row stamps, the last line lands in silence
+  fx(sceneFrom.compare, 'whoosh', 0.6);
+  for (let i = 0; i < 6; i++) fx(compareRow(i) + 3, 'stamp', 0.6);
+  fx(at('cmp2', 'purpose') - 40, 'riser', 0.7, 40 / FPS);
+  hit(at('cmp2', 'purpose'), 10, 5, ['bigImpact'], 0.6);
+
+  // part III
+  fx(sceneFrom.fix, 'whoosh', 0.7); hit(sceneFrom.fix + 8, 0, 0, ['impact'], 0.4);
+  hit(at('fix1', 'pin'), 3, 0, ['lock']);
+  for (const s of fixShots()) fx(s + 26, 'tink', 1);
+  fx(sceneFrom.rcc, 'whoosh', 0.6);
+  hit(sceneFrom.end + 6, 0, 0, ['impact'], 0.5);
+
+  for (const h of HITS) for (const s of h.sfx ?? []) fx(h.f, s, h.gain);
+
+  // the score, scene by scene
+  const S: [number, number, Mood][] = [
+    [60, sceneFrom.normal, 'dark'],
+    [sceneFrom.normal, sceneFrom.attack1 + 4, 'calm'],
+    [a1.base, a1.zero, 'tension'],
+    [sceneFrom.symptoms, at('a1_end', 'pulled'), 'clock'],
+    [at('test1'), at('test2', 'again'), 'wait'],
+    [a2.att, sceneFrom.compare + 4, 'tension2'],
+    [sceneFrom.compare, at('cmp2', 'purpose'), 'build'],
+    [at('fix1'), sceneFrom.rcc + 6, 'resolve'],
+    [sceneFrom.rcc, TOTAL, 'end'],
+  ];
+  for (const [a, b, m] of S) scoreSection(a, b, m);
+  setDuck(placed.map((l) => [l.from / FPS + 0.08, (l.from + l.frames) / FPS] as [number, number]));
 }
 
 // ---------------------------------------------------------------- composition
 
 const SCENE_VIEWS: Record<string, React.FC<{ f: number; d: Data }>> = {
+  cold: ({ f }) => <ColdOpen f={f} />,
   title: ({ f }) => <Title f={f} />,
   normal: Normal,
   attack1: ({ f, d }) => <Attack f={f} d={d} />,
@@ -592,23 +743,47 @@ const SCENE_VIEWS: Record<string, React.FC<{ f: number; d: Data }>> = {
   rcc: Rcc,
 };
 
+/** Hard cuts (no fade) into these scenes. */
+const CUT_IN = new Set(['title']);
+
 const Film: React.FC<Data> = (d) => {
   const f = useCurrentFrame();
+  const cam = camera(f, HITS);
+  const card = SCENES.find((s) => s.card && f >= sceneFrom[s.id] && f < sceneFrom[s.id] + CARD);
+  // bars: in for the cold open and title, each chapter card and the end card; out over 18 frames after each
+  const bars = Math.max(
+    1 - prog(f, sceneFrom.normal, 18),
+    prog(f, sceneFrom.end, 24),
+    ...SCENES.filter((s) => s.card && f >= sceneFrom[s.id]).map((s) => 1 - prog(f, sceneFrom[s.id] + CARD - 4, 18)),
+  );
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg }}>
-      {SCENES.map((s, i) => {
-        const from = sceneFrom[s.id];
-        const to = i < SCENES.length - 1 ? sceneFrom[SCENES[i + 1].id] : TOTAL;
-        if (f < from - 1 || f >= to) return null;
-        const fadeIn = prog(f, from, 10);
-        const fadeOut = i < SCENES.length - 1 ? 1 - prog(f, to - 10, 10) : 1;
-        const View = SCENE_VIEWS[s.id];
-        return <Layer key={s.id} opacity={Math.min(fadeIn, fadeOut)}><View f={f} d={d} /></Layer>;
-      })}
+      {/* a fixed grain texture: animated grain is incompressible noise (it made a 2-minute render 190 MB) */}
+      <Layer effects={[grain(0.05, { seed: 7, size: 1.5, animate: false })]}>
+        <Layer x={cam.x} y={cam.y} effects={cam.fringe > 0.05 ? [chromaticAberration(cam.fringe)] : []}>
+          {SCENES.map((s, i) => {
+            const from = sceneFrom[s.id];
+            const to = sceneTo(s.id);
+            if (f < from - 1 || f >= to) return null;
+            const fadeIn = CUT_IN.has(s.id) ? 1 : prog(f, from, 10);
+            const fadeOut = i < SCENES.length - 1 && !CUT_IN.has(SCENES[i + 1].id) ? 1 - prog(f, to - 10, 10) : 1;
+            const push = 1 + 0.03 * interpolate(f, [from, to], [0, 1], clamp);
+            const View = SCENE_VIEWS[s.id];
+            return (
+              <Layer key={s.id} opacity={Math.min(fadeIn, fadeOut)} x={W / 2} y={H / 2} scale={push}>
+                <Layer x={-W / 2} y={-H / 2}><View f={f} d={d} /></Layer>
+              </Layer>
+            );
+          })}
+        </Layer>
+        <Vignette />
+        {card?.card && <ChapterCard f={f} from={sceneFrom[card.id]} len={CARD} part={card.card[0]} sub={card.card[1]} red={C.bad} ink={C.ink} sans={SANS} mono={MONO} />}
+        <Letterbox amt={bars} />
+      </Layer>
       <Captions f={f} />
       {placed.map((l) => (
         <Sequence key={l.id} from={l.from}>
-          <Audio src={staticFile(`vo/${l.id}.mp3`)} />
+          <Audio src={staticFile(`vo/${l.id}.mp3`)} muted={soloMutes('voice')} />
         </Sequence>
       ))}
     </AbsoluteFill>

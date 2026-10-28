@@ -1,5 +1,5 @@
 # tts.py - turns narration.json into one MP3 per line (public/vo/<id>.mp3) plus
-# public/vo/timing.json: each line's duration and its words with start/end times in ms.
+# public/vo/timing.json: each line's duration, where its speech ends, and its words with start/end times in ms.
 # The video reads timing.json, so scene lengths and subtitles follow the real speech.
 # Uses Microsoft Edge's neural voices through edge-tts (needs internet).
 # Run: .venv/Scripts/python scripts/tts.py
@@ -44,7 +44,8 @@ async def speak(line, voice, rate):
             i += 1
     if i != len(shown):
         raise SystemExit(f"{line['id']}: {len(shown)} subtitle words but the voice read {i}; make 'say' match 'text' word for word")
-    return {"id": line["id"], "text": line["text"], "ms": duration_ms(path), "words": words}
+    # ms: the clip's length; speech: where the last word ends (the clip has ~0.8 s of silence after it)
+    return {"id": line["id"], "text": line["text"], "ms": duration_ms(path), "speech": words[-1]["end"], "words": words}
 
 
 async def main():
@@ -54,10 +55,10 @@ async def main():
     timing = [await speak(l, cfg["voice"], cfg["rate"]) for l in cfg["lines"]]
     with open(os.path.join(OUT, "timing.json"), "w", encoding="utf-8") as f:
         json.dump({"voice": cfg["voice"], "lines": timing}, f, indent=1)
-    total = sum(t["ms"] for t in timing)
+    total = sum(t["speech"] for t in timing)
     print(f"{len(timing)} lines, {total / 1000:.1f} s of speech")
     for t in timing:
-        print(f"  {t['id']:<9} {t['ms'] / 1000:5.2f} s  {len(t['words'])} words")
+        print(f"  {t['id']:<9} {t['speech'] / 1000:5.2f} s  {len(t['words'])} words")
 
 
 asyncio.run(main())

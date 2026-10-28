@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 17:44: `PENDING` incident video v3: cinematic cut
+### 17:44: `68d877a` incident video v3: cinematic cut
 - Restrained true-crime documentary style, still ~2 minutes (2:04).
 - New voice: `en-US-ChristopherNeural` (news/documentary) at +10%, replacing Andrew. The script is tightened, with present tense for the attack and "Same device. Same address. Same lie." as three separate lines.
 - `scripts/tts.py` now records `speech`, where each line's last word ends. The film times lines from that, not from the clip length (~0.8 s of trailing silence).

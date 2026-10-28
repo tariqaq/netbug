@@ -3,7 +3,7 @@
 Resume point for any new session: read this file top to bottom, then continue from the first unchecked box in **Progress**. Update this file **immediately** after every finished step (tick the box, add a log line with system-clock time).
 
 - Created: 2026-10-28 17:13 MYT
-- Status: **FINISHING** (committing and pushing)
+- Status: **DONE** (v3 delivered; waiting for the user's verdict on the synth score, see Q1)
 - Base: v2 (`eac8d45`), `src/index.tsx`, 3582 frames (1:59.4), 18 narration lines
 
 ## Goal
@@ -93,7 +93,7 @@ Same facts as v2 (both attacks of 2026-10-28 in full detail, the pin fix, the RC
 - [x] P6.2 Spot-check frames from both renders (MACs redacted in the redacted one)
 - [x] P7.1 Copy the redacted render to `video/incident-v3-redacted.mp4` (git mv from v2)
 - [x] P7.2 Update `video/README.md`, the root `README.md` link, and CHANGELOG (system-clock time, hashes)
-- [ ] P7.3 Commit and push (no co-author), CHANGELOG hash follow-up; push tag `video-v2`
+- [x] P7.3 Commit and push (no co-author): `68d877a`, CHANGELOG hash follow-up; tag `video-v2` pushed
 - [x] P7.4 Report to the user: paths, what changed
 
 ## Log
@@ -112,4 +112,5 @@ Times come from the system clock (`Get-Date`). Entries marked "between 17:13 and
 - 2026-10-28 17:43: final v3 renders done (`out/incident-v3-full.mp4`, `out/incident-v3-redacted.mp4`, -17.3 LUFS, peak -1.1 dBFS, ~54 s each on the GPU); spotlight softened to 0.035; frames checked (redaction correct). Writing docs, then commit and push.
 - 2026-10-28 17:44: commit `f70fdc4` push REJECTED: video 181 MB > GitHub 100 MB. Undid the 2 local commits (soft reset). Cause: continuous push-in + animated grain at a 12 Mbit/s cap. Fix: grain is a fixed texture, render at 3 Mbit/s: 49 MB, text still sharp.
 - 2026-10-28 17:49: both v3 renders redone at 3 Mbit/s (-17.3 LUFS, peak -1.1 dBFS). Committing and pushing again.
+- 2026-10-28 17:49: committed `68d877a`, pushed with tag `video-v2`. Delivered.
 - If the user dislikes the synth score: switch to a royalty-free track (ask before downloading; check licence).

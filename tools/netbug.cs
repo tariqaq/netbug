@@ -12,7 +12,8 @@
 // 5 s of lag, high UDP usage, a gateway MAC change or detected ARP spoofing triggers
 // snapshot.ps1, at most once per 60 s.
 // ARP spoofing defence: every 10 s the gateway's ARP entry type is read (static = pinned,
-// dynamic = learned). A new MAC for the same gateway IP is logged as GATEWAY MAC CHANGED.
+// dynamic = learned). A MAC for the gateway IP other than the trusted one (the first seen
+// for that IP, or the pinned one) is logged as GATEWAY MAC CHANGED.
 // Every 5 min arpwatch.ps1 captures 10 s of ARP and reports any other MAC claiming the
 // gateway IP (ARP SPOOFING DETECTED), even while a pinned entry makes Windows ignore it.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
@@ -64,8 +65,10 @@ class NetBug
     static string gwMac = "";
     // ARP spoofing defence: the gateway's ARP entry type (static = pinned, dynamic = learned),
     // a loud alert when the gateway MAC changes while the gateway IP stays the same, and a
-    // 10 s ARP-only capture every 5 min (arpwatch.ps1) that reports anyone else claiming the gateway IP
-    static string gwArp = "", lastGwArp = "", lastGwMacIp = "";
+    // 10 s ARP-only capture every 5 min (arpwatch.ps1) that reports anyone else claiming the gateway IP.
+    // The trusted MAC is the first one seen for a gateway IP (or the pinned one). It is not replaced
+    // by a changed MAC, so a poisoned ARP cache can't make the impostor "trusted".
+    static string gwArp = "", lastGwArp = "", trustedGwMac = "", trustedGwIp = "";
     static volatile string gwAlert = "";
     static DateTime gwAlertAt = DateTime.MinValue;
     static volatile bool arpWatchRunning;
@@ -158,7 +161,7 @@ class NetBug
                     gwMac = gw != null && ip != null ? Arp(gw, ip) : "";
                     gwArp = gw != null && ni != null ? ArpEntryType(gw, ni) : "";
                 }
-                if (tick % 300 == 150 && gw != null && gwMac.Length == 17) ArpWatchStart(gw, gwMac);
+                if (tick % 300 == 150 && gw != null && trustedGwIp == gw.ToString()) ArpWatchStart(gw, trustedGwMac);
                 if (tick % 300 == 5) RefreshPublicIp();
                 if (tick % 600 == 7) EnforceSizeCap();
                 if (tick % 600 == 9) Health(tick % 3600 == 9);
@@ -197,21 +200,23 @@ class NetBug
                 if (ethLink != lastEthLink) { Event(string.Format("USB ethernet link: {0} -> {1}", lastEthLink == "" ? "?" : lastEthLink, ethLink)); lastEthLink = ethLink; }
                 if (gwMac != "" && gwMac != lastGwMac)
                 {
-                    // same gateway IP, different real MAC: someone else is answering for the router
+                    // same gateway IP, a real MAC other than the trusted one: someone else is answering for the router
                     string gwIp = gw == null ? "" : gw.ToString();
-                    if (lastGwMac.Length == 17 && gwMac.Length == 17 && gwIp == lastGwMacIp)
+                    if (gwMac.Length == 17 && gwIp != trustedGwIp) { trustedGwMac = gwMac; trustedGwIp = gwIp; }
+                    if (gwMac.Length == 17 && gwIp == trustedGwIp && gwMac != trustedGwMac)
                     {
-                        SetGwAlert(string.Format("gateway {0} changed MAC {1} -> {2} at {3:HH:mm:ss}", gwIp, lastGwMac, gwMac, DateTime.Now));
-                        Event(string.Format("GATEWAY MAC CHANGED, possible ARP spoofing: {0} {1} -> {2} (ARP entry {3})", gwIp, lastGwMac, gwMac, gwArp));
+                        SetGwAlert(string.Format("gateway {0} changed MAC {1} -> {2} at {3:HH:mm:ss}", gwIp, trustedGwMac, gwMac, DateTime.Now));
+                        Event(string.Format("GATEWAY MAC CHANGED, possible ARP spoofing: {0} {1} -> {2} (trusted {3}, ARP entry {4})", gwIp, lastGwMac, gwMac, trustedGwMac, gwArp));
                         Snapshot("gw_mac");
                     }
                     else Event(string.Format("gateway MAC: {0} -> {1}", lastGwMac == "" ? "?" : lastGwMac, gwMac));
-                    lastGwMac = gwMac; lastGwMacIp = gwIp;
+                    lastGwMac = gwMac;
                 }
                 if (gwArp != "" && gwArp != lastGwArp)
                 {
                     Event(string.Format("gateway ARP entry for {0}: {1} -> {2}{3}", gw, lastGwArp == "" ? "?" : lastGwArp, gwArp,
                         gwArp == "static" ? " (pinned to " + gwMac + ", spoofed ARP replies are ignored)" : ""));
+                    if (gwArp == "static" && gwMac.Length == 17 && gw != null) { trustedGwMac = gwMac; trustedGwIp = gw.ToString(); }   // the pin is the truth
                     lastGwArp = gwArp;
                 }
                 if (pubIp != "" && pubIp != lastPubIp) { Event(string.Format("public IP: {0} -> {1}", lastPubIp == "" ? "?" : lastPubIp, pubIp)); lastPubIp = pubIp; }
@@ -501,7 +506,7 @@ class NetBug
 
     // Runs tools/arpwatch.ps1 in the background (needs admin for pktmon): a 10 s ARP-only capture
     // on the NICs, printing "<mac> <count>" for every MAC that claimed the gateway IP. Any MAC other
-    // than the expected one is logged as ARP spoofing. Skipped while a snapshot may be using pktmon.
+    // than the trusted gateway MAC is logged as ARP spoofing. Skipped while a snapshot may be using pktmon.
     static void ArpWatchStart(IPAddress gw, string expectMac)
     {
         string script = Path.Combine(baseDir, "tools", "arpwatch.ps1");
@@ -534,7 +539,7 @@ class NetBug
                 {
                     arpWatch = string.Format("spoofing seen {0:HH:mm}: {1}", DateTime.Now, string.Join(", ", rogue));
                     SetGwAlert(string.Format("ARP spoofing seen at {0:HH:mm:ss}: {1} claimed to be gateway {2}", DateTime.Now, string.Join(", ", rogue), gw));
-                    Event(string.Format("ARP SPOOFING DETECTED: gateway {0} claimed by {1} in a 10 s capture (real {2}: {3} claims, ARP entry {4})",
+                    Event(string.Format("ARP SPOOFING DETECTED: gateway {0} claimed by {1} in a 10 s capture (trusted {2}: {3} claims, ARP entry {4})",
                         gw, string.Join(", ", rogue), expectMac, good, gwArp));
                     Snapshot("arp_spoof");
                 }

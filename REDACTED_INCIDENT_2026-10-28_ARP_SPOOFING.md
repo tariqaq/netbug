@@ -17,6 +17,8 @@ Other machines on the LAN were asking for the gateway at the same moment, so the
 
 This is **ARP spoofing / ARP cache poisoning**. It is what tools like NetCut, arpspoof, Bettercap or "WiFiKill" do, and it is common on flat hostel and campus LANs. It explains the symptom pattern the user has had for ~2 years (§6).
 
+**It happened again at 15:28 the same day, from the same device, and it is confirmed as the same issue (§11).**
+
 **Response:**
 - The gateway's MAC was **pinned** on the laptop (a static ARP entry) at 05:50, then **removed at 15:12 at the user's request** (§8). The next incident will first be checked against this one, and a fix applied only if it's the same issue.
 - netbug now raises an alert for a changed gateway MAC, shows whether the gateway is pinned, and runs a periodic ARP watch that detects spoofing even while the pin protects the laptop (§9).
@@ -248,6 +250,68 @@ Verified on the laptop after the change:
 - netbug logged `gateway ARP entry … -> dynamic` (Wi-Fi) and wrote the new `gw_arp` CSV column
 
 ---
+
+## 11. Second occurrence: 2026-10-28 15:28 (same attacker, confirmed)
+
+The pin had been removed at 15:12 so that the next drop would hit the laptop unprotected and could be compared. It came 16 minutes later.
+
+### What the user saw
+- **15:30:17**: Brave stuck on `https://www.reddit.com`, the tab spinning "Loading…" over a blank dark page, no error page. This is the silent-hang symptom.
+- **15:31**: Claude Code (this session) showed *"Can't reach the API server — check your internet or DNS (ENOTFOUND) · Retrying … attempt 6/10"*, then attempt 8/10. The narration generator for the incident video failed at the same moment with a connection timeout to Microsoft's speech server.
+- The user waited, then unplugged Ethernet at **15:31:31** so work could continue on Wi-Fi.
+
+### Timeline (events.log)
+
+| Time | What |
+|---|---|
+| 15:13:26 | netbug restarted (log fixes). Gateway `10.255.31.254` = `xx-xx-xx-xx-xx-xx`, ARP entry `dynamic` (unpinned on purpose). |
+| **15:28:54** | **`GATEWAY MAC CHANGED, possible ARP spoofing: 10.255.31.254 xx-xx-xx-xx-xx-xx -> xx-xx-xx-xx-xx-xx (ARP entry dynamic)`**, with a snapshot right away. This was the new alert's first real use. (The MAC is read every 10 s, so the switch happened between 15:28:44 and 15:28:54.) |
+| 15:28:58 | `OUTAGE START [gw, internet, dns, lag]`, tx/rx 47/11 per s |
+| 15:29:03 | The persistent TLS connection (937 s old) dies: TIMEOUT |
+| 15:29:08 | UDP (STUN) dead too |
+| 15:29:16 | New TCP dead (gw, internet, dns, udp, tcp, lag all failing), tx/rx **102/9** |
+| 15:29:18 – 15:31:14 | TLS reconnects alternate between "connect timed out" and "HostNotFound" |
+| 15:31:31 | User unplugs Ethernet, link down, Wi-Fi takes over |
+| 15:31:33 | `OUTAGE END after 155 s` |
+
+### Evidence (snapshot `2026-10-28_15-28-54_gw_mac`)
+- **Neighbor cache:** `10.255.31.254 -> xx-xx-xx-xx-xx-xx (Probe)` and `10.255.18.145 -> xx-xx-xx-xx-xx-xx`. The **same device and the same IP** as at 05:34.
+- **Probes:** gateway, 1.1.1.1, 8.8.8.8 and the ISP hop all 0/3. DNS via the gateway failed in 7064 ms. TCP to google and discord failed. 8 connections stuck in `SynSent`.
+- **Adapter counters (3 s):** +27 tx, +4 rx, zero errors. The NIC was healthy.
+- **Capture** (15:29:38 – 15:29:54, unique frames):
+  - **42 IPv4 packets from the laptop to `xx-xx-xx-xx-xx-xx`, 0 back.**
+  - **3 spoofed replies**, `xx-xx-xx-xx-xx-xx > laptop: Reply 10.255.31.254 is-at xx-xx-xx-xx-xx-xx`, each answering Windows' re-check within a millisecond (15:29:39, :45, :53).
+  - The real MikroTik `xx-xx-xx-xx-xx-xx` never appears.
+  - **The attacker is seen picking a target:** `xx-xx-xx-xx-xx-xx > broadcast: who-has 10.255.23.47 tell 10.255.18.145`. `10.255.23.47` was a victim at 05:34 too. That is how NetCut-style tools look up their victims' MACs before poisoning them.
+  - **Four other devices** lost the gateway and broadcast "who-has 10.255.31.254": `10.255.16.66`, `10.255.20.57`, `10.255.23.47` and `10.255.23.235` (two at 05:34).
+- Snapshot summary line: `who claimed to be the gateway: xx-xx-xx-xx-xx-xx  3 frame(s)`.
+
+### Comparison with 05:34
+
+| Check (from `AGENTS.md`) | 05:34 | 15:28 | Match |
+|---|---|---|---|
+| Gateway MAC changes to another MAC | `-> xx-xx-xx-xx-xx-xx` | `-> xx-xx-xx-xx-xx-xx` | ✅ |
+| Impostor's own IP | `10.255.18.145` | `10.255.18.145` | ✅ |
+| Pings, DNS, TCP, UDP all die | yes | yes, same order | ✅ |
+| tx up, rx near 0 | 71 out / 0 back | 42 out / 0 back | ✅ |
+| Spoofed unicast replies in capture | 2 | 3 | ✅ |
+| Real router seen | never | never | ✅ |
+| Other victims | 2 | 4 | ✅ (wider) |
+
+**Verdict: the same attack by the same device.** It ran about 10 h apart on the same day and was deliberately targeted (the victim lookup). Each outage ended when the user unplugged (150 s and 155 s), so how long the attacker runs is unknown.
+
+### netbug bug found by this incident (fixed)
+ARP watch compared the capture against the gateway MAC **currently in Windows' ARP cache**. During an attack that *is* the impostor's MAC, so the impostor's replies counted as "real" and nothing was reported. Fixed:
+- netbug now keeps a **trusted** gateway MAC: the first MAC seen for a gateway IP, or the pinned one. A changed MAC never replaces it.
+- `GATEWAY MAC CHANGED` and ARP watch both compare against the trusted MAC.
+- Limit: if netbug starts *during* an attack, the first MAC it sees is the impostor's. Restart it once the network is healthy.
+
+### Pin
+The user agreed to re-pin after this confirmation. The re-pin command was **blocked by Claude Code's permission safeguard**, which wants an explicit approval for a persistent system change. The pin is **not applied** until the user confirms explicitly or runs it in an admin terminal:
+
+```
+netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx store=persistent
+```
 
 ## 10. What the hostel should do (summary of `RCC_REPORT.md`)
 

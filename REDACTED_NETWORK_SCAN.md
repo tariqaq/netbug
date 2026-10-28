@@ -17,7 +17,7 @@ Location: hostel room, wired via room wall port. Kuala Lumpur, Malaysia.
 | 6 | **Windows Firewall is OFF for the Private profile**, and the hostel LAN is marked *Private*. MySQL (3306/33060), SMB (445), RPC and spacedesk (28252) are open to every device on the hostel LAN. The user keeps this on purpose. | Info (user decision) |
 | 7 | Tcpip event 4266: **UDP ephemeral ports exhausted** 45 times since 2026-08-09. **Update:** none of these times match a known outage, so it's a separate background leak (see §10b). netbug flags it if UDP endpoints reach 3000 or more. | Low |
 | 8 | Path MTU = **1492** (TM Unifi PPPoE). The router handles PMTUD correctly. | Info |
-| 9 | **ROOT CAUSE FOUND (10-28 05:34): ARP spoofing on the hostel LAN.** Another device (`10.255.18.145`, MAC `xx-xx-xx-xx-xx-xx`, locally administered/randomized) sent unicast ARP replies claiming to be the gateway `10.255.31.254`. The laptop's ARP cache was poisoned and all traffic went to that device and died for 150 s. Other hosts were asking for the gateway at the same time. See §10c and the full write-up `INCIDENT_2026-10-28_ARP_SPOOFING.md`. **Pin applied 05:50, removed 15:12 at the user's request** until the next incident confirms it's the same issue (§11). | **Critical** |
+| 9 | **ROOT CAUSE FOUND (10-28 05:34), CONFIRMED AGAIN 15:28 (same device): ARP spoofing on the hostel LAN.** Another device (`10.255.18.145`, MAC `xx-xx-xx-xx-xx-xx`, locally administered/randomized) sent unicast ARP replies claiming to be the gateway `10.255.31.254`. The laptop's ARP cache was poisoned and all traffic went to that device and died for 150 s. Other hosts were asking for the gateway at the same time. See §10c and the full write-up `INCIDENT_2026-10-28_ARP_SPOOFING.md`. **Pin applied 05:50, removed 15:12 at the user's request** until the next incident confirms it's the same issue (§11). | **Critical** |
 
 ---
 
@@ -227,6 +227,7 @@ xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, xxx, 
 | **10-24 03:13** | **voice heartbeat ACK took 13.7 s → reconnect code 4800 (heartbeat timeout)** | **nothing at all**: no link change, no DHCP, no NIC event |
 | 10-26 19:44–20:21 | gateway WS closed ~12x, voice WS 1006 | user rebooted 20:23; DNS 1014 on msftconnecttest |
 | 10-28 ~02:56 (during this scan) | (user's whole internet hung: Spotify wouldn't load, browser tabs sat on a blank grey page loading forever, no error page) | DNS-Client 1014 at 02:56. The scan's curl test failed on everything (below). |
+| **10-28 15:28:54–15:31:33** | (caught by netbug, unpinned) | **Second ARP-spoofing attack by the same device** (`xx-xx-xx-xx-xx-xx` / `10.255.18.145`). 155 s until unplugged; 42 packets out, 0 back; 4 other victims. See the incident report §11. |
 | 10-28 04:03:58–04:04:31 | (caught by netbug) | **LAN lag**: gateway RTT 0 → 10–65 ms with loss. Gateway, 1.1.1.1 and 8.8.8.8 often had *identical* RTTs (30/30/30, 65/65/65), so the delay sits on the local segment (hostel LAN or laptop/dongle), not upstream. Own traffic was low. |
 | 10-28 04:13:25–04:13:32 | Claude Code "API Error: Connection lost mid-response" (other session) | netbug saw nothing: gw 0 ms, cf 8 ms, DNS 11 ms, no loss. Either one connection was killed or it was API-side. The persistent-TCP probe was added to catch this class. |
 

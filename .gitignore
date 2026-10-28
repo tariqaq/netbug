@@ -4,3 +4,7 @@ tools/*.exe
 redact.local.txt
 INCIDENT_2026-10-28_ARP_SPOOFING.md
 RCC_REPORT.md
+video/node_modules/
+video/out/
+video/.venv/
+video/data.local.json

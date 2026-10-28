@@ -16,7 +16,7 @@ At 05:34:03 a device on the hostel LAN began sending ARP replies saying **"10.25
 |---|---|
 | **MAC address** | **`xx-xx-xx-xx-xx-xx`** (randomized / locally administered: typical of a phone or laptop with MAC randomization, or a spoofing tool) |
 | **IP address** | **`10.255.18.145`** (the same MAC, seen in my laptop's ARP table) |
-| **Seen active** | 2026-10-28 05:34:03 – 05:36:35 MYT (I left the LAN at 05:36:35, so it may have run longer) |
+| **Seen active** | **twice on 2026-10-28:** 05:34:03 – 05:36:35 and 15:28:44–54 – 15:31:31 MYT. Both times I left the LAN by unplugging, so it may have run longer. |
 | **Behaviour** | sends unicast ARP replies claiming the gateway IP `10.255.31.254`; forwards nothing (blackholes victims) |
 
 ## Evidence (logs available on request)
@@ -36,6 +36,14 @@ All captured automatically by a monitoring tool on my laptop (packet capture tak
    - The real MikroTik MAC `xx-xx-xx-xx-xx-xx` was not seen at all.
    - `10.255.23.47` (`xx-xx-xx-xx-xx-xx`) and `10.255.22.125` (`xx-xx-xx-xx-xx-xx`) broadcast "who-has 10.255.31.254" repeatedly at the same time.
 4. My network card showed no errors and the link stayed up the whole time, so this was not a cable, port or laptop fault.
+
+## Second attack, same day (15:28)
+
+The same device (`xx-xx-xx-xx-xx-xx`, `10.255.18.145`) did it again at **15:28**, about 10 hours later:
+- My laptop's router entry switched to its MAC.
+- 42 packets went to it and **none came back**, and it sent 3 more fake "I am 10.255.31.254" replies.
+- This time **four** other devices lost the router at the same time: `10.255.16.66`, `10.255.20.57`, `10.255.23.47`, `10.255.23.235`.
+- It was also caught **looking up a victim** before attacking (`who-has 10.255.23.47 tell 10.255.18.145`). `10.255.23.47` was hit in the morning too. This is deliberate, repeated cutting of other residents, not a faulty device.
 
 ## How to find it on the MikroTik
 

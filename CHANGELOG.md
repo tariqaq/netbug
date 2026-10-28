@@ -5,6 +5,18 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 15:35: `HASH` second ARP-spoofing attack (15:28) confirmed; netbug trusted gateway MAC
+- **Incident #2:**
+  - At 15:28:54 netbug logged `GATEWAY MAC CHANGED` (`2C-C8-…` to `7A-EC-…`) plus a snapshot. The 155 s outage ended when the user unplugged at 15:31:31.
+  - Same device and IP as 05:34: 42 packets out, 0 back, 3 spoofed replies, 4 other victims, and the attacker caught looking up a victim.
+  - Matches the 05:34 signature on every check. Write-up: incident report §11. Also added to the RCC report, scan report finding #9 and §10b, and the README.
+- netbug fix:
+  - ARP watch compared against the *current* (poisoned) cache MAC, so it would accept the impostor. A **trusted** gateway MAC is now kept: the first MAC seen for a gateway IP, or the pinned one, never replaced by a changed MAC.
+  - `GATEWAY MAC CHANGED` and ARP watch both compare against it.
+- **Machine:** rebuilt `netbug.exe` and restarted the `netbug` task.
+- Re-pin: the user agreed, but Claude Code's permission safeguard blocked the persistent `netsh` change. **Not applied** yet. `AGENTS.md` rule 1 updated.
+- `.gitignore`: `video/node_modules/`, `video/out/`, `video/.venv/`, `video/data.local.json` (incident video in progress).
+
 ### 15:14: `f47a67b` gateway pin removed; 3 netbug log fixes
 - **Machine (user's request), 15:12:** removed the gateway ARP pin (`netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`).
   - Verified: the entry is dynamic/Reachable with the real MikroTik MAC, the PersistentStore is empty, and netbug logs `gw_arp=dynamic`.

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 15:38: `HASH` gateway pin re-applied
+### 15:38: `ae19b4d` gateway pin re-applied
 - **Machine (user-approved: "yes, re-pin the gateway MAC"), 15:37:57:** `netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 <MikroTik MAC> store=persistent`.
   - Before, the cache still held the impostor's MAC (Unreachable). After: Permanent in the active and persistent stores.
   - The user replugged Ethernet after the pin.

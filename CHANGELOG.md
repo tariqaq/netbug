@@ -5,6 +5,15 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 16:11: `HASH` incident video v1
+- Fixed the title misalignment: the 110 px headline was wider than its 1400 px box, and kinetograph falls back to left alignment for text that overflows. Centred text now gets a near-full-width box.
+- Chip labels (times, notes) are vertically centred in their pills.
+- More of kinetograph in use:
+  - `glow` on the impostor, red bubbles, the "0 came back" counter and the red headlines
+  - real `motionBlur` (6 samples) plus a soft glow on moving packets
+- Renders renamed to v1: `out/incident-v1-full.mp4` (local, real MACs) and `incident-v1-redacted.mp4` (committed; replaces `incident-redacted.mp4`). Old renders deleted.
+- Lint: no issues. Audio unchanged (-17.3 LUFS, peak -2.2 dB). ~29 s per render on the RTX 4060.
+
 ### 15:55: GitHub contributor cache refresh
 - **GitHub (user-approved):** the sidebar still listed "claude" as a contributor, from the first push before its co-author trailer was rewritten away. The contributors API already showed only `tariqaq` (41 commits).
 - To force a refresh, the default branch was switched to a temporary `tmp-refresh` (a copy of `main`) and back to `main`, then `tmp-refresh` was deleted. Only `main` remains.

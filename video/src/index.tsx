@@ -10,7 +10,7 @@
 import React from 'react';
 import {
   AbsoluteFill, Audio, Composition, Ellipse, Layer, Path, Rect, Sequence, Text,
-  interpolate, registerRoot, spring, staticFile, useCurrentFrame, Easing,
+  interpolate, registerRoot, spring, staticFile, useCurrentFrame, Easing, glow,
 } from 'remotion';
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono';
@@ -98,21 +98,22 @@ const prog = (f: number, a: number, d = 12) => interpolate(f, [a, a + d], [0, 1]
 const pop = (f: number, a: number) => (f < a ? 0 : spring({ frame: f - a, fps: FPS, config: { damping: 15, stiffness: 160 } }));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** Text centred on (cx, y). */
-const CText: React.FC<{ cx: number; y: number; w?: number; size: number; color?: string; weight?: number; font?: string; opacity?: number; children: React.ReactNode }> =
-  ({ cx, y, w = 1400, size, color = C.ink, weight = 400, font = SANS, opacity = 1, children }) => (
-    <Text x={cx - w / 2} y={y} maxWidth={w} align="center" font={font} weight={weight} size={size} color={color} opacity={opacity} lineHeight={1.2}>{children}</Text>
+/** Text centred on (cx, y). Text wider than `w` would fall back to left alignment, so `w` defaults to almost the full width. */
+const CText: React.FC<{ cx: number; y: number; w?: number; size: number; color?: string; weight?: number; font?: string; opacity?: number; glowAmt?: number; children: React.ReactNode }> =
+  ({ cx, y, w = W - 160, size, color = C.ink, weight = 400, font = SANS, opacity = 1, glowAmt = 0, children }) => (
+    <Text x={cx - w / 2} y={y} maxWidth={w} align="center" font={font} weight={weight} size={size} color={color} opacity={opacity} lineHeight={1.2}
+          effects={glowAmt > 0 ? [glow({ radius: 22, color, intensity: glowAmt })] : []}>{children}</Text>
   );
 
 /** A device card centred on (cx, cy). */
 const Device: React.FC<{ cx: number; cy: number; title: string; sub: string; color: string; show?: number; glow?: number; w?: number }> =
-  ({ cx, cy, title, sub, color, show = 1, glow = 0, w = 300 }) => {
+  ({ cx, cy, title, sub, color, show = 1, glow: glowOn = 0, w = 300 }) => {
     const h = 150;
     return (
       <Layer x={cx} y={cy} scale={lerp(0.85, 1, show)} opacity={show} origin="center">
         <Layer x={-w / 2} y={-h / 2}>
-          {glow > 0 && <Rect x={-10} y={-10} width={w + 20} height={h + 20} radius={30} fill={color} opacity={0.18 * glow} />}
-          <Rect width={w} height={h} radius={24} fill={C.panel} stroke={{ color, width: 3 }} />
+          <Rect width={w} height={h} radius={24} fill={C.panel} stroke={{ color, width: 3 }}
+                effects={glowOn > 0 ? [glow({ radius: 26, color, intensity: 1.4 * glowOn })] : []} />
           <Text x={0} y={34} maxWidth={w} align="center" font={SANS} weight={800} size={34} color={C.ink}>{title}</Text>
           <Text x={0} y={90} maxWidth={w} align="center" font={MONO} weight={500} size={22} color={color}>{sub}</Text>
         </Layer>
@@ -127,7 +128,7 @@ const Bubble: React.FC<{ cx: number; cy: number; text: string; sub?: string; col
     return (
       <Layer x={cx} y={cy} scale={lerp(0.6, 1, show)} opacity={Math.min(1, show * 1.5)} origin="center">
         <Layer x={-w / 2} y={-h / 2}>
-          <Rect width={w} height={h} radius={h / 2} fill={color} />
+          <Rect width={w} height={h} radius={h / 2} fill={color} effects={[glow({ radius: 20, color, intensity: 0.7 * show })]} />
           <Text x={0} y={sub ? 16 : 18} maxWidth={w} align="center" font={SANS} weight={800} size={30} color="#000">{text}</Text>
           {sub && <Text x={0} y={62} maxWidth={w} align="center" font={MONO} weight={500} size={24} color="#000">{sub}</Text>}
         </Layer>
@@ -146,7 +147,7 @@ const Packets: React.FC<{ f: number; a: [number, number]; b: [number, number]; s
       const o = drop ? interpolate(t, [0.85, 1.25], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : interpolate(t, [0, 0.1, 0.9, 1], [0, 1, 1, 0]);
       dots.push(<Ellipse key={s} x={lerp(a[0], b[0], tt) - 9} y={lerp(a[1], b[1], tt) - 9} width={18} height={18} fill={color} opacity={o} />);
     }
-    return <>{dots}</>;
+    return <Layer motionBlur={{ samples: 6, shutter: 0.8 }} effects={[glow({ radius: 8, color, intensity: 0.9 })]}>{dots}</Layer>;
   };
 
 /** A straight link line between two points. */
@@ -178,7 +179,7 @@ const Counter: React.FC<{ x: number; y: number; sent: number; back: number; show
     <Rect width={420} height={130} radius={22} fill={C.panel} stroke={{ color: C.line, width: 2 }} />
     <Text x={0} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.ink}>{String(sent)}</Text>
     <Text x={0} y={92} maxWidth={210} align="center" font={SANS} weight={600} size={20} color={C.ink}>packets sent</Text>
-    <Text x={210} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.bad}>{String(back)}</Text>
+    <Text x={210} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.bad} effects={[glow({ radius: 16, color: C.bad, intensity: show })]}>{String(back)}</Text>
     <Text x={210} y={92} maxWidth={210} align="center" font={SANS} weight={600} size={20} color={C.bad}>came back</Text>
   </Layer>
 );
@@ -187,7 +188,7 @@ const Chip: React.FC<{ x: number; y: number; text: string; color: string; show: 
   ({ x, y, text, color, show, w = 220, font = MONO, size = 26 }) => (
     <Layer x={x} y={y} opacity={show} scale={lerp(0.8, 1, show)} origin="center">
       <Rect width={w} height={52} radius={26} fill="transparent" stroke={{ color, width: 2 }} />
-      <Text x={0} y={11} maxWidth={w} align="center" font={font} weight={font === MONO ? 500 : 600} size={size} color={color}>{text}</Text>
+      <Text x={0} y={(52 - size) / 2} maxWidth={w} align="center" font={font} weight={font === MONO ? 500 : 600} size={size} color={color} lineHeight={1}>{text}</Text>
     </Layer>
   );
 
@@ -374,7 +375,7 @@ const Test: React.FC<{ f: number }> = ({ f }) => {
     <Layer>
       <Chip x={W / 2 - 320} y={180} w={640} text="15:12  protection removed on purpose" color={C.warn} show={a} font={SANS} size={26} />
       <CText cx={W / 2} y={300} size={200} weight={800} font={SANS} opacity={b} color={again > 0.5 ? C.bad : C.ink}>{`15:${String(Math.round(t)).padStart(2, '0')}`}</CText>
-      <CText cx={W / 2} y={560} size={80} weight={800} color={C.bad} opacity={again}>It happened again.</CText>
+      <CText cx={W / 2} y={560} size={80} weight={800} color={C.bad} opacity={again} glowAmt={again}>It happened again.</CText>
     </Layer>
   );
 };
@@ -408,7 +409,7 @@ const Compare: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
           </Layer>
         );
       })}
-      <CText cx={W / 2} y={620} size={52} weight={800} color={C.bad} opacity={fin}>Same device. On purpose.</CText>
+      <CText cx={W / 2} y={620} size={52} weight={800} color={C.bad} opacity={fin} glowAmt={fin}>Same device. On purpose.</CText>
     </Layer>
   );
 };

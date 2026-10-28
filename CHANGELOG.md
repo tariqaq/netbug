@@ -5,6 +5,19 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 18:17: `PENDING` incident video v4
+- Film grain removed (barely visible).
+- Slower pacing: 2:04 to 2:22. Longer cold open, chapter cards (40 to 60 frames), gaps between lines and scenes, and held pauses after key lines and titles.
+- Narrator back to `en-US-AndrewNeural`, with per-line rate and pitch for tone (slower and lower on the dramatic lines; new `rate`/`pitch` fields in `narration.json`).
+- `scripts/tts.py` now runs every clip through a studio-mic chain in ffmpeg: rumble cut, warmth, mud cut, presence, de-essing, compression, exciter, air shelf, peak limiter, 48 kHz. Checked: speech onsets move by only a few ms.
+- Script:
+  - "we removed the protection" is gone (the pin isn't introduced yet at that point). It now says "Then we kept watching, and waited for it to come back."
+  - The PART II card reads "the second attack". The clock in that scene runs 05:36 to 15:28.
+  - New line and visual after attack 1: pulling the cable switched the laptop to a Wi-Fi hotspot, a different network, and the internet came straight back (Ethernet ×, then Wi-Fi hotspot ✓, "internet back at once"), with a calm music cue.
+- Music +3 dB (`MUSIC_LEVEL` 0.14 to 0.2).
+- Mix -14.8 LUFS, peak -0.9 dBFS. 3 Mbit/s, ~55 MB.
+- The committed copy is now `video/incident-v4-redacted.mp4`, replacing v3. v3 is tagged `video-v3` (`68d877a`). Local renders: `out/incident-v4-full.mp4` (real MACs) and `out/incident-v4-redacted.mp4`.
+
 ### 17:44: `68d877a` incident video v3: cinematic cut
 - Restrained true-crime documentary style, still ~2 minutes (2:04).
 - New voice: `en-US-ChristopherNeural` (news/documentary) at +10%, replacing Andrew. The script is tightened, with present tense for the attack and "Same device. Same address. Same lie." as three separate lines.

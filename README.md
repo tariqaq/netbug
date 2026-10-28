@@ -20,7 +20,7 @@ Switching to a phone hotspot *seemed* to bring things back while the cable was o
 
 Nothing in Windows explains it. So netbug watches every layer and timestamps exactly what breaks first.
 
-> 🎯 **Found it (2026-10-28 05:34, and again 15:28 from the same device):** another device on the hostel LAN was **ARP spoofing the gateway**. It told the laptop "I'm the router", then swallowed every packet. netbug caught the gateway MAC change, the outage and the spoofed ARP replies live. Write-up: [`REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`](REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md). Report for the hostel: [`REDACTED_RCC_REPORT.md`](REDACTED_RCC_REPORT.md). 🎬 2-minute narrated explainer: [`video/incident-v3-redacted.mp4`](video/incident-v3-redacted.mp4).
+> 🎯 **Found it (2026-10-28 05:34, and again 15:28 from the same device):** another device on the hostel LAN was **ARP spoofing the gateway**. It told the laptop "I'm the router", then swallowed every packet. netbug caught the gateway MAC change, the outage and the spoofed ARP replies live. Write-up: [`REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`](REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md). Report for the hostel: [`REDACTED_RCC_REPORT.md`](REDACTED_RCC_REPORT.md). 🎬 Narrated explainer (2:22): [`video/incident-v4-redacted.mp4`](video/incident-v4-redacted.mp4).
 
 ---
 

@@ -1,1449 +1,1572 @@
 {
- "voice": "en-US-ChristopherNeural",
+ "voice": "en-US-AndrewNeural",
  "lines": [
   {
    "id": "title1",
    "text": "Two attacks. One day.",
-   "ms": 3216,
-   "speech": 2409,
+   "ms": 2088,
+   "speech": 1671,
    "words": [
     {
      "text": "Two",
-     "start": 95,
-     "end": 323
+     "start": 122,
+     "end": 245
     },
     {
      "text": "attacks.",
-     "start": 334,
-     "end": 993
+     "start": 258,
+     "end": 815
     },
     {
      "text": "One",
-     "start": 1773,
-     "end": 2045
+     "start": 1264,
+     "end": 1399
     },
     {
      "text": "day.",
-     "start": 2057,
-     "end": 2409
+     "start": 1413,
+     "end": 1671
     }
    ]
   },
   {
    "id": "title2",
-   "text": "On October 28th, the hostel internet died twice. Both times, we caught exactly why.",
-   "ms": 6936,
-   "speech": 6136,
+   "text": "On October 28th, the hostel internet died twice. And both times, we caught exactly why.",
+   "ms": 6624,
+   "speech": 6238,
    "words": [
     {
      "text": "On",
-     "start": 95,
-     "end": 289
+     "start": 100,
+     "end": 200
     },
     {
      "text": "October",
-     "start": 300,
-     "end": 817
+     "start": 212,
+     "end": 788
     },
     {
      "text": "28th,",
-     "start": 817,
-     "end": 1334
+     "start": 788,
+     "end": 1362
     },
     {
      "text": "the",
-     "start": 1527,
-     "end": 1618
+     "start": 1575,
+     "end": 1662
     },
     {
      "text": "hostel",
-     "start": 1630,
-     "end": 2016
+     "start": 1675,
+     "end": 2088
     },
     {
      "text": "internet",
-     "start": 2027,
-     "end": 2402
+     "start": 2100,
+     "end": 2525
     },
     {
      "text": "died",
-     "start": 2414,
-     "end": 2686
+     "start": 2600,
+     "end": 2888
     },
     {
      "text": "twice.",
-     "start": 2698,
-     "end": 3209
+     "start": 2900,
+     "end": 3525
     },
     {
-     "text": "Both",
-     "start": 3989,
-     "end": 4261
+     "text": "And",
+     "start": 3938,
+     "end": 4038
+    },
+    {
+     "text": "both",
+     "start": 4050,
+     "end": 4312
     },
     {
      "text": "times,",
-     "start": 4273,
-     "end": 4773
+     "start": 4325,
+     "end": 4838
     },
     {
      "text": "we",
-     "start": 4886,
-     "end": 5023
+     "start": 5012,
+     "end": 5125
     },
     {
      "text": "caught",
-     "start": 5034,
-     "end": 5261
+     "start": 5138,
+     "end": 5362
     },
     {
      "text": "exactly",
-     "start": 5273,
-     "end": 5750
+     "start": 5375,
+     "end": 5875
     },
     {
      "text": "why.",
-     "start": 5761,
-     "end": 6136
+     "start": 5888,
+     "end": 6238
     }
    ]
   },
   {
    "id": "normal1",
-   "text": "Every device on the hostel network first asks one question: who is the router?",
-   "ms": 4824,
-   "speech": 4027,
+   "text": "Every device on the hostel network first asks one simple question: who is the router?",
+   "ms": 5472,
+   "speech": 5085,
    "words": [
     {
      "text": "Every",
-     "start": 95,
-     "end": 345
+     "start": 97,
+     "end": 303
     },
     {
      "text": "device",
-     "start": 357,
-     "end": 755
+     "start": 316,
+     "end": 740
     },
     {
      "text": "on",
-     "start": 766,
-     "end": 845
+     "start": 752,
+     "end": 813
     },
     {
      "text": "the",
-     "start": 857,
-     "end": 914
+     "start": 825,
+     "end": 886
     },
     {
      "text": "hostel",
-     "start": 925,
-     "end": 1323
+     "start": 898,
+     "end": 1299
     },
     {
      "text": "network",
-     "start": 1334,
-     "end": 1686
+     "start": 1311,
+     "end": 1711
     },
     {
      "text": "first",
-     "start": 1698,
-     "end": 1982
+     "start": 1796,
+     "end": 2245
     },
     {
      "text": "asks",
-     "start": 1993,
-     "end": 2300
+     "start": 2269,
+     "end": 2682
     },
     {
      "text": "one",
-     "start": 2311,
-     "end": 2516
+     "start": 2731,
+     "end": 3046
+    },
+    {
+     "text": "simple",
+     "start": 3058,
+     "end": 3422
     },
     {
      "text": "question:",
-     "start": 2527,
-     "end": 2970
+     "start": 3434,
+     "end": 3859
     },
     {
      "text": "who",
-     "start": 3277,
-     "end": 3402
+     "start": 4320,
+     "end": 4454
     },
     {
      "text": "is",
-     "start": 3414,
-     "end": 3527
+     "start": 4466,
+     "end": 4575
     },
     {
      "text": "the",
-     "start": 3539,
-     "end": 3618
+     "start": 4587,
+     "end": 4648
     },
     {
      "text": "router?",
-     "start": 3630,
-     "end": 4027
+     "start": 4660,
+     "end": 5085
     }
    ]
   },
   {
    "id": "normal2",
    "text": "The real router, a MikroTik, answers with its address. All internet traffic then flows through it.",
-   "ms": 6864,
-   "speech": 6057,
+   "ms": 6096,
+   "speech": 5704,
    "words": [
     {
      "text": "The",
-     "start": 95,
-     "end": 232
+     "start": 109,
+     "end": 170
     },
     {
      "text": "real",
-     "start": 243,
-     "end": 539
+     "start": 182,
+     "end": 425
     },
     {
      "text": "router,",
-     "start": 550,
-     "end": 902
+     "start": 437,
+     "end": 813
     },
     {
      "text": "a",
-     "start": 1107,
-     "end": 1141
+     "start": 1019,
+     "end": 1044
     },
     {
      "text": "MikroTik,",
-     "start": 1152,
-     "end": 1811
+     "start": 1056,
+     "end": 1772
     },
     {
      "text": "answers",
-     "start": 2027,
-     "end": 2402
+     "start": 2136,
+     "end": 2488
     },
     {
      "text": "with",
-     "start": 2414,
-     "end": 2539
+     "start": 2500,
+     "end": 2646
     },
     {
      "text": "its",
-     "start": 2550,
-     "end": 2664
+     "start": 2658,
+     "end": 2779
     },
     {
      "text": "address.",
-     "start": 2675,
-     "end": 3209
+     "start": 2791,
+     "end": 3325
     },
     {
      "text": "All",
-     "start": 3989,
-     "end": 4239
+     "start": 3726,
+     "end": 3896
     },
     {
      "text": "internet",
-     "start": 4250,
-     "end": 4636
+     "start": 3908,
+     "end": 4223
     },
     {
      "text": "traffic",
-     "start": 4648,
-     "end": 5068
+     "start": 4235,
+     "end": 4709
     },
     {
      "text": "then",
-     "start": 5080,
-     "end": 5273
+     "start": 4769,
+     "end": 4903
     },
     {
      "text": "flows",
-     "start": 5284,
-     "end": 5648
+     "start": 4915,
+     "end": 5255
     },
     {
      "text": "through",
-     "start": 5659,
-     "end": 5852
+     "start": 5267,
+     "end": 5522
     },
     {
      "text": "it.",
-     "start": 5864,
-     "end": 6057
+     "start": 5534,
+     "end": 5704
     }
    ]
   },
   {
    "id": "a1_1",
    "text": "5:34 and 3 seconds. Another device starts answering instead. Its message: I am the router.",
-   "ms": 8160,
-   "speech": 7352,
+   "ms": 7440,
+   "speech": 7018,
    "words": [
     {
      "text": "5:34",
-     "start": 95,
-     "end": 1130
+     "start": 182,
+     "end": 1107
     },
     {
      "text": "and",
-     "start": 1141,
-     "end": 1243
+     "start": 1250,
+     "end": 1354
     },
     {
      "text": "3",
-     "start": 1255,
-     "end": 1686
+     "start": 1367,
+     "end": 1842
     },
     {
      "text": "seconds.",
-     "start": 1686,
-     "end": 2118
+     "start": 1842,
+     "end": 2318
     },
     {
      "text": "Another",
-     "start": 2898,
-     "end": 3239
+     "start": 2747,
+     "end": 3034
     },
     {
      "text": "device",
-     "start": 3250,
-     "end": 3591
+     "start": 3047,
+     "end": 3438
     },
     {
      "text": "starts",
-     "start": 3602,
-     "end": 3886
+     "start": 3451,
+     "end": 3841
     },
     {
      "text": "answering",
-     "start": 3898,
-     "end": 4318
+     "start": 3854,
+     "end": 4297
     },
     {
      "text": "instead.",
-     "start": 4330,
-     "end": 4852
+     "start": 4310,
+     "end": 4831
     },
     {
      "text": "Its",
-     "start": 5636,
-     "end": 5830
+     "start": 5260,
+     "end": 5365
     },
     {
      "text": "message:",
-     "start": 5841,
-     "end": 6330
+     "start": 5378,
+     "end": 5898
     },
     {
      "text": "I",
-     "start": 6545,
-     "end": 6682
+     "start": 6276,
+     "end": 6380
     },
     {
      "text": "am",
-     "start": 6693,
-     "end": 6807
+     "start": 6393,
+     "end": 6471
     },
     {
      "text": "the",
-     "start": 6818,
-     "end": 6898
+     "start": 6484,
+     "end": 6562
     },
     {
      "text": "router.",
-     "start": 6909,
-     "end": 7352
+     "start": 6576,
+     "end": 7018
     }
    ]
   },
   {
    "id": "a1_2",
    "text": "The laptop believed it. So did two other devices nearby.",
-   "ms": 4848,
-   "speech": 4034,
+   "ms": 3648,
+   "speech": 3262,
    "words": [
     {
      "text": "The",
-     "start": 95,
-     "end": 232
+     "start": 100,
+     "end": 162
     },
     {
      "text": "laptop",
-     "start": 243,
-     "end": 732
+     "start": 175,
+     "end": 588
     },
     {
      "text": "believed",
-     "start": 743,
-     "end": 1095
+     "start": 600,
+     "end": 950
     },
     {
      "text": "it.",
-     "start": 1107,
-     "end": 1289
+     "start": 962,
+     "end": 1112
     },
     {
      "text": "So",
-     "start": 2068,
-     "end": 2318
+     "start": 1538,
+     "end": 1650
     },
     {
      "text": "did",
-     "start": 2330,
-     "end": 2511
+     "start": 1662,
+     "end": 1850
     },
     {
      "text": "two",
-     "start": 2523,
-     "end": 2784
+     "start": 1862,
+     "end": 2100
     },
     {
      "text": "other",
-     "start": 2795,
-     "end": 2989
+     "start": 2112,
+     "end": 2288
     },
     {
      "text": "devices",
-     "start": 3000,
-     "end": 3477
+     "start": 2300,
+     "end": 2775
     },
     {
      "text": "nearby.",
-     "start": 3489,
-     "end": 4034
+     "start": 2788,
+     "end": 3262
     }
    ]
   },
   {
    "id": "a1_3",
    "text": "From that moment, every packet went to the impostor. 71 packets out. Zero came back.",
-   "ms": 7608,
-   "speech": 6807,
+   "ms": 6504,
+   "speech": 6079,
    "words": [
     {
      "text": "From",
-     "start": 95,
-     "end": 311
+     "start": 145,
+     "end": 263
     },
     {
      "text": "that",
-     "start": 323,
-     "end": 493
+     "start": 276,
+     "end": 461
     },
     {
      "text": "moment,",
-     "start": 505,
-     "end": 891
+     "start": 474,
+     "end": 855
     },
     {
      "text": "every",
-     "start": 1084,
-     "end": 1300
+     "start": 1250,
+     "end": 1461
     },
     {
      "text": "packet",
-     "start": 1311,
-     "end": 1698
+     "start": 1474,
+     "end": 1974
     },
     {
      "text": "went",
-     "start": 1709,
-     "end": 1868
+     "start": 1987,
+     "end": 2145
     },
     {
      "text": "to",
-     "start": 1880,
-     "end": 1959
+     "start": 2158,
+     "end": 2237
     },
     {
      "text": "the",
-     "start": 1970,
-     "end": 2039
+     "start": 2250,
+     "end": 2342
     },
     {
      "text": "impostor.",
-     "start": 2050,
-     "end": 2720
+     "start": 2355,
+     "end": 3079
     },
     {
      "text": "71",
-     "start": 3500,
-     "end": 4159
+     "start": 3526,
+     "end": 4053
     },
     {
      "text": "packets",
-     "start": 4170,
-     "end": 4557
+     "start": 4066,
+     "end": 4513
     },
     {
      "text": "out.",
-     "start": 4568,
-     "end": 4898
+     "start": 4526,
+     "end": 4776
     },
     {
      "text": "Zero",
-     "start": 5682,
-     "end": 6114
+     "start": 5211,
+     "end": 5434
     },
     {
      "text": "came",
-     "start": 6125,
-     "end": 6375
+     "start": 5447,
+     "end": 5658
     },
     {
      "text": "back.",
-     "start": 6386,
-     "end": 6807
+     "start": 5671,
+     "end": 6079
     }
    ]
   },
   {
    "id": "sym1",
    "text": "That's why Discord shows five thousand milliseconds, friends can't hear you, and pages load forever, with no error.",
-   "ms": 7272,
-   "speech": 6470,
+   "ms": 6936,
+   "speech": 6553,
    "words": [
     {
      "text": "That's",
-     "start": 95,
-     "end": 368
+     "start": 109,
+     "end": 267
     },
     {
      "text": "why",
-     "start": 380,
-     "end": 539
+     "start": 279,
+     "end": 413
     },
     {
      "text": "Discord",
-     "start": 550,
-     "end": 1005
+     "start": 425,
+     "end": 862
     },
     {
      "text": "shows",
-     "start": 1016,
-     "end": 1357
+     "start": 874,
+     "end": 1177
     },
     {
      "text": "five",
-     "start": 1368,
-     "end": 1664
+     "start": 1189,
+     "end": 1553
     },
     {
      "text": "thousand",
-     "start": 1675,
-     "end": 2061
+     "start": 1566,
+     "end": 1966
     },
     {
      "text": "milliseconds,",
-     "start": 2073,
-     "end": 2720
+     "start": 1978,
+     "end": 2706
     },
     {
      "text": "friends",
-     "start": 2902,
-     "end": 3220
+     "start": 2949,
+     "end": 3192
     },
     {
      "text": "can't",
-     "start": 3232,
-     "end": 3482
+     "start": 3204,
+     "end": 3447
     },
     {
      "text": "hear",
-     "start": 3493,
-     "end": 3709
+     "start": 3459,
+     "end": 3689
     },
     {
      "text": "you,",
-     "start": 3720,
-     "end": 3891
+     "start": 3701,
+     "end": 3871
     },
     {
      "text": "and",
-     "start": 4141,
-     "end": 4300
+     "start": 4248,
+     "end": 4345
     },
     {
      "text": "pages",
-     "start": 4311,
-     "end": 4732
+     "start": 4357,
+     "end": 4806
     },
     {
      "text": "load",
-     "start": 4743,
-     "end": 5005
+     "start": 4818,
+     "end": 5036
     },
     {
      "text": "forever,",
-     "start": 5016,
-     "end": 5470
+     "start": 5049,
+     "end": 5534
     },
     {
      "text": "with",
-     "start": 5664,
-     "end": 5811
+     "start": 5813,
+     "end": 5934
     },
     {
      "text": "no",
-     "start": 5823,
-     "end": 6073
+     "start": 5947,
+     "end": 6177
     },
     {
      "text": "error.",
-     "start": 6084,
-     "end": 6470
+     "start": 6189,
+     "end": 6553
     }
    ]
   },
   {
    "id": "sym2",
    "text": "Nothing comes back, so nothing can even fail properly.",
-   "ms": 3912,
-   "speech": 3107,
+   "ms": 3456,
+   "speech": 3050,
    "words": [
     {
      "text": "Nothing",
-     "start": 95,
-     "end": 493
+     "start": 100,
+     "end": 350
     },
     {
      "text": "comes",
-     "start": 505,
-     "end": 755
+     "start": 362,
+     "end": 600
     },
     {
      "text": "back,",
-     "start": 766,
-     "end": 1095
+     "start": 612,
+     "end": 1000
     },
     {
      "text": "so",
-     "start": 1277,
-     "end": 1436
+     "start": 1288,
+     "end": 1438
     },
     {
      "text": "nothing",
-     "start": 1448,
-     "end": 1823
+     "start": 1450,
+     "end": 1850
     },
     {
      "text": "can",
-     "start": 1834,
-     "end": 1982
+     "start": 1862,
+     "end": 2012
     },
     {
      "text": "even",
-     "start": 1993,
-     "end": 2232
+     "start": 2025,
+     "end": 2225
     },
     {
      "text": "fail",
-     "start": 2243,
-     "end": 2527
+     "start": 2238,
+     "end": 2500
     },
     {
      "text": "properly.",
-     "start": 2539,
-     "end": 3107
+     "start": 2512,
+     "end": 3050
     }
    ]
   },
   {
    "id": "a1_end",
    "text": "Two and a half minutes, until the cable was pulled. netbug recorded every second.",
-   "ms": 6000,
-   "speech": 5216,
+   "ms": 5424,
+   "speech": 5038,
    "words": [
     {
      "text": "Two",
-     "start": 95,
-     "end": 368
+     "start": 112,
+     "end": 388
     },
     {
      "text": "and",
-     "start": 380,
-     "end": 470
+     "start": 400,
+     "end": 475
     },
     {
      "text": "a",
-     "start": 482,
-     "end": 527
+     "start": 488,
+     "end": 525
     },
     {
      "text": "half",
-     "start": 539,
-     "end": 811
+     "start": 538,
+     "end": 825
     },
     {
      "text": "minutes,",
-     "start": 823,
-     "end": 1232
+     "start": 838,
+     "end": 1275
     },
     {
      "text": "until",
-     "start": 1436,
-     "end": 1686
+     "start": 1538,
+     "end": 1750
     },
     {
      "text": "the",
-     "start": 1698,
-     "end": 1777
+     "start": 1762,
+     "end": 1838
     },
     {
      "text": "cable",
-     "start": 1789,
-     "end": 2118
+     "start": 1850,
+     "end": 2150
     },
     {
      "text": "was",
-     "start": 2130,
-     "end": 2266
+     "start": 2162,
+     "end": 2300
     },
     {
      "text": "pulled.",
-     "start": 2277,
-     "end": 2720
+     "start": 2312,
+     "end": 2700
     },
     {
      "text": "netbug",
-     "start": 3500,
-     "end": 4000
+     "start": 3112,
+     "end": 3575
     },
     {
      "text": "recorded",
-     "start": 4011,
-     "end": 4466
+     "start": 3588,
+     "end": 4125
     },
     {
      "text": "every",
-     "start": 4477,
-     "end": 4705
+     "start": 4312,
+     "end": 4538
     },
     {
      "text": "second.",
-     "start": 4716,
-     "end": 5216
+     "start": 4550,
+     "end": 5038
+    }
+   ]
+  },
+  {
+   "id": "a1_wifi",
+   "text": "Without the cable, the laptop switched to a Wi-Fi hotspot, a different network, and the internet came straight back.",
+   "ms": 6936,
+   "speech": 6550,
+   "words": [
+    {
+     "text": "Without",
+     "start": 112,
+     "end": 388
+    },
+    {
+     "text": "the",
+     "start": 400,
+     "end": 475
+    },
+    {
+     "text": "cable,",
+     "start": 488,
+     "end": 875
+    },
+    {
+     "text": "the",
+     "start": 1112,
+     "end": 1200
+    },
+    {
+     "text": "laptop",
+     "start": 1212,
+     "end": 1688
+    },
+    {
+     "text": "switched",
+     "start": 1700,
+     "end": 2050
+    },
+    {
+     "text": "to",
+     "start": 2062,
+     "end": 2175
+    },
+    {
+     "text": "a",
+     "start": 2188,
+     "end": 2288
+    },
+    {
+     "text": "Wi-Fi",
+     "start": 2300,
+     "end": 2775
+    },
+    {
+     "text": "hotspot,",
+     "start": 2788,
+     "end": 3488
+    },
+    {
+     "text": "a",
+     "start": 3850,
+     "end": 3912
+    },
+    {
+     "text": "different",
+     "start": 3925,
+     "end": 4225
+    },
+    {
+     "text": "network,",
+     "start": 4238,
+     "end": 4688
+    },
+    {
+     "text": "and",
+     "start": 4988,
+     "end": 5038
+    },
+    {
+     "text": "the",
+     "start": 5050,
+     "end": 5138
+    },
+    {
+     "text": "internet",
+     "start": 5150,
+     "end": 5575
+    },
+    {
+     "text": "came",
+     "start": 5588,
+     "end": 5800
+    },
+    {
+     "text": "straight",
+     "start": 5812,
+     "end": 6150
+    },
+    {
+     "text": "back.",
+     "start": 6162,
+     "end": 6550
     }
    ]
   },
   {
    "id": "test1",
-   "text": "To be sure, we removed the protection. And waited.",
-   "ms": 4344,
-   "speech": 3557,
+   "text": "Then we kept watching, and waited for it to come back.",
+   "ms": 3072,
+   "speech": 2675,
    "words": [
     {
-     "text": "To",
-     "start": 95,
-     "end": 209
-    },
-    {
-     "text": "be",
-     "start": 220,
-     "end": 323
-    },
-    {
-     "text": "sure,",
-     "start": 334,
-     "end": 720
+     "text": "Then",
+     "start": 112,
+     "end": 200
     },
     {
      "text": "we",
-     "start": 925,
-     "end": 1061
+     "start": 212,
+     "end": 312
     },
     {
-     "text": "removed",
-     "start": 1073,
-     "end": 1448
+     "text": "kept",
+     "start": 325,
+     "end": 562
     },
     {
-     "text": "the",
-     "start": 1459,
-     "end": 1527
+     "text": "watching,",
+     "start": 575,
+     "end": 1038
     },
     {
-     "text": "protection.",
-     "start": 1539,
-     "end": 2141
+     "text": "and",
+     "start": 1288,
+     "end": 1412
     },
     {
-     "text": "And",
-     "start": 2920,
-     "end": 3102
+     "text": "waited",
+     "start": 1425,
+     "end": 1725
     },
     {
-     "text": "waited.",
-     "start": 3114,
-     "end": 3557
+     "text": "for",
+     "start": 1738,
+     "end": 1888
+    },
+    {
+     "text": "it",
+     "start": 1900,
+     "end": 1962
+    },
+    {
+     "text": "to",
+     "start": 1975,
+     "end": 2050
+    },
+    {
+     "text": "come",
+     "start": 2062,
+     "end": 2238
+    },
+    {
+     "text": "back.",
+     "start": 2250,
+     "end": 2675
     }
    ]
   },
   {
    "id": "test2",
    "text": "At 3:28 that afternoon, it happened again.",
-   "ms": 3672,
-   "speech": 2880,
+   "ms": 3288,
+   "speech": 2878,
    "words": [
     {
      "text": "At",
-     "start": 95,
-     "end": 289
+     "start": 104,
+     "end": 221
     },
     {
      "text": "3:28",
-     "start": 300,
-     "end": 1050
+     "start": 234,
+     "end": 1016
     },
     {
      "text": "that",
-     "start": 1061,
-     "end": 1209
+     "start": 1029,
+     "end": 1198
     },
     {
      "text": "afternoon,",
-     "start": 1220,
-     "end": 1755
+     "start": 1211,
+     "end": 1810
     },
     {
      "text": "it",
-     "start": 2027,
-     "end": 2130
+     "start": 2109,
+     "end": 2161
     },
     {
      "text": "happened",
-     "start": 2141,
-     "end": 2470
+     "start": 2174,
+     "end": 2526
     },
     {
      "text": "again.",
-     "start": 2482,
-     "end": 2880
+     "start": 2539,
+     "end": 2878
     }
    ]
   },
   {
    "id": "a2_dev",
    "text": "Same device.",
-   "ms": 1872,
-   "speech": 1039,
+   "ms": 1896,
+   "speech": 883,
    "words": [
     {
      "text": "Same",
-     "start": 95,
-     "end": 436
+     "start": 109,
+     "end": 299
     },
     {
      "text": "device.",
-     "start": 448,
-     "end": 1039
+     "start": 312,
+     "end": 883
     }
    ]
   },
   {
    "id": "a2_addr",
    "text": "Same address.",
-   "ms": 1872,
-   "speech": 1016,
+   "ms": 1896,
+   "speech": 774,
    "words": [
     {
      "text": "Same",
-     "start": 95,
-     "end": 448
+     "start": 109,
+     "end": 299
     },
     {
      "text": "address.",
-     "start": 459,
-     "end": 1016
+     "start": 312,
+     "end": 774
     }
    ]
   },
   {
    "id": "a2_lie",
    "text": "Same lie.",
-   "ms": 1872,
-   "speech": 880,
+   "ms": 1896,
+   "speech": 667,
    "words": [
     {
      "text": "Same",
-     "start": 95,
-     "end": 482
+     "start": 125,
+     "end": 361
     },
     {
      "text": "lie.",
-     "start": 493,
-     "end": 880
+     "start": 375,
+     "end": 667
     }
    ]
   },
   {
    "id": "a2_count",
    "text": "42 packets out. Zero back.",
-   "ms": 3888,
-   "speech": 3091,
+   "ms": 2712,
+   "speech": 2292,
    "words": [
     {
      "text": "42",
-     "start": 95,
-     "end": 675
+     "start": 143,
+     "end": 534
     },
     {
      "text": "packets",
-     "start": 686,
-     "end": 1107
+     "start": 547,
+     "end": 964
     },
     {
      "text": "out.",
-     "start": 1118,
-     "end": 1448
+     "start": 977,
+     "end": 1224
     },
     {
      "text": "Zero",
-     "start": 2227,
-     "end": 2636
+     "start": 1654,
+     "end": 1888
     },
     {
      "text": "back.",
-     "start": 2648,
-     "end": 3091
+     "start": 1901,
+     "end": 2292
     }
    ]
   },
   {
    "id": "a2_more",
    "text": "Four more devices lost the router, and the capture caught the attacker looking up its next victim: one it had already cut off that morning.",
-   "ms": 7152,
-   "speech": 6368,
+   "ms": 7752,
+   "speech": 7362,
    "words": [
     {
      "text": "Four",
-     "start": 95,
-     "end": 266
+     "start": 150,
+     "end": 238
     },
     {
      "text": "more",
-     "start": 277,
-     "end": 459
+     "start": 250,
+     "end": 462
     },
     {
      "text": "devices",
-     "start": 470,
-     "end": 959
+     "start": 475,
+     "end": 1012
     },
     {
      "text": "lost",
-     "start": 970,
-     "end": 1255
+     "start": 1025,
+     "end": 1388
     },
     {
      "text": "the",
-     "start": 1266,
-     "end": 1334
+     "start": 1400,
+     "end": 1475
     },
     {
      "text": "router,",
-     "start": 1345,
-     "end": 1709
+     "start": 1488,
+     "end": 1912
     },
     {
      "text": "and",
-     "start": 1936,
-     "end": 1993
+     "start": 2212,
+     "end": 2262
     },
     {
      "text": "the",
-     "start": 2005,
-     "end": 2084
+     "start": 2275,
+     "end": 2350
     },
     {
      "text": "capture",
-     "start": 2095,
-     "end": 2482
-    },
-    {
-     "text": "caught",
-     "start": 2493,
-     "end": 2720
-    },
-    {
-     "text": "the",
-     "start": 2732,
+     "start": 2362,
      "end": 2800
     },
     {
+     "text": "caught",
+     "start": 2812,
+     "end": 3100
+    },
+    {
+     "text": "the",
+     "start": 3112,
+     "end": 3212
+    },
+    {
      "text": "attacker",
-     "start": 2811,
-     "end": 3232
+     "start": 3225,
+     "end": 3725
     },
     {
      "text": "looking",
-     "start": 3243,
-     "end": 3527
+     "start": 3738,
+     "end": 4088
     },
     {
      "text": "up",
-     "start": 3539,
-     "end": 3641
+     "start": 4100,
+     "end": 4275
     },
     {
      "text": "its",
-     "start": 3652,
-     "end": 3766
+     "start": 4350,
+     "end": 4488
     },
     {
      "text": "next",
-     "start": 3777,
-     "end": 4039
+     "start": 4500,
+     "end": 4838
     },
     {
      "text": "victim:",
-     "start": 4050,
-     "end": 4414
+     "start": 4850,
+     "end": 5225
     },
     {
      "text": "one",
-     "start": 4709,
-     "end": 4834
+     "start": 5625,
+     "end": 5738
     },
     {
      "text": "it",
-     "start": 4845,
-     "end": 4891
+     "start": 5750,
+     "end": 5825
     },
     {
      "text": "had",
-     "start": 4902,
-     "end": 5016
+     "start": 5838,
+     "end": 5975
     },
     {
      "text": "already",
-     "start": 5027,
-     "end": 5368
+     "start": 5988,
+     "end": 6350
     },
     {
      "text": "cut",
-     "start": 5380,
-     "end": 5584
+     "start": 6362,
+     "end": 6600
     },
     {
      "text": "off",
-     "start": 5595,
-     "end": 5777
+     "start": 6612,
+     "end": 6825
     },
     {
      "text": "that",
-     "start": 5789,
-     "end": 5948
+     "start": 6838,
+     "end": 7012
     },
     {
      "text": "morning.",
-     "start": 5959,
-     "end": 6368
+     "start": 7025,
+     "end": 7362
     }
    ]
   },
   {
    "id": "cmp1",
    "text": "Every detail matched. Not a broken router. Not a bad cable.",
-   "ms": 5904,
-   "speech": 5114,
+   "ms": 4248,
+   "speech": 3850,
    "words": [
     {
      "text": "Every",
-     "start": 95,
-     "end": 391
+     "start": 100,
+     "end": 338
     },
     {
      "text": "detail",
-     "start": 402,
-     "end": 823
+     "start": 350,
+     "end": 775
     },
     {
      "text": "matched.",
-     "start": 834,
-     "end": 1323
+     "start": 788,
+     "end": 1275
     },
     {
      "text": "Not",
-     "start": 2102,
-     "end": 2364
+     "start": 1688,
+     "end": 1800
     },
     {
      "text": "a",
-     "start": 2375,
-     "end": 2432
+     "start": 1812,
+     "end": 1850
     },
     {
      "text": "broken",
-     "start": 2443,
-     "end": 2818
+     "start": 1862,
+     "end": 2188
     },
     {
      "text": "router.",
-     "start": 2830,
-     "end": 3239
+     "start": 2200,
+     "end": 2600
     },
     {
      "text": "Not",
-     "start": 4023,
-     "end": 4273
+     "start": 3012,
+     "end": 3138
     },
     {
      "text": "a",
-     "start": 4284,
-     "end": 4341
+     "start": 3150,
+     "end": 3188
     },
     {
      "text": "bad",
-     "start": 4352,
-     "end": 4648
+     "start": 3200,
+     "end": 3462
     },
     {
      "text": "cable.",
-     "start": 4659,
-     "end": 5114
+     "start": 3475,
+     "end": 3850
     }
    ]
   },
   {
    "id": "cmp2",
    "text": "Someone on this network is cutting people off. On purpose.",
-   "ms": 4824,
-   "speech": 4023,
+   "ms": 4056,
+   "speech": 3630,
    "words": [
     {
      "text": "Someone",
-     "start": 95,
-     "end": 493
+     "start": 120,
+     "end": 412
     },
     {
      "text": "on",
-     "start": 505,
-     "end": 618
+     "start": 426,
+     "end": 532
     },
     {
      "text": "this",
-     "start": 630,
-     "end": 789
+     "start": 545,
+     "end": 745
     },
     {
      "text": "network",
-     "start": 800,
-     "end": 1209
+     "start": 758,
+     "end": 1223
     },
     {
      "text": "is",
-     "start": 1220,
-     "end": 1345
+     "start": 1343,
+     "end": 1449
     },
     {
      "text": "cutting",
-     "start": 1357,
-     "end": 1607
+     "start": 1463,
+     "end": 1769
     },
     {
      "text": "people",
-     "start": 1618,
-     "end": 1936
+     "start": 1782,
+     "end": 2128
     },
     {
      "text": "off.",
-     "start": 1948,
-     "end": 2345
+     "start": 2141,
+     "end": 2513
     },
     {
      "text": "On",
-     "start": 3125,
-     "end": 3364
+     "start": 2952,
+     "end": 3072
     },
     {
      "text": "purpose.",
-     "start": 3375,
-     "end": 4023
+     "start": 3085,
+     "end": 3630
     }
    ]
   },
   {
    "id": "fix1",
    "text": "The fix on this laptop: pin the real router's address. Fake replies are simply ignored.",
-   "ms": 6480,
-   "speech": 5693,
+   "ms": 5400,
+   "speech": 5000,
    "words": [
     {
      "text": "The",
-     "start": 95,
-     "end": 232
+     "start": 112,
+     "end": 162
     },
     {
      "text": "fix",
-     "start": 243,
-     "end": 550
+     "start": 175,
+     "end": 425
     },
     {
      "text": "on",
-     "start": 561,
-     "end": 675
+     "start": 438,
+     "end": 538
     },
     {
      "text": "this",
-     "start": 686,
-     "end": 857
+     "start": 550,
+     "end": 712
     },
     {
      "text": "laptop:",
-     "start": 868,
-     "end": 1425
+     "start": 725,
+     "end": 1262
     },
     {
      "text": "pin",
-     "start": 1630,
-     "end": 1823
+     "start": 1525,
+     "end": 1688
     },
     {
      "text": "the",
-     "start": 1834,
-     "end": 1914
+     "start": 1700,
+     "end": 1800
     },
     {
      "text": "real",
-     "start": 1925,
-     "end": 2220
+     "start": 1812,
+     "end": 2112
     },
     {
      "text": "router's",
-     "start": 2232,
-     "end": 2561
+     "start": 2125,
+     "end": 2475
     },
     {
      "text": "address.",
-     "start": 2573,
-     "end": 3095
+     "start": 2488,
+     "end": 3025
     },
     {
      "text": "Fake",
-     "start": 3875,
-     "end": 4193
+     "start": 3488,
+     "end": 3638
     },
     {
      "text": "replies",
-     "start": 4205,
-     "end": 4682
+     "start": 3650,
+     "end": 4088
     },
     {
      "text": "are",
-     "start": 4693,
-     "end": 4795
+     "start": 4100,
+     "end": 4188
     },
     {
      "text": "simply",
-     "start": 4807,
-     "end": 5148
+     "start": 4200,
+     "end": 4562
     },
     {
      "text": "ignored.",
-     "start": 5159,
-     "end": 5693
+     "start": 4575,
+     "end": 5000
     }
    ]
   },
   {
    "id": "fix2",
    "text": "Reconnecting then worked instantly. But the pin protects only this laptop, and only its outgoing traffic.",
-   "ms": 7008,
-   "speech": 6205,
+   "ms": 6552,
+   "speech": 6150,
    "words": [
     {
      "text": "Reconnecting",
-     "start": 95,
-     "end": 720
+     "start": 100,
+     "end": 712
     },
     {
      "text": "then",
-     "start": 732,
-     "end": 914
+     "start": 725,
+     "end": 888
     },
     {
      "text": "worked",
-     "start": 925,
-     "end": 1164
+     "start": 900,
+     "end": 1200
     },
     {
      "text": "instantly.",
-     "start": 1175,
-     "end": 1766
+     "start": 1212,
+     "end": 1762
     },
     {
      "text": "But",
-     "start": 2545,
-     "end": 2682
+     "start": 2188,
+     "end": 2275
     },
     {
      "text": "the",
-     "start": 2693,
-     "end": 2784
+     "start": 2288,
+     "end": 2375
     },
     {
      "text": "pin",
-     "start": 2795,
-     "end": 3045
+     "start": 2388,
+     "end": 2588
     },
     {
      "text": "protects",
-     "start": 3057,
-     "end": 3466
+     "start": 2600,
+     "end": 3100
     },
     {
      "text": "only",
-     "start": 3477,
-     "end": 3705
+     "start": 3200,
+     "end": 3500
     },
     {
      "text": "this",
-     "start": 3716,
-     "end": 3909
+     "start": 3512,
+     "end": 3688
     },
     {
      "text": "laptop,",
-     "start": 3920,
-     "end": 4432
+     "start": 3700,
+     "end": 4275
     },
     {
      "text": "and",
-     "start": 4614,
-     "end": 4761
+     "start": 4550,
+     "end": 4688
     },
     {
      "text": "only",
-     "start": 4773,
-     "end": 5045
+     "start": 4700,
+     "end": 5000
     },
     {
      "text": "its",
-     "start": 5057,
-     "end": 5182
+     "start": 5012,
+     "end": 5150
     },
     {
      "text": "outgoing",
-     "start": 5193,
-     "end": 5636
+     "start": 5162,
+     "end": 5575
     },
     {
      "text": "traffic.",
-     "start": 5648,
-     "end": 6205
+     "start": 5588,
+     "end": 6150
     }
    ]
   },
   {
    "id": "rcc",
    "text": "For the hostel team: find this device on the MikroTik, then turn on client isolation and ARP protection. That protects everyone.",
-   "ms": 8784,
-   "speech": 7989,
+   "ms": 8568,
+   "speech": 8175,
    "words": [
     {
      "text": "For",
-     "start": 95,
-     "end": 255
+     "start": 112,
+     "end": 175
     },
     {
      "text": "the",
-     "start": 266,
-     "end": 345
+     "start": 188,
+     "end": 250
     },
     {
      "text": "hostel",
-     "start": 357,
-     "end": 743
+     "start": 262,
+     "end": 675
     },
     {
      "text": "team:",
-     "start": 755,
-     "end": 1107
+     "start": 688,
+     "end": 1025
     },
     {
      "text": "find",
-     "start": 1345,
-     "end": 1607
+     "start": 1438,
+     "end": 1712
     },
     {
      "text": "this",
-     "start": 1618,
-     "end": 1743
+     "start": 1725,
+     "end": 1875
     },
     {
      "text": "device",
-     "start": 1755,
-     "end": 2141
+     "start": 1888,
+     "end": 2350
     },
     {
      "text": "on",
-     "start": 2152,
-     "end": 2232
+     "start": 2362,
+     "end": 2438
     },
     {
      "text": "the",
-     "start": 2243,
-     "end": 2289
+     "start": 2450,
+     "end": 2512
     },
     {
      "text": "MikroTik,",
-     "start": 2300,
-     "end": 2959
+     "start": 2525,
+     "end": 3300
     },
     {
      "text": "then",
-     "start": 3209,
-     "end": 3391
+     "start": 3612,
+     "end": 3775
     },
     {
      "text": "turn",
-     "start": 3402,
-     "end": 3607
+     "start": 3788,
+     "end": 4025
     },
     {
      "text": "on",
-     "start": 3618,
-     "end": 3743
+     "start": 4038,
+     "end": 4175
     },
     {
      "text": "client",
-     "start": 3755,
-     "end": 4107
+     "start": 4188,
+     "end": 4612
     },
     {
      "text": "isolation",
-     "start": 4118,
-     "end": 4766
+     "start": 4625,
+     "end": 5350
     },
     {
      "text": "and",
-     "start": 4777,
-     "end": 4925
+     "start": 5438,
+     "end": 5588
     },
     {
      "text": "ARP",
-     "start": 4936,
-     "end": 5391
+     "start": 5675,
+     "end": 6038
     },
     {
      "text": "protection.",
-     "start": 5402,
-     "end": 6005
+     "start": 6050,
+     "end": 6625
     },
     {
      "text": "That",
-     "start": 6784,
-     "end": 7023
+     "start": 7050,
+     "end": 7162
     },
     {
      "text": "protects",
-     "start": 7034,
-     "end": 7455
+     "start": 7175,
+     "end": 7625
     },
     {
      "text": "everyone.",
-     "start": 7466,
-     "end": 7989
+     "start": 7725,
+     "end": 8175
     }
    ]
   }

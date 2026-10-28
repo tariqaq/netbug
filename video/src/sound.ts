@@ -38,7 +38,7 @@ const noiseBuffer = (ctx: Ctx, secs: number, seed: number) => {
 /** Stem levels. NETBUG_SOLO=music|sfx|voice in the environment mutes the other stems, for measuring the mix. */
 const SOLO = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.NETBUG_SOLO;
 export const soloMutes = (stem: 'music' | 'sfx' | 'voice') => !!SOLO && SOLO !== stem;
-const MUSIC_LEVEL = 0.14;
+const MUSIC_LEVEL = 0.2;
 const SFX_LEVEL = 0.35;
 
 /** Ducking: music drops to `depth` while the narrator speaks. Spans in seconds; set by the film before rendering. */

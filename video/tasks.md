@@ -1,9 +1,9 @@
-# Video v3: cinematic cut (task tracker)
+# Incident video: task tracker (v3 cinematic cut, v4 revision)
 
-Resume point for any new session: read this file top to bottom, then continue from the first unchecked box in **Progress**. Update this file **immediately** after every finished step (tick the box, add a log line with system-clock time).
+Resume point for any new session: read this file top to bottom, then continue from the first unchecked box in **v4 progress** (v3 is done). Update this file **immediately** after every finished step (tick the box, add a log line with system-clock time).
 
 - Created: 2026-10-28 17:13 MYT
-- Status: **DONE** (v3 delivered; waiting for the user's verdict on the synth score, see Q1)
+- Status: **v4 IN PROGRESS** (v3 done and pushed as `68d877a`)
 - Base: v2 (`eac8d45`), `src/index.tsx`, 3582 frames (1:59.4), 18 narration lines
 
 ## Goal
@@ -68,7 +68,37 @@ Same facts as v2 (both attacks of 2026-10-28 in full detail, the pin fix, the RC
 - `narration.json` and `public/vo/*`: re-voiced if Q3 changes the voice or rate.
 - If Q1 = b/c: `public/music/<file>` plus a licence note in `video/README.md`.
 
-## Progress
+## v4 (requested 2026-10-28 18:06)
+
+User feedback on v3, all to do:
+1. Remove the film grain (barely noticeable).
+2. Slower pacing, a bit longer is fine, so title screens and cards don't fly by.
+3. Back to the previous narrator (en-US-AndrewNeural). Make him sound like a good studio mic, not computer-generated, with more tone and personality.
+4. Background music a bit louder.
+5. Don't say "we removed the protection": the protection isn't established at that point in the film. Say we waited for it to happen again.
+6. Make clear that when Ethernet is pulled, the laptop switches to a Wi-Fi hotspot and gets internet back (incident report: 05:36:35 and 15:31:31, Wi-Fi took over).
+
+Approach:
+- Grain: drop the `grain` effect from the root layer.
+- Pacing: longer cold open, title hold, chapter cards (40 -> 60 frames), line gaps and scene tails; target ~2:15-2:25.
+- Voice: Andrew, a little slower; per-line `rate`/`pitch` overrides in narration.json for tone (slower and lower on dramatic lines). Studio-mic processing in tts.py with ffmpeg (high-pass, warmth, mud cut, presence, air, de-ess, gentle compression, exciter, 48 kHz). The filters add no delay, so word timings stay valid (check durations).
+- Music: MUSIC_LEVEL +3 dB.
+- Script: test1 becomes "Then we waited, to see if it would come back."; the PART II card and test chip no longer mention removing protection; the clock runs 05:36 -> 15:28.
+- Hotspot: new line after a1_end plus a visual (Ethernet cut, then Wi-Fi hotspot connected, internet back).
+
+## v4 progress
+
+- [x] V4.0 Log the requests and plan here
+- [ ] V4.1 narration.json: Andrew, script changes (test1, hotspot line), per-line tone
+- [ ] V4.2 tts.py: per-line rate/pitch, studio-mic chain; re-voice; check durations and timing
+- [ ] V4.3 index.tsx: no grain, slower pacing, PART II card + test scene text, hotspot visual, new line wiring
+- [ ] V4.4 sound.ts: music +3 dB
+- [x] V4.5 check, lint, strip, stills (check clean, lint 0 errors; strip + stills reviewed)
+- [x] V4.6 Render v4 full + redacted (3 Mbit/s), loudness, spot-check (2:22, -14.8 LUFS, peak -0.9 dBFS, ~55 MB each; redaction checked; voice limiter added after a first render peaked at 0 dBFS)
+- [x] V4.7 Docs (video/README, root README, CHANGELOG), commit, push
+- [ ] V4.8 Report to the user
+
+## v3 progress
 
 - [x] P0.1 Check the kinetograph effect, camera and audio APIs (17:13)
 - [x] P0.2 Write this plan, then stand by (17:13)
@@ -114,3 +144,4 @@ Times come from the system clock (`Get-Date`). Entries marked "between 17:13 and
 - 2026-10-28 17:49: both v3 renders redone at 3 Mbit/s (-17.3 LUFS, peak -1.1 dBFS). Committing and pushing again.
 - 2026-10-28 17:49: committed `68d877a`, pushed with tag `video-v2`. Delivered.
 - If the user dislikes the synth score: switch to a royalty-free track (ask before downloading; check licence).
+- 2026-10-28 18:06: v4 requested (see v4 section). Started.

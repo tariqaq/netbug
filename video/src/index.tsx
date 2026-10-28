@@ -1,4 +1,4 @@
-// Incident explainer (v3, the cinematic cut): the two ARP-spoofing attacks of 2026-10-28 and the gateway pin fix.
+// Incident explainer (v4): the two ARP-spoofing attacks of 2026-10-28 and the gateway pin fix.
 //
 // Timing comes from public/vo/timing.json (written by scripts/tts.py): every narration line starts at a fixed frame
 // and lasts until its last word ends (`speech`), and scenes, sound and animations are keyed to lines and to single
@@ -11,7 +11,7 @@
 import React from 'react';
 import {
   AbsoluteFill, Audio, Composition, Ellipse, Layer, Path, Rect, Sequence, Text,
-  interpolate, registerRoot, spring, staticFile, useCurrentFrame, Easing, glow, grain, chromaticAberration,
+  interpolate, registerRoot, spring, staticFile, useCurrentFrame, Easing, glow, chromaticAberration,
 } from 'remotion';
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono';
@@ -42,28 +42,31 @@ type Line = { id: string; text: string; ms: number; speech: number; words: Word[
 type Placed = Line & { from: number; frames: number };
 type SceneDef = { id: string; lines: string[]; lead?: number; card?: [string, string] };
 
-const CARD = 40;        // chapter card length (frames)
+const CARD = 60;        // chapter card length (frames)
 const SCENES: SceneDef[] = [
-  { id: 'cold', lines: [], lead: 92 },
+  { id: 'cold', lines: [], lead: 124 },
   { id: 'title', lines: ['title1', 'title2'], lead: 4 },
   { id: 'normal', lines: ['normal1', 'normal2'] },
   { id: 'attack1', lines: ['a1_1', 'a1_2', 'a1_3'], lead: CARD + 6, card: ['PART I', '05:34 · the first attack'] },
   { id: 'symptoms', lines: ['sym1', 'sym2'] },
-  { id: 'timeline1', lines: ['a1_end'] },
-  { id: 'test', lines: ['test1', 'test2'], lead: CARD + 6, card: ['PART II', '15:12 · the test'] },
+  { id: 'timeline1', lines: ['a1_end', 'a1_wifi'] },
+  { id: 'test', lines: ['test1', 'test2'], lead: CARD + 6, card: ['PART II', 'the second attack'] },
   { id: 'attack2', lines: ['a2_dev', 'a2_addr', 'a2_lie', 'a2_count', 'a2_more'] },
   { id: 'compare', lines: ['cmp1', 'cmp2'] },
   { id: 'fix', lines: ['fix1', 'fix2'], lead: CARD + 6, card: ['PART III', 'the fix'] },
   { id: 'rcc', lines: ['rcc'] },
 ];
 
-const LEAD = 8;         // frames from a scene's start to its first line
-const TAIL = 6;         // after a line's last word
-const GAP = 6;          // between lines of a scene
-const SCENE_TAIL = 10;  // after a scene's last line, before the next scene
-const OUTRO = 96;       // end card after the last line
-// held silences after a line, for weight
-const PAUSE: Record<string, number> = { a1_3: 16, test1: 8, a2_dev: 4, a2_addr: 4, a2_lie: 8, cmp1: 6, cmp2: 18 };
+const LEAD = 10;        // frames from a scene's start to its first line
+const TAIL = 8;         // after a line's last word
+const GAP = 10;         // between lines of a scene
+const SCENE_TAIL = 18;  // after a scene's last line, before the next scene
+const OUTRO = 120;      // end card after the last line
+// held silences after a line, for weight (and so titles get read)
+const PAUSE: Record<string, number> = {
+  title1: 14, title2: 24, normal2: 10, a1_1: 6, a1_3: 26, sym2: 10, a1_end: 6, a1_wifi: 16, test1: 12, test2: 8,
+  a2_dev: 8, a2_addr: 8, a2_lie: 14, a2_count: 8, a2_more: 10, cmp1: 10, cmp2: 30, fix2: 12,
+};
 
 const sec = (ms: number) => Math.round((ms / 1000) * FPS);
 const byId = new Map((timing.lines as Line[]).map((l) => [l.id, l]));
@@ -249,8 +252,8 @@ const HOP_B: [number, number] = [802, 598];
 // ---------------------------------------------------------------- cold open
 
 const COLD = {
-  type: 10,                 // "05:34:03" types in from here, 3 frames a character
-  line: 22, lineEnd: 70,    // the monitor line draws across
+  type: 14,                 // "05:34:03" types in from here, 3 frames a character
+  line: 34, lineEnd: 98,    // the monitor line draws across
   beats: [0.3, 0.55],       // heartbeats along the line
   flat: 0.66,               // where it goes flat
 };
@@ -473,24 +476,53 @@ const Timeline1: React.FC<{ f: number }> = ({ f }) => {
           </Layer>
         );
       })}
-      <CText cx={W / 2} y={640} size={30} weight={600} opacity={pop(f, at('a1_end', 'netbug'))}>netbug logged the swap, the outage and the fake replies, second by second</CText>
+      <CText cx={W / 2} y={186} size={28} weight={600} opacity={pop(f, at('a1_end', 'netbug'))}>netbug logged the swap, the outage and the fake replies, second by second</CText>
+      <Hotspot f={f} />
     </Layer>
   );
 };
 
-/** 15:12 -> 15:28, one minute per tick, between "waited" and "3:28". */
+/** Unplugging moves the laptop to Wi-Fi: Ethernet crossed out, then the hotspot, then the internet back. */
+const Hotspot: React.FC<{ f: number }> = ({ f }) => {
+  const eth = pop(f, at('a1_wifi', 'cable'));
+  const wifi = pop(f, at('a1_wifi', 'hotspot'));
+  const back = pop(f, at('a1_wifi', 'back'));
+  const arrow = prog(f, at('a1_wifi', 'switched'), 14);
+  const card = (x: number, show: number, title: string, sub: string, color: string, mark: string) => (
+    <Layer x={x + 170} y={655} opacity={Math.min(1, show)} scale={lerp(0.85, 1, Math.min(1, show))}>
+      <Layer x={-170} y={-65}>
+        <Rect width={340} height={130} radius={22} fill={C.panel} stroke={{ color, width: 3 }} />
+        <Text x={0} y={26} maxWidth={340} align="center" font={SANS} weight={800} size={32} color={C.ink}>{title}</Text>
+        <Text x={0} y={78} maxWidth={340} align="center" font={SANS} weight={600} size={22} color={color}>{`${mark}  ${sub}`}</Text>
+      </Layer>
+    </Layer>
+  );
+  return (
+    <Layer>
+      {card(470, eth, 'Ethernet', 'unplugged', C.bad, '\u00d7')}
+      <Rect x={830} y={652} width={260 * arrow} height={6} radius={3} fill={C.ink} opacity={arrow} />
+      <Path d="M 1078 638 L 1100 655 L 1078 672" stroke={{ color: C.ink, width: 6 }} opacity={arrow > 0.95 ? 1 : 0} />
+      {card(1110, wifi, 'Wi-Fi hotspot', 'different network', C.ok, '\u2713')}
+      <CText cx={1280} y={740} w={500} size={26} weight={800} color={C.ok} opacity={back}>internet back at once</CText>
+    </Layer>
+  );
+};
+
+/** The clock runs from the end of attack 1 (05:36) to 15:28 between "waited" and "3:28". */
 const testClock = () => ({ from: at('test1', 'waited') + 6, to: at('test2', '3:28') });
+const CLOCK_FROM = 5 * 60 + 36, CLOCK_TO = 15 * 60 + 28;
 
 const Test: React.FC<{ f: number }> = ({ f }) => {
-  const a = pop(f, at('test1', 'removed'));
+  const a = pop(f, at('test1', 'watching'));
   const { from, to } = testClock();
   const b = prog(f, from - 8, 10);
   const again = pop(f, at('test2', 'again'));
-  const t = Math.round(interpolate(f, [from, to], [12, 28], clamp));
+  const m = Math.round(interpolate(f, [from, to], [CLOCK_FROM, CLOCK_TO], { ...clamp, easing: Easing.inOut(Easing.cubic) }));
+  const hhmm = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   return (
     <Layer>
-      <Chip x={W / 2 - 320} y={180} w={640} text="15:12  protection removed on purpose" color={C.warn} show={a} font={SANS} size={26} />
-      <CText cx={W / 2} y={300} size={200} weight={800} font={SANS} opacity={b} color={again > 0.5 ? C.bad : C.ink}>{`15:${String(t).padStart(2, '0')}`}</CText>
+      <Chip x={W / 2 - 320} y={180} w={640} text="netbug kept logging, every second" color={C.ink} show={a} font={SANS} size={26} />
+      <CText cx={W / 2} y={300} size={200} weight={800} font={SANS} opacity={b} color={again > 0.5 ? C.bad : C.ink}>{hhmm}</CText>
       <CText cx={W / 2} y={560} size={80} weight={800} color={C.bad} opacity={again} glowAmt={again}>It happened again.</CText>
     </Layer>
   );
@@ -653,7 +685,7 @@ const hit = (f: number, shake: number, fringe: number, sfx: Sfx[] = [], gain = 1
 const fx = (f: number, kind: Sfx, gain = 1, len?: number) => cue(f, kind, { gain, ...(len ? { len } : {}) });
 {
   // cold open: clock ticks while the time types in, two heartbeats on the trace, then it flatlines
-  [2, 22, 42, 62, 82].forEach((t, i) => fx(t, i % 2 ? 'tock' : 'tick', 0.8));
+  [4, 30, 56, 82, 108].forEach((t, i) => fx(t, i % 2 ? 'tock' : 'tick', 0.8));
   for (let i = 0; i < 8; i++) fx(COLD.type + i * 3, 'type', 0.9);
   for (const c of COLD.beats) {
     const t = lerp(COLD.line, COLD.lineEnd, c);
@@ -679,12 +711,15 @@ const fx = (f: number, kind: Sfx, gain = 1, len?: number) => cue(f, kind, { gain
 
   fx(sceneFrom.timeline1, 'whoosh', 0.6);
   hit(at('a1_end', 'pulled'), 6, 2, ['impact'], 0.8);
+  fx(at('a1_wifi', 'cable'), 'stamp', 0.7);
+  fx(at('a1_wifi', 'hotspot'), 'pop', 1.2);
+  fx(at('a1_wifi', 'back'), 'pop', 1.4);
 
   // part II
   fx(sceneFrom.test, 'whoosh', 0.7); hit(sceneFrom.test + 8, 0, 0, ['impact'], 0.5);
   {
     const { from, to } = testClock();
-    for (let m = 1; m <= 16; m++) fx(lerp(from, to, m / 16), m % 2 ? 'tick' : 'tock', 0.7);
+    for (let m = 1; m <= 20; m++) fx(lerp(from, to, m / 20), m % 2 ? 'tick' : 'tock', 0.7);
   }
   hit(at('test2', 'again'), 8, 4, ['bigImpact']);
   const a2 = A2();
@@ -717,6 +752,7 @@ const fx = (f: number, kind: Sfx, gain = 1, len?: number) => cue(f, kind, { gain
     [sceneFrom.normal, sceneFrom.attack1 + 4, 'calm'],
     [a1.base, a1.zero, 'tension'],
     [sceneFrom.symptoms, at('a1_end', 'pulled'), 'clock'],
+    [at('a1_wifi'), sceneFrom.test + 6, 'calm'],
     [at('test1'), at('test2', 'again'), 'wait'],
     [a2.att, sceneFrom.compare + 4, 'tension2'],
     [sceneFrom.compare, at('cmp2', 'purpose'), 'build'],
@@ -758,8 +794,7 @@ const Film: React.FC<Data> = (d) => {
   );
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg }}>
-      {/* a fixed grain texture: animated grain is incompressible noise (it made a 2-minute render 190 MB) */}
-      <Layer effects={[grain(0.05, { seed: 7, size: 1.5, animate: false })]}>
+      <Layer>
         <Layer x={cam.x} y={cam.y} effects={cam.fringe > 0.05 ? [chromaticAberration(cam.fringe)] : []}>
           {SCENES.map((s, i) => {
             const from = sceneFrom[s.id];

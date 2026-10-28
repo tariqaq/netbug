@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 16:14: `HASH` incident video v2: softer glow
+### 16:14: `eac8d45` incident video v2: softer glow
 - Every glow is reduced to roughly a third or half of its strength, with smaller radii:
   - headlines: 14 px, x0.45
   - device borders: 16 px, x0.6

@@ -5,6 +5,15 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 16:14: `HASH` incident video v2: softer glow
+- Every glow is reduced to roughly a third or half of its strength, with smaller radii:
+  - headlines: 14 px, x0.45
+  - device borders: 16 px, x0.6
+  - bubbles: 12 px, x0.3
+  - packets: 6 px, x0.4
+  - "0 came back": 10 px, x0.45
+- New renders: `out/incident-v2-full.mp4` (local, real MACs) and `out/incident-v2-redacted.mp4`. The committed copy is now `incident-v2-redacted.mp4` (replaces v1; v1 stays in git history and locally in `out/`).
+
 ### 16:11: `60ba315` incident video v1
 - Fixed the title misalignment: the 110 px headline was wider than its 1400 px box, and kinetograph falls back to left alignment for text that overflows. Centred text now gets a near-full-width box.
 - Chip labels (times, notes) are vertically centred in their pills.

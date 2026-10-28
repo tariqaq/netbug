@@ -102,7 +102,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const CText: React.FC<{ cx: number; y: number; w?: number; size: number; color?: string; weight?: number; font?: string; opacity?: number; glowAmt?: number; children: React.ReactNode }> =
   ({ cx, y, w = W - 160, size, color = C.ink, weight = 400, font = SANS, opacity = 1, glowAmt = 0, children }) => (
     <Text x={cx - w / 2} y={y} maxWidth={w} align="center" font={font} weight={weight} size={size} color={color} opacity={opacity} lineHeight={1.2}
-          effects={glowAmt > 0 ? [glow({ radius: 22, color, intensity: glowAmt })] : []}>{children}</Text>
+          effects={glowAmt > 0 ? [glow({ radius: 14, color, intensity: 0.45 * glowAmt })] : []}>{children}</Text>
   );
 
 /** A device card centred on (cx, cy). */
@@ -113,7 +113,7 @@ const Device: React.FC<{ cx: number; cy: number; title: string; sub: string; col
       <Layer x={cx} y={cy} scale={lerp(0.85, 1, show)} opacity={show} origin="center">
         <Layer x={-w / 2} y={-h / 2}>
           <Rect width={w} height={h} radius={24} fill={C.panel} stroke={{ color, width: 3 }}
-                effects={glowOn > 0 ? [glow({ radius: 26, color, intensity: 1.4 * glowOn })] : []} />
+                effects={glowOn > 0 ? [glow({ radius: 16, color, intensity: 0.6 * glowOn })] : []} />
           <Text x={0} y={34} maxWidth={w} align="center" font={SANS} weight={800} size={34} color={C.ink}>{title}</Text>
           <Text x={0} y={90} maxWidth={w} align="center" font={MONO} weight={500} size={22} color={color}>{sub}</Text>
         </Layer>
@@ -128,7 +128,7 @@ const Bubble: React.FC<{ cx: number; cy: number; text: string; sub?: string; col
     return (
       <Layer x={cx} y={cy} scale={lerp(0.6, 1, show)} opacity={Math.min(1, show * 1.5)} origin="center">
         <Layer x={-w / 2} y={-h / 2}>
-          <Rect width={w} height={h} radius={h / 2} fill={color} effects={[glow({ radius: 20, color, intensity: 0.7 * show })]} />
+          <Rect width={w} height={h} radius={h / 2} fill={color} effects={[glow({ radius: 12, color, intensity: 0.3 * show })]} />
           <Text x={0} y={sub ? 16 : 18} maxWidth={w} align="center" font={SANS} weight={800} size={30} color="#000">{text}</Text>
           {sub && <Text x={0} y={62} maxWidth={w} align="center" font={MONO} weight={500} size={24} color="#000">{sub}</Text>}
         </Layer>
@@ -147,7 +147,7 @@ const Packets: React.FC<{ f: number; a: [number, number]; b: [number, number]; s
       const o = drop ? interpolate(t, [0.85, 1.25], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : interpolate(t, [0, 0.1, 0.9, 1], [0, 1, 1, 0]);
       dots.push(<Ellipse key={s} x={lerp(a[0], b[0], tt) - 9} y={lerp(a[1], b[1], tt) - 9} width={18} height={18} fill={color} opacity={o} />);
     }
-    return <Layer motionBlur={{ samples: 6, shutter: 0.8 }} effects={[glow({ radius: 8, color, intensity: 0.9 })]}>{dots}</Layer>;
+    return <Layer motionBlur={{ samples: 6, shutter: 0.8 }} effects={[glow({ radius: 6, color, intensity: 0.4 })]}>{dots}</Layer>;
   };
 
 /** A straight link line between two points. */
@@ -179,7 +179,7 @@ const Counter: React.FC<{ x: number; y: number; sent: number; back: number; show
     <Rect width={420} height={130} radius={22} fill={C.panel} stroke={{ color: C.line, width: 2 }} />
     <Text x={0} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.ink}>{String(sent)}</Text>
     <Text x={0} y={92} maxWidth={210} align="center" font={SANS} weight={600} size={20} color={C.ink}>packets sent</Text>
-    <Text x={210} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.bad} effects={[glow({ radius: 16, color: C.bad, intensity: show })]}>{String(back)}</Text>
+    <Text x={210} y={18} maxWidth={210} align="center" font={SANS} weight={800} size={60} color={C.bad} effects={[glow({ radius: 10, color: C.bad, intensity: 0.45 * show })]}>{String(back)}</Text>
     <Text x={210} y={92} maxWidth={210} align="center" font={SANS} weight={600} size={20} color={C.bad}>came back</Text>
   </Layer>
 );

@@ -6,7 +6,7 @@ Rendered with [kinetograph](https://github.com/0xS4N4TG/kinetograph) 0.2.0 (Type
 
 | File | What |
 |---|---|
-| `incident-v1-redacted.mp4` | 🔒 The committed render (v1): MACs shown as `xx-…` |
+| `incident-v2-redacted.mp4` | 🔒 The committed render (v2): MACs shown as `xx-…` |
 | `src/index.tsx` | The whole film: scenes, captions, sound effects |
 | `narration.json` | The narration script: voice, rate and one entry per line (`say` = respelling for pronunciation) |
 | `scripts/tts.py` | Turns `narration.json` into `public/vo/<id>.mp3` + `public/vo/timing.json` (word timings) |
@@ -32,8 +32,8 @@ npx kinetograph strip src/index.tsx -n 24 -o out/strip.png   # contact sheet
 
 # render on the NVIDIA GPU: frames via Vulkan, H.264 via NVENC (the bundled ffmpeg has no NVENC, so point at one that does)
 export KINETOGRAPH_FFMPEG="C:\path\to\ffmpeg.exe"
-npx kinetograph render src/index.tsx -o out/incident-v1-redacted.mp4 --encoder h264_nvenc --video-bitrate 10M --concurrency 2
-npx kinetograph render src/index.tsx -o out/incident-v1-full.mp4 --encoder h264_nvenc --video-bitrate 10M --concurrency 2 --props "$(tr -d '\n' < data.local.json)"
+npx kinetograph render src/index.tsx -o out/incident-v2-redacted.mp4 --encoder h264_nvenc --video-bitrate 10M --concurrency 2
+npx kinetograph render src/index.tsx -o out/incident-v2-full.mp4 --encoder h264_nvenc --video-bitrate 10M --concurrency 2 --props "$(tr -d '\n' < data.local.json)"
 ```
 
 On an RTX 4060 Laptop GPU, a full render takes ~29 s (~8 ms per frame, motion blur included) with little CPU. Audio: -17.3 LUFS integrated, true peak -2.2 dB, no clipping.

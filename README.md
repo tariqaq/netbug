@@ -116,9 +116,48 @@ Open `http://<laptop-ip>:8787/` from any device on the LAN (or `http://localhost
 
 Pure black for AMOLED, white text, SF Pro on Apple devices and Inter (`tools/fonts/inter.woff2`, served by netbug) everywhere else. It lays out for desktop, tablet and phone.
 
-The page is read-only and makes no external requests, so it keeps working while the internet is down. It only touches the DOM when a value actually changes, and the chart is one small canvas redraw per second (the pulsing status dot is a compositor-only opacity animation, and only while there's a problem). It polls only while the tab is visible: `/api/state` every 1 s (only new samples, ~0.4 KB) and `/api/events` every 2 s (only new lines). Each request costs netbug ~0.15 ms of CPU; with no tab open the dashboard costs nothing. `tools/dashboard.html` is read from disk on every request, so editing it doesn't need a rebuild.
+The page makes no external requests, so it keeps working while the internet is down. It only touches the DOM when a value actually changes, and the chart is one small canvas redraw per second (the pulsing status dot is a compositor-only opacity animation, and only while there's a problem). It polls only while the tab is visible: `/api/state` every 1 s (only new samples, ~0.4 KB) and `/api/events` every 2 s (only new lines). Each request costs netbug ~0.15 ms of CPU; with no tab open the dashboard costs nothing. `tools/dashboard.html` is read from disk on every request, so editing it doesn't need a rebuild.
 
 > ⚠️ Anyone on the LAN can see what the page shows, including your public IP, the gateway MAC and process names.
+
+### 🛡️ Router protection panel (on the laptop itself only)
+
+Opened on the laptop (`http://localhost:8787/`), the page also shows a **Router protection** panel. Other devices never see it: netbug only gives the page its control token on localhost. The panel has:
+
+- **Check now:** finds the real router MAC for the current gateway, in four steps:
+  1. **Collect candidates:** the ARP table entry, any pinned entry, and every MAC that answers for the gateway IP in a 10 s `pktmon` capture. During the capture the laptop asks for the router again, unless the entry is pinned, so the real router answers too.
+  2. **Test each candidate:** it is set for a moment as a temporary static ARP entry (active store only; the persistent store is never touched).
+  3. **Judge it:** it's the real router when pings to 1.1.1.1/8.8.8.8 get through it **and** a TTL-1 ping comes back "TTL expired" from the gateway IP itself. A blackholing impostor passes nothing. A device in the middle that forwards traffic answers the TTL-1 ping with its own IP.
+  4. **Put the ARP entry back** as it was.
+
+  Each check cuts the connection for a few seconds.
+- **Auto-detect the real router** (switch): checks now, every 30 min, when the gateway changes, and after a spoofing alert (at most every 5 min). It never changes a pin by itself; if a check disagrees with the pin, the panel says so.
+- **Pin it permanently** (switch): pins the MAC the last check verified (`netsh … store=persistent`), or removes the pin. The pin survives restarts. Turn it off before plugging the same adapter into another network that uses the same router address.
+
+The control requests only work from the laptop itself:
+- loopback address
+- `Host` header of `localhost` or `127.0.0.1` (this blocks DNS rebinding)
+- the per-run token in an `X-Netbug-Token` header
+
+Other websites can't read the token or send that header cross-site.
+
+### 🤝 Sending netbug to a friend
+
+`tools/netbug.exe` is self-contained: the page, font and scripts are embedded in it. To help someone with the same problem, send them **only the exe**:
+
+1. They double-click it. Windows asks for admin rights (UAC). netbug needs them for packet captures and for pinning.
+2. Their default browser opens `http://localhost:8787/`. The browser runs as them, not as admin.
+3. In **Router protection**, they turn on **Auto-detect**, wait for the check, then turn on **Pin it permanently**.
+
+A lone exe (no `dashboard.html` next to it) runs in portable mode:
+- it keeps its files and logs in `C:\ProgramData\netbug`
+- it serves the page on localhost only
+- the panel shows a **Stop netbug** button
+- it doesn't start itself at logon, but the pin stays after a restart
+
+Running the exe again while netbug is already running just opens the page.
+
+> ⚠️ The exe isn't code-signed, so SmartScreen may say "Windows protected your PC" (More info → Run anyway). Some antivirus tools may also flag a program that asks for admin rights and runs `netsh` and `pktmon`.
 
 ---
 
@@ -137,14 +176,17 @@ The page is read-only and makes no external requests, so it keeps working while 
 ## 🛠️ Build & install
 
 ```powershell
-# build (uses the C# compiler that ships with Windows)
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize /out:tools\netbug.exe tools\netbug.cs
+# build in tools\ (uses the C# compiler that ships with Windows); the page, font and scripts are embedded
+cd tools
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize /out:netbug.exe `
+  /resource:dashboard.html,netbug.dashboard.html /resource:fonts\inter.woff2,netbug.inter.woff2 `
+  /resource:arpwatch.ps1,netbug.arpwatch.ps1 /resource:snapshot.ps1,netbug.snapshot.ps1 netbug.cs
 
 # then, in an admin PowerShell, register tools\netbug.exe as a scheduled task:
 #   trigger: at logon · run with highest privileges · no time limit · restart on failure
 ```
 
-Admin rights are needed for three things: `pktmon` packet captures (snapshots and ARP watch), and serving the dashboard on all interfaces (`http://+:8787/`).
+Admin rights are needed for `pktmon` packet captures (snapshots, ARP watch, router check), changing ARP entries (router check, pin) and serving the dashboard on all interfaces (`http://+:8787/`). Double-clicking the exe asks for them (UAC) and opens the dashboard; when netbug already runs, it just opens the page.
 
 ### 🛡️ Pinning the gateway MAC (ARP spoofing defence)
 
@@ -157,7 +199,7 @@ netsh interface ipv4 add neighbors "<adapter name>" <gateway ip> <real gateway m
 netsh interface ipv4 delete neighbors "<adapter name>" <gateway ip>                                     # unpin
 ```
 
-netbug shows the pin status (`gw_arp` = `static`) and keeps reporting spoofing attempts through ARP watch. If the gateway becomes unreachable while pinned (for example the router was replaced), the outage event says the pin may be stale and prints the unpin command.
+Or use the dashboard's **Router protection** panel, which finds and verifies the real MAC first (see above). netbug shows the pin status (`gw_arp` = `static`) and keeps reporting spoofing attempts through ARP watch. If the gateway becomes unreachable while pinned (for example the router was replaced), the outage event says the pin may be stale and prints the unpin command.
 
 ---
 
@@ -167,7 +209,7 @@ netbug shows the pin status (`gw_arp` = `static`) and keeps reporting spoofing a
 |---|---|
 | `tools/netbug.cs` | The logger |
 | `tools/snapshot.ps1` | Incident snapshot, launched by netbug |
-| `tools/dashboard.html` | Live dashboard page, served by netbug on port 8787 |
+| `tools/dashboard.html` | Live dashboard page, served by netbug on port 8787, with the Router protection panel on the laptop itself |
 | `tools/arpwatch.ps1` | 10 s ARP capture every 5 min: prints every MAC that claimed the gateway IP |
 | `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md` | 🔒 Full incident report: the 05:34 ARP spoofing attack, evidence, mitigation |
 | `video/` | 🎬 2-minute narrated explainer of both attacks and the fix (kinetograph); see `video/README.md` |

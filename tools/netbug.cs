@@ -20,8 +20,18 @@
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
 // A read-only dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served
 // on port 8787 on all interfaces.
+// Router check and pin (the dashboard's "Router protection" panel, for the person at this laptop
+// only): finds the real router MAC by testing every MAC that claims the gateway IP, and can pin it
+// as a permanent ARP entry. See the "router check and pin" section.
 //
-// Build: csc /target:winexe /optimize /out:netbug.exe netbug.cs
+// Started without admin rights (a double-click), netbug asks for UAC, starts an elevated copy and
+// opens the dashboard in the default browser. A lone netbug.exe (no dashboard.html next to it, e.g.
+// sent to a friend) runs from %ProgramData%\netbug: it unpacks its page, font and scripts from its
+// own resources and serves the dashboard on localhost only.
+//
+// Build (in tools/): csc /target:winexe /optimize /out:netbug.exe /resource:dashboard.html,netbug.dashboard.html
+//   /resource:fonts\inter.woff2,netbug.inter.woff2 /resource:arpwatch.ps1,netbug.arpwatch.ps1
+//   /resource:snapshot.ps1,netbug.snapshot.ps1 netbug.cs
 
 using System;
 using System.Collections.Generic;
@@ -32,6 +42,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,6 +57,28 @@ class NetBug
 
     [DllImport("iphlpapi.dll")]
     static extern int GetIpNetTable(IntPtr table, ref int size, bool order);
+
+    [DllImport("iphlpapi.dll", SetLastError = true)]
+    static extern IntPtr IcmpCreateFile();
+
+    [DllImport("iphlpapi.dll")]
+    static extern bool IcmpCloseHandle(IntPtr handle);
+
+    [DllImport("iphlpapi.dll", SetLastError = true)]
+    static extern int IcmpSendEcho2Ex(IntPtr handle, IntPtr ev, IntPtr apc, IntPtr apcContext, uint source, uint dest,
+        byte[] data, short dataSize, ref IpOptions options, IntPtr reply, int replySize, int timeout);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct IpOptions { public byte Ttl, Tos, Flags, OptionsSize; public IntPtr OptionsData; }
+
+    [DllImport("ntdll.dll")]
+    static extern int NtQueryInformationProcess(IntPtr process, int infoClass, ref ProcessInfo info, int size, out int returned);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct ProcessInfo { public IntPtr Reserved1, Peb, Reserved2, Reserved3, Pid, ParentPid; }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int MessageBox(IntPtr owner, string text, string caption, uint type);
 
     const int UdpWarnThreshold = 3000;   // Windows has 16384 dynamic UDP ports
     const string TcpProbeHost = "github.com";
@@ -107,27 +140,122 @@ class NetBug
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
     const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail";
 
-    static void Main()
+    static void Main(string[] args)
     {
+        string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+        portable = !File.Exists(Path.Combine(exeDir, "dashboard.html"));
+        if (!IsAdmin()) { Launch(); return; }
+        // opened by hand as admin (UAC off, or "Run as administrator"): show the page too. Not when
+        // started by the launcher (it opens the page itself), the logon task or a self-restart.
+        bool openPage = !args.Contains("--from-launcher") && ParentName() == "explorer";
+
         using (var self = Process.GetCurrentProcess()) self.PriorityClass = ProcessPriorityClass.BelowNormal;
         ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;   // TLS 1.2; .NET 4.0 defaults to TLS 1.0
 
-        baseDir = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."));
+        if (portable)
+        {
+            baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "netbug");
+            Unpack();
+        }
+        else baseDir = Path.GetFullPath(Path.Combine(exeDir, ".."));
         logDir = Path.Combine(baseDir, "logs");
         snapDir = Path.Combine(logDir, "snapshots");
         Directory.CreateDirectory(snapDir);
+        LoadSettings();
 
         using (var mutex = new Mutex(false, "Global\\netbug"))
         {
             // wait a little so a self-restart (see Health) can take over from the exiting instance
-            try { if (!mutex.WaitOne(15000)) return; }   // another instance is running
+            try { if (!mutex.WaitOne(15000)) { if (openPage) OpenPage(); return; } }   // another instance is running
             catch (AbandonedMutexException) { }
-            Event("netbug started");
+            Event("netbug started" + (portable ? " (portable, files in " + baseDir + ")" : ""));
             new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(StunLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(DashboardLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+            if (openPage) Task.Run(() => { for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500); OpenPage(); });
             Run();
         }
+    }
+
+    // ---------------------------------------------------------------- start-up
+
+    static readonly string PageUrl = "http://localhost:" + DashPort + "/";
+
+    static bool IsAdmin()
+    {
+        using (var id = WindowsIdentity.GetCurrent()) return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    // Not elevated: if netbug already runs, just open its page. Otherwise start an elevated copy (UAC
+    // prompt), wait for its dashboard and open it here, so the browser itself doesn't run as admin.
+    static void Launch()
+    {
+        if (PageUp()) { OpenPage(); return; }
+        try
+        {
+            string exe;
+            using (var me = Process.GetCurrentProcess()) exe = me.MainModule.FileName;
+            Process.Start(new ProcessStartInfo(exe, "--from-launcher") { UseShellExecute = true, Verb = "runas" });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            MessageBox(IntPtr.Zero, "netbug needs administrator rights to watch the network and to pin the router's address.\n\nRun it again and choose Yes.", "netbug", 0x30);
+            return;
+        }
+        for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500);
+        OpenPage();
+    }
+
+    static bool PageUp()
+    {
+        try
+        {
+            var req = (HttpWebRequest)WebRequest.Create(PageUrl + "api/state");
+            req.Timeout = 1000; req.Proxy = null;
+            using (req.GetResponse()) return true;
+        }
+        catch { return false; }
+    }
+
+    static void OpenPage()
+    {
+        try { Process.Start(new ProcessStartInfo(PageUrl) { UseShellExecute = true }); } catch { }
+    }
+
+    static string ParentName()
+    {
+        try
+        {
+            var info = new ProcessInfo(); int returned;
+            using (var me = Process.GetCurrentProcess())
+                if (NtQueryInformationProcess(me.Handle, 0, ref info, Marshal.SizeOf(info), out returned) != 0) return "";
+            using (var parent = Process.GetProcessById(info.ParentPid.ToInt32())) return parent.ProcessName.ToLowerInvariant();
+        }
+        catch { return ""; }
+    }
+
+    // A lone netbug.exe writes its page, font and scripts (embedded resources) to %ProgramData%\netbug\tools
+    // on every start, so the rest of netbug finds them where it always does.
+    static void Unpack()
+    {
+        string tools = Path.Combine(baseDir, "tools");
+        Directory.CreateDirectory(Path.Combine(tools, "fonts"));
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        foreach (var f in new[] { "dashboard.html", "inter.woff2", "arpwatch.ps1", "snapshot.ps1" })
+            using (var res = asm.GetManifestResourceStream("netbug." + f))
+            using (var file = File.Create(Path.Combine(tools, f == "inter.woff2" ? @"fonts\inter.woff2" : f)))
+                res.CopyTo(file);
+    }
+
+    // The page's "auto-detect" switch, kept across restarts in logs/netbug.settings.
+    static void LoadSettings()
+    {
+        try { string f = Path.Combine(logDir, "netbug.settings"); autoDetect = File.Exists(f) && File.ReadAllText(f).Contains("auto=1"); } catch { }
+    }
+
+    static void SaveSettings()
+    {
+        try { File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\n"); } catch { }
     }
 
     static void Run()
@@ -144,6 +272,7 @@ class NetBug
                 IPAddress ip, gw;
                 string ifaceName, ethLink;
                 NetworkInterface ni = PickInterface(out ip, out gw, out ifaceName, out ethLink);
+                curNi = ni; curIp = ip; curGw = gw;
 
                 // pings in parallel
                 var pGw = gw != null ? PingAsync(gw) : Task.FromResult(-1L);
@@ -162,6 +291,11 @@ class NetBug
                     gwArp = gw != null && ni != null ? ArpEntryType(gw, ni) : "";
                 }
                 if (tick % 300 == 150 && gw != null && trustedGwIp == gw.ToString()) ArpWatchStart(gw, trustedGwMac);
+                if (autoDetect && gw != null && tick >= 20 && !fixBusy)
+                {
+                    double since = (DateTime.Now - lastDetect).TotalSeconds;
+                    if (gw.ToString() != lastDetectGw || since >= 1800 || (autoKick && since >= 300)) StartDetect("auto");
+                }
                 if (tick % 300 == 5) RefreshPublicIp();
                 if (tick % 600 == 7) EnforceSizeCap();
                 if (tick % 600 == 9) Health(tick % 3600 == 9);
@@ -198,7 +332,7 @@ class NetBug
                 // ---- transitions ----
                 if (ifaceName != lastIface) { Event(string.Format("active interface: '{0}' -> '{1}' ip={2} gw={3}", lastIface, ifaceName, ip, gw)); lastIface = ifaceName; lastTx = -1; }
                 if (ethLink != lastEthLink) { Event(string.Format("USB ethernet link: {0} -> {1}", lastEthLink == "" ? "?" : lastEthLink, ethLink)); lastEthLink = ethLink; }
-                if (gwMac != "" && gwMac != lastGwMac)
+                if (gwMac != "" && gwMac != lastGwMac && !fixBusy)   // a router check swaps the entry on purpose
                 {
                     // same gateway IP, a real MAC other than the trusted one: someone else is answering for the router
                     string gwIp = gw == null ? "" : gw.ToString();
@@ -208,11 +342,12 @@ class NetBug
                         SetGwAlert(string.Format("gateway {0} changed MAC {1} -> {2} at {3:HH:mm:ss}", gwIp, trustedGwMac, gwMac, DateTime.Now));
                         Event(string.Format("GATEWAY MAC CHANGED, possible ARP spoofing: {0} {1} -> {2} (trusted {3}, ARP entry {4})", gwIp, lastGwMac, gwMac, trustedGwMac, gwArp));
                         Snapshot("gw_mac");
+                        autoKick = true;
                     }
                     else Event(string.Format("gateway MAC: {0} -> {1}", lastGwMac == "" ? "?" : lastGwMac, gwMac));
                     lastGwMac = gwMac;
                 }
-                if (gwArp != "" && gwArp != lastGwArp)
+                if (gwArp != "" && gwArp != lastGwArp && !fixBusy)
                 {
                     Event(string.Format("gateway ARP entry for {0}: {1} -> {2}{3}", gw, lastGwArp == "" ? "?" : lastGwArp, gwArp,
                         gwArp == "static" ? " (pinned to " + gwMac + ", spoofed ARP replies are ignored)" : ""));
@@ -504,36 +639,50 @@ class NetBug
 
     static void SetGwAlert(string text) { gwAlertAt = DateTime.Now; gwAlert = text; }
 
-    // Runs tools/arpwatch.ps1 in the background (needs admin for pktmon): a 10 s ARP-only capture
-    // on the NICs, printing "<mac> <count>" for every MAC that claimed the gateway IP. Any MAC other
-    // than the trusted gateway MAC is logged as ARP spoofing. Skipped while a snapshot may be using pktmon.
+    // Runs tools/arpwatch.ps1 (needs admin for pktmon): a 10 s ARP-only capture on the NICs. Returns
+    // every MAC that claimed the gateway IP, with how often.
+    static Dictionary<string, int> ArpCapture(IPAddress gw)
+    {
+        var claims = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        string script = Path.Combine(baseDir, "tools", "arpwatch.ps1");
+        if (!File.Exists(script)) return claims;
+        var psi = new ProcessStartInfo("powershell.exe",
+            string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Gw {1} -Work \"{2}\"", script, gw, Path.Combine(logDir, "arpwatch")))
+        { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
+        string output;
+        using (var p = Process.Start(psi))
+        {
+            try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+            output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(60000);
+        }
+        foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = line.Trim().Split(' ');
+            int n;
+            if (parts.Length != 2 || parts[0].Length != 17 || !int.TryParse(parts[1], out n)) continue;
+            string mac = parts[0].ToUpperInvariant();
+            claims[mac] = (claims.ContainsKey(mac) ? claims[mac] : 0) + n;
+        }
+        return claims;
+    }
+
+    // Every 5 min in the background: any MAC other than the trusted gateway MAC claiming the gateway IP
+    // is logged as ARP spoofing. Skipped while a snapshot or a router check may be using pktmon.
     static void ArpWatchStart(IPAddress gw, string expectMac)
     {
-        string script = Path.Combine(baseDir, "tools", "arpwatch.ps1");
-        if (arpWatchRunning || !File.Exists(script) || (DateTime.Now - lastSnapshot).TotalSeconds < 90) return;
+        if (arpWatchRunning || fixBusy || (DateTime.Now - lastSnapshot).TotalSeconds < 90) return;
         arpWatchRunning = true;
         Task.Run(() =>
         {
             try
             {
-                var psi = new ProcessStartInfo("powershell.exe",
-                    string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Gw {1} -Work \"{2}\"", script, gw, Path.Combine(logDir, "arpwatch")))
-                { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
-                string output;
-                using (var p = Process.Start(psi))
-                {
-                    try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
-                    output = p.StandardOutput.ReadToEnd();
-                    p.WaitForExit(60000);
-                }
                 var rogue = new List<string>();
                 int good = 0;
-                foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var kv in ArpCapture(gw))
                 {
-                    var parts = line.Trim().Split(' ');
-                    if (parts.Length != 2 || parts[0].Length != 17) continue;
-                    if (string.Equals(parts[0], expectMac, StringComparison.OrdinalIgnoreCase)) good += int.Parse(parts[1]);
-                    else rogue.Add(parts[0] + " x" + parts[1]);
+                    if (string.Equals(kv.Key, expectMac, StringComparison.OrdinalIgnoreCase)) good += kv.Value;
+                    else rogue.Add(kv.Key + " x" + kv.Value);
                 }
                 if (rogue.Count > 0)
                 {
@@ -542,6 +691,7 @@ class NetBug
                     Event(string.Format("ARP SPOOFING DETECTED: gateway {0} claimed by {1} in a 10 s capture (trusted {2}: {3} claims, ARP entry {4})",
                         gw, string.Join(", ", rogue), expectMac, good, gwArp));
                     Snapshot("arp_spoof");
+                    autoKick = true;
                 }
                 else arpWatch = string.Format("clean at {0:HH:mm}", DateTime.Now);
             }
@@ -602,7 +752,7 @@ class NetBug
 
     static void Snapshot(string reason)
     {
-        if ((DateTime.Now - lastSnapshot).TotalSeconds < 60) return;
+        if (fixBusy || (DateTime.Now - lastSnapshot).TotalSeconds < 60) return;   // a router check breaks the link on purpose
         lastSnapshot = DateTime.Now;
         string script = Path.Combine(baseDir, "tools", "snapshot.ps1");
         if (!File.Exists(script)) return;
@@ -750,20 +900,26 @@ class NetBug
         return "";
     }
 
-    // Read-only dashboard for anyone on the LAN. GET only: "/" serves tools/dashboard.html (read
+    // Dashboard, read-only for anyone on the LAN. GET: "/" serves tools/dashboard.html (read
     // from disk on each request), /fonts/inter.woff2 the page font (cached by the browser for a
     // year), /api/state the latest sample + chart history (?since=<unix s>
     // returns only newer samples), /api/events new events.log lines (?from=<byte offset>, or the
-    // last 64 KB when omitted). One request at a time on its own thread; the page polls only
-    // while it is visible. The "+" prefix needs admin, which the scheduled task has.
+    // last 64 KB when omitted). /api/fix* is the router check and pin (see FixApi). One request at a
+    // time on its own thread; the page polls only while it is visible. The "+" prefix (all
+    // interfaces) needs admin, which netbug always has; a lone (portable) netbug listens on localhost only.
     static void DashboardLoop()
     {
         var listener = new HttpListener();
         try
         {
-            listener.Prefixes.Add("http://+:" + DashPort + "/");
+            if (portable)
+            {
+                listener.Prefixes.Add("http://localhost:" + DashPort + "/");
+                listener.Prefixes.Add("http://127.0.0.1:" + DashPort + "/");
+            }
+            else listener.Prefixes.Add("http://+:" + DashPort + "/");
             listener.Start();
-            Event("dashboard listening on port " + DashPort);
+            Event("dashboard listening on port " + DashPort + (portable ? " (this laptop only)" : ""));
         }
         catch (Exception ex) { Event("dashboard failed to start: " + ex.Message); return; }
         while (listener.IsListening)
@@ -780,10 +936,12 @@ class NetBug
     static void Serve(HttpListenerContext ctx)
     {
         string path = ctx.Request.Url.AbsolutePath, body, type = "application/json";
-        if (ctx.Request.HttpMethod != "GET") { ctx.Response.StatusCode = 405; body = "{}"; }
+        if (path.StartsWith("/api/fix", StringComparison.Ordinal)) body = FixApi(ctx, path);
+        else if (ctx.Request.HttpMethod != "GET") { ctx.Response.StatusCode = 405; body = "{}"; }
         else if (path == "/")
         {
-            body = File.ReadAllText(Path.Combine(baseDir, "tools", "dashboard.html"));
+            // only the person at this laptop gets the control token (and so the Router protection panel)
+            body = File.ReadAllText(Path.Combine(baseDir, "tools", "dashboard.html")).Replace("__NETBUG_TOKEN__", LocalHost(ctx) ? token : "");
             type = "text/html; charset=utf-8";
         }
         else if (path == "/fonts/inter.woff2")
@@ -826,6 +984,280 @@ class NetBug
         ctx.Response.AddHeader("Cache-Control", "no-store");
         ctx.Response.ContentLength64 = bytes.Length;
         ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+    }
+
+    // ---------------------------------------------------------------- router check and pin
+    //
+    // Check: finds the real router MAC for the current gateway IP. Candidates are the ARP table entry, a
+    // pinned entry and every MAC that answers for the gateway IP in a 10 s capture (the laptop asks for
+    // the router 3 times during it, unless the entry is pinned, so the real router answers too). Each
+    // candidate is then set for a moment as a temporary static ARP entry (active store only) and tested:
+    // it is the real router when pings to 1.1.1.1/8.8.8.8 get through it AND a TTL-1 ping comes back
+    // "TTL expired" from the gateway IP itself. A blackholing impostor passes nothing; a device in the
+    // middle that forwards traffic answers the TTL-1 ping with its own IP. The entry is then put back as
+    // it was (pinned again, or deleted and learned again).
+    // Pin: the verified MAC becomes a permanent ARP entry (netsh, persistent store), so Windows ignores
+    // fake replies. Unpin removes it from both stores.
+    // Control: GET /api/fix (status) and POST /api/fix/{check,pin,unpin,auto,stop}, only from this laptop
+    // (loopback, Host localhost/127.0.0.1, against DNS rebinding) with the per-run token the page was
+    // served (X-Netbug-Token: other websites can't read it, and the custom header can't be sent cross-site
+    // without a CORS preflight, which netbug never answers).
+
+    class Candidate { public string Mac, From = "", Hop = "", Verdict = ""; public bool Works, Random; }
+
+    static volatile bool fixBusy, autoKick, autoDetect;
+    static volatile string fixStep = "", fixJson = "null";
+    static readonly object fixLock = new object(), pinLock = new object();
+    static DateTime lastDetect = DateTime.MinValue;
+    static volatile string lastDetectGw = "";
+    static string verifiedMac = "", verifiedGw = "";
+    static int verifiedIf = -1;
+    static volatile NetworkInterface curNi;
+    static volatile IPAddress curIp, curGw;
+    static string pinCache = "", pinCacheKey = "";
+    static DateTime pinCacheAt = DateTime.MinValue;
+    static readonly string token = Guid.NewGuid().ToString("N");
+    static bool portable;
+
+    static bool LocalHost(HttpListenerContext ctx)
+    {
+        string host = (ctx.Request.UserHostName ?? "").Split(':')[0];
+        return ctx.Request.IsLocal && (host == "localhost" || host == "127.0.0.1");
+    }
+
+    static string FixApi(HttpListenerContext ctx, string path)
+    {
+        if (!LocalHost(ctx) || ctx.Request.Headers["X-Netbug-Token"] != token) { ctx.Response.StatusCode = 403; return "{}"; }
+        string method = ctx.Request.HttpMethod, error = "";
+        if (path == "/api/fix" && method == "GET") return FixStatus("");
+        if (method != "POST") { ctx.Response.StatusCode = 405; return "{}"; }
+        switch (path)
+        {
+            case "/api/fix/check": if (fixBusy) error = "A check is already running."; else StartDetect("manual"); break;
+            case "/api/fix/pin": error = Pin(); break;
+            case "/api/fix/unpin": error = Unpin(); break;
+            case "/api/fix/auto":
+                autoDetect = ctx.Request.QueryString["on"] == "1";
+                SaveSettings();
+                Event("router auto-detect " + (autoDetect ? "on" : "off"));
+                if (autoDetect && !fixBusy) StartDetect("auto");
+                break;
+            case "/api/fix/stop":
+                if (!portable) { error = "This netbug runs as a scheduled task; stop it there."; break; }
+                Event("netbug stopped from the page");
+                Task.Run(() => { Thread.Sleep(500); Environment.Exit(0); });
+                break;
+            default: ctx.Response.StatusCode = 404; return "{}";
+        }
+        return FixStatus(error);
+    }
+
+    static string FixStatus(string error)
+    {
+        var ni = curNi; var gw = curGw;
+        string iface = ni == null ? "" : ni.Name, pinned = "";
+        int idx = IfIndex(ni);
+        if (gw != null && idx >= 0) pinned = PersistentPin(idx, gw);
+        bool verifiedHere = gw != null && verifiedMac != "" && verifiedGw == gw.ToString() && verifiedIf == idx;
+        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11}}}",
+            fixBusy ? "true" : "false", J(fixStep), autoDetect ? "true" : "false", portable ? "true" : "false", J(iface), J(gw == null ? "" : gw.ToString()),
+            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error));
+    }
+
+    static int IfIndex(NetworkInterface ni)
+    {
+        try { return ni == null ? -1 : ni.GetIPProperties().GetIPv4Properties().Index; } catch { return -1; }
+    }
+
+    static string Netsh(string args)
+    {
+        var psi = new ProcessStartInfo("netsh.exe", args) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
+        using (var p = Process.Start(psi))
+        {
+            string output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(15000);
+            return output;
+        }
+    }
+
+    // The gateway's MAC in the persistent ARP store of an interface ("" if none). Cached for 20 s:
+    // the page asks every 2 s and netsh is a process start.
+    static string PersistentPin(int ifIndex, IPAddress gw)
+    {
+        lock (pinLock)
+        {
+            string key = ifIndex + " " + gw;
+            if (key == pinCacheKey && (DateTime.Now - pinCacheAt).TotalSeconds < 20) return pinCache;
+            string mac = "";
+            foreach (var line in Netsh(string.Format("interface ipv4 show neighbors interface={0} store=persistent", ifIndex)).Split('\n'))
+            {
+                var parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2 && parts[0] == gw.ToString() && parts[1].Length == 17) mac = parts[1].ToUpperInvariant();
+            }
+            pinCache = mac; pinCacheKey = key; pinCacheAt = DateTime.Now;
+            return mac;
+        }
+    }
+
+    // Replaces the gateway's entry in the active ARP store only: a static entry for `mac`, or none ("").
+    static void SetActive(int ifIndex, IPAddress gw, string mac)
+    {
+        Netsh(string.Format("interface ipv4 delete neighbors interface={0} address={1} store=active", ifIndex, gw));
+        if (mac != "") Netsh(string.Format("interface ipv4 add neighbors interface={0} address={1} neighbor={2} store=active", ifIndex, gw, mac));
+    }
+
+    // ICMP echo from `src` (so it leaves through that interface) with the given TTL. Returns the IP Helper
+    // status (0 = reply, 11013 = TTL expired in transit, 11010 = timed out) and who answered.
+    static int PingFrom(IPAddress src, IPAddress dst, byte ttl, out IPAddress from)
+    {
+        from = null;
+        IntPtr handle = IcmpCreateFile(), reply = Marshal.AllocHGlobal(256);
+        try
+        {
+            var options = new IpOptions { Ttl = ttl };
+            var data = new byte[32];
+            int n = IcmpSendEcho2Ex(handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, BitConverter.ToUInt32(src.GetAddressBytes(), 0),
+                BitConverter.ToUInt32(dst.GetAddressBytes(), 0), data, (short)data.Length, ref options, reply, 256, 1500);
+            if (n == 0) return Marshal.GetLastWin32Error();
+            from = new IPAddress(BitConverter.GetBytes(Marshal.ReadInt32(reply, 0)));   // ICMP_ECHO_REPLY: address, status, ...
+            return Marshal.ReadInt32(reply, 4);
+        }
+        finally { Marshal.FreeHGlobal(reply); IcmpCloseHandle(handle); }
+    }
+
+    static void StartDetect(string why)
+    {
+        lock (fixLock) { if (fixBusy) return; fixBusy = true; }
+        lastDetect = DateTime.Now; autoKick = false;
+        Task.Run(() => Detect(why));
+    }
+
+    static void Detect(string why)
+    {
+        var cands = new List<Candidate>();
+        Action<string, string> add = (mac, from) =>
+        {
+            if (mac == null || mac.Length != 17) return;
+            mac = mac.ToUpperInvariant();
+            var c = cands.FirstOrDefault(x => x.Mac == mac);
+            if (c == null) cands.Add(c = new Candidate { Mac = mac, Random = (Convert.ToInt32(mac.Substring(0, 2), 16) & 2) != 0 });
+            c.From += (c.From == "" ? "" : ", ") + from;
+        };
+        try
+        {
+            NetworkInterface ni = curNi; IPAddress ip = curIp, gw = curGw;
+            int idx = IfIndex(ni);
+            if (ni == null || ip == null || gw == null || idx < 0)
+            {
+                fixJson = string.Format("{{\"at\":{0},\"note\":{1},\"cands\":[]}}", Unix(DateTime.Now), J("No network with a router right now."));
+                return;
+            }
+            lastDetectGw = gw.ToString();
+            Event(string.Format("router check ({0}) on '{1}', gateway {2}", why, ni.Name, gw));
+            string arpType = ArpEntryType(gw, ni), pinned = PersistentPin(idx, gw);
+            add(Arp(gw, ip), "ARP table (" + (arpType == "" ? "?" : arpType) + ")");
+            add(pinned, "pinned");
+
+            fixStep = "Listening for who answers as the router (10 s)";
+            for (int i = 0; i < 40 && arpWatchRunning; i++) Thread.Sleep(500);
+            arpWatchRunning = true;
+            Dictionary<string, int> claims;
+            try
+            {
+                var capture = Task.Run(() => ArpCapture(gw));
+                Thread.Sleep(2500);
+                // ask for the router again so the real one answers too (a pinned entry is never asked about)
+                if (arpType != "static")
+                    for (int i = 0; i < 3; i++) { SetActive(idx, gw, ""); Arp(gw, ip); Thread.Sleep(1500); }
+                claims = capture.Result;
+            }
+            finally { arpWatchRunning = false; }
+            foreach (var kv in claims) add(kv.Key, string.Format("answered as the router {0}x", kv.Value));
+
+            var cf = IPAddress.Parse("1.1.1.1"); var g = IPAddress.Parse("8.8.8.8");
+            try
+            {
+                foreach (var c in cands)
+                {
+                    fixStep = "Testing " + c.Mac;
+                    SetActive(idx, gw, c.Mac);
+                    Thread.Sleep(500);
+                    IPAddress from;
+                    c.Works = PingFrom(ip, cf, 64, out from) == 0 || PingFrom(ip, g, 64, out from) == 0 || PingFrom(ip, cf, 64, out from) == 0;
+                    int st = PingFrom(ip, g, 1, out from);
+                    if (st != 11013) st = PingFrom(ip, cf, 1, out from);
+                    c.Hop = st == 11013 && from != null ? from.ToString() : "";
+                }
+            }
+            finally { SetActive(idx, gw, pinned); }   // as it was: pinned again, or learned again
+
+            string gwIp = gw.ToString();
+            foreach (var c in cands)
+                c.Verdict = !c.Works ? "nothing gets through it: not the router"
+                    : c.Hop == gwIp ? "the real router: traffic gets through and it answers as " + gwIp
+                    : c.Hop != "" ? "passes traffic on through " + c.Hop + ": a device in the middle"
+                    : "traffic gets through, but it didn't answer the hop test";
+            var real = cands.Where(c => c.Works && c.Hop == gwIp).ToList();
+            if (real.Count > 1 && real.Count(c => !c.Random) == 1) real = real.Where(c => !c.Random).ToList();
+            string note;
+            if (real.Count == 1) note = "";
+            else if (real.Count > 1) note = "More than one MAC passed the test, so none was picked. Check again in a minute.";
+            else
+            {
+                var works = cands.Where(c => c.Works && c.Hop == "").ToList();
+                if (works.Count == 1 && !works[0].Random) { real = works; note = "Picked by traffic only: the router doesn't answer the hop test."; }
+                else note = cands.Count == 0 ? "No MAC answered for the router." : "No MAC passed the test. The router may be down; try again later.";
+            }
+            lock (fixLock)
+            {
+                verifiedMac = real.Count == 1 ? real[0].Mac : "";
+                verifiedGw = gwIp; verifiedIf = idx;
+            }
+            fixJson = string.Format("{{\"at\":{0},\"chosen\":{1},\"note\":{2},\"cands\":[{3}]}}", Unix(DateTime.Now), J(verifiedMac), J(note),
+                string.Join(",", cands.Select(c => string.Format("{{\"mac\":{0},\"from\":{1},\"works\":{2},\"hop\":{3},\"random\":{4},\"verdict\":{5}}}",
+                    J(c.Mac), J(c.From), c.Works ? "true" : "false", J(c.Hop), c.Random ? "true" : "false", J(c.Verdict)))));
+            Event(string.Format("router check: {0} ({1})", verifiedMac != "" ? "real router is " + verifiedMac : "no MAC picked",
+                string.Join("; ", cands.Select(c => c.Mac + ": " + c.Verdict))));
+        }
+        catch (Exception ex)
+        {
+            fixJson = string.Format("{{\"at\":{0},\"note\":{1},\"cands\":[]}}", Unix(DateTime.Now), J("Check failed: " + ex.Message));
+            Event("router check failed: " + ex.Message);
+        }
+        finally { fixStep = ""; fixBusy = false; }
+    }
+
+    // Pins the MAC the last check verified, for the gateway and interface it was checked on.
+    static string Pin()
+    {
+        NetworkInterface ni = curNi; IPAddress gw = curGw;
+        int idx = IfIndex(ni);
+        string mac;
+        lock (fixLock)
+        {
+            if (fixBusy) return "Wait for the check to finish.";
+            if (gw == null || verifiedMac == "" || verifiedGw != gw.ToString() || verifiedIf != idx) return "Run a check first: nothing is verified for this network yet.";
+            mac = verifiedMac;
+        }
+        Netsh(string.Format("interface ipv4 delete neighbors interface={0} address={1}", idx, gw));
+        string output = Netsh(string.Format("interface ipv4 add neighbors interface={0} address={1} neighbor={2} store=persistent", idx, gw, mac));
+        lock (pinLock) pinCacheAt = DateTime.MinValue;
+        if (PersistentPin(idx, gw) != mac) return "Pinning failed: " + output.Trim();
+        Event(string.Format("gateway {0} pinned to {1} on '{2}' from the page", gw, mac, ni.Name));
+        return "";
+    }
+
+    static string Unpin()
+    {
+        NetworkInterface ni = curNi; IPAddress gw = curGw;
+        int idx = IfIndex(ni);
+        if (gw == null || idx < 0) return "No network with a router right now.";
+        if (fixBusy) return "Wait for the check to finish.";
+        Netsh(string.Format("interface ipv4 delete neighbors interface={0} address={1}", idx, gw));
+        lock (pinLock) pinCacheAt = DateTime.MinValue;
+        if (PersistentPin(idx, gw) != "") return "Unpinning failed.";
+        Event(string.Format("gateway {0} unpinned on '{1}' from the page", gw, ni.Name));
+        return "";
     }
 
     // events.log lines after byte offset `from` (at most 256 KB). A missing or out-of-range offset

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 15:14: `HASH` gateway pin removed; 3 netbug log fixes
+### 15:14: `f47a67b` gateway pin removed; 3 netbug log fixes
 - **Machine (user's request), 15:12:** removed the gateway ARP pin (`netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`).
   - Verified: the entry is dynamic/Reachable with the real MikroTik MAC, the PersistentStore is empty, and netbug logs `gw_arp=dynamic`.
   - Reason: confirm the next drop is the same ARP-spoofing issue before applying any fix. All spoofing detection stays on.

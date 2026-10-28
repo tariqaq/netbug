@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 22:48: `PENDING` router protection panel and a self-contained exe for friends
+### 22:48: `4e0503d` router protection panel and a self-contained exe for friends
 - **Router protection** panel on the dashboard, only on the laptop itself:
   - **Check now:** finds the real router MAC. Candidates are the ARP entry, the pin, and every MAC answering for the gateway in a 10 s pktmon capture, during which the router is asked again. Each candidate is tested as a temporary static entry (active store only): internet pings must pass **and** a TTL-1 ping must come back from the gateway IP itself. The entry is then restored.
   - **Auto-detect** switch: now, every 30 min, on a gateway change and after spoofing alerts. Kept in `logs/netbug.settings`.

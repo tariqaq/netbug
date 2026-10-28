@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
-### 18:17: `PENDING` incident video v4
+### 18:17: `b43d5ec` incident video v4
 - Film grain removed (barely visible).
 - Slower pacing: 2:04 to 2:22. Longer cold open, chapter cards (40 to 60 frames), gaps between lines and scenes, and held pauses after key lines and titles.
 - Narrator back to `en-US-AndrewNeural`, with per-line rate and pitch for tone (slower and lower on the dramatic lines; new `rate`/`pitch` fields in `narration.json`).

@@ -3,7 +3,7 @@
 Resume point for any new session: read this file top to bottom, then continue from the first unchecked box in **v4 progress** (v3 is done). Update this file **immediately** after every finished step (tick the box, add a log line with system-clock time).
 
 - Created: 2026-10-28 17:13 MYT
-- Status: **v4 IN PROGRESS** (v3 done and pushed as `68d877a`)
+- Status: **v4 DONE** (`b43d5ec`; v3 tagged `video-v3`)
 - Base: v2 (`eac8d45`), `src/index.tsx`, 3582 frames (1:59.4), 18 narration lines
 
 ## Goal
@@ -96,7 +96,7 @@ Approach:
 - [x] V4.5 check, lint, strip, stills (check clean, lint 0 errors; strip + stills reviewed)
 - [x] V4.6 Render v4 full + redacted (3 Mbit/s), loudness, spot-check (2:22, -14.8 LUFS, peak -0.9 dBFS, ~55 MB each; redaction checked; voice limiter added after a first render peaked at 0 dBFS)
 - [x] V4.7 Docs (video/README, root README, CHANGELOG), commit, push
-- [ ] V4.8 Report to the user
+- [x] V4.8 Report to the user
 
 ## v3 progress
 
@@ -145,3 +145,4 @@ Times come from the system clock (`Get-Date`). Entries marked "between 17:13 and
 - 2026-10-28 17:49: committed `68d877a`, pushed with tag `video-v2`. Delivered.
 - If the user dislikes the synth score: switch to a royalty-free track (ask before downloading; check licence).
 - 2026-10-28 18:06: v4 requested (see v4 section). Started.
+- 2026-10-28 18:18: v4 committed `b43d5ec`, pushed with tag `video-v3`. Delivered.

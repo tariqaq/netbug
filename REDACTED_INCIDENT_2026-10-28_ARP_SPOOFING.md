@@ -188,9 +188,9 @@ A randomized MAC can change, but it usually stays the same per Wi-Fi network on 
 
 ---
 
-## 8. Mitigation: gateway MAC pin (applied 05:50, removed 15:12)
+## 8. Mitigation: gateway MAC pin (applied 05:50, removed 15:12, re-applied 15:37)
 
-**Current status: NOT applied.** The user removed it on purpose at 2026-10-28 15:12.
+**Current status: APPLIED again since 15:37:57** (§11), after the 15:28 attack confirmed the cause. History: applied 05:50, removed on purpose at 15:12, re-applied 15:37.
 - The plan is to let the next drop happen unprotected and analyze it with netbug, to confirm it's the same ARP-spoofing issue rather than assume so. Only then is a fix applied, with the user's OK.
 - Removed with `netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`.
 - Verified afterwards: the gateway entry was back to `Reachable` (dynamic) with the real MikroTik MAC, nothing remained in the PersistentStore, and netbug logged `gateway ARP entry for 10.255.31.254: ? -> dynamic`.
@@ -307,11 +307,16 @@ ARP watch compared the capture against the gateway MAC **currently in Windows' A
 - Limit: if netbug starts *during* an attack, the first MAC it sees is the impostor's. Restart it once the network is healthy.
 
 ### Pin
-The user agreed to re-pin after this confirmation. The re-pin command was **blocked by Claude Code's permission safeguard**, which wants an explicit approval for a persistent system change. The pin is **not applied** until the user confirms explicitly or runs it in an admin terminal:
+The user agreed to re-pin after this confirmation. The first attempt was blocked by Claude Code's permission safeguard (the approval wasn't explicit enough for a persistent system change). After an explicit "yes, re-pin the gateway MAC" it was **applied at 15:37:57**:
 
 ```
 netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx store=persistent
 ```
+
+- Before: the cache still held the impostor, `10.255.31.254 xx-xx-xx-xx-xx-xx Unreachable`.
+- After: `xx-xx-xx-xx-xx-xx Permanent` in the active store and the PersistentStore.
+- The user replugged Ethernet only after the pin was in place.
+- Next question: does the problem still happen with the pin on? If the attacker also poisons the router's side, inbound traffic can still break (§8). netbug and ARP watch will show which.
 
 ## 10. What the hostel should do (summary of `RCC_REPORT.md`)
 

@@ -331,6 +331,12 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - While pinned (06:13–15:00) there were no spoofing alerts and no real outages. There were 14 single-second "both internet pings lost" blips and 6 single TCP-connect timeouts, all recovered the next second.
 - Other machine changes are unchanged: NIC power-off disabled and USB selective suspend off (§11, separate user request), driver updated, Tailscale installed.
 
+### 2026-10-28 15:37 — gateway MAC pin re-applied (user-approved)
+
+- The 15:28 attack by the same device confirmed the cause (§10b, incident report §11), so the pin went back on: `xx-xx-xx-xx-xx-xx Permanent` (active and persistent), replacing the poisoned `7A-EC-…` cache entry.
+- netbug now keeps a trusted gateway MAC, so ARP watch can't be fooled by a poisoned cache.
+- Watching whether drops continue with the pin on.
+
 ## 12. Next actions
 
 - ~~Turn the Private firewall back on.~~ Won't do: the user keeps it off intentionally.
@@ -341,4 +347,5 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - ~~Pin the real gateway MAC with a static ARP entry on Ethernet 7.~~ Done at 05:50, **removed at 15:12** at the user's request (§11).
 - ~~Make netbug treat a gateway MAC change as an alert of its own.~~ Done. netbug also shows the pin status and runs an ARP watch every 5 min (§11).
 - **Open (user):** send `RCC_REPORT.md` to the hostel RCC. It covers finding `10.255.18.145` / `xx-xx-xx-xx-xx-xx` on the MikroTik and turning on ARP spoofing protection.
-- **Open:** wait for the next drop, then analyze it. If it matches the 05:34 ARP-spoofing signature, propose re-pinning (incident report §8) and apply it only with the user's OK.
+- ~~Wait for the next drop and confirm the cause.~~ Confirmed at 15:28 (same device). Pin re-applied at 15:37.
+- **Open:** see whether drops continue with the pin on. A drop while pinned means the router side is poisoned too, and only the hostel can fix that.

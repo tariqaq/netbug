@@ -21,9 +21,10 @@
 
 ## LOG ANALYSIS (every time the user asks to analyze logs)
 
-1. **Pin status.** The gateway ARP pin was removed on 2026-10-28 15:12 to confirm the cause. That was confirmed at 15:28 (same attacker, incident report §11). The user agreed to re-pin, but the command was blocked by the permission safeguard.
-   - Report the current `gw_arp`. If it's not `static` on hostel Ethernet, remind the user and give the re-pin command.
+1. **Check the gateway ARP pin.** It was re-applied on 2026-10-28 15:37 after the 15:28 attack confirmed the cause (incident report §11). Expect `gw_arp=static` on hostel Ethernet.
+   - If it's `dynamic` or missing (for example the dongle was renamed), **tell the user first** and give the re-pin command (incident report §8).
+   - Apply nothing without the user's explicit OK.
 2. Search `events.log` for `ARP SPOOFING DETECTED` and `GATEWAY MAC CHANGED`, and report each with its time and MAC.
 3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway.
-   - If it matches, propose a fix (re-pin: `INCIDENT_2026-10-28_ARP_SPOOFING.md` §8) and **wait for the user's OK** before applying anything.
+   - If it matches while pinned, the pin isn't enough: the router side is probably poisoned too. Report it and propose next steps; apply nothing without the user's OK.
    - If it doesn't match, look for the actual layer that broke.

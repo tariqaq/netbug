@@ -148,7 +148,7 @@ Admin rights are needed for three things: `pktmon` packet captures (snapshots an
 
 ### 🛡️ Pinning the gateway MAC (ARP spoofing defence)
 
-> ℹ️ **Not applied on this laptop right now.** The pin was used 05:50–15:12 on 2026-10-28, then removed on purpose so the next drop can be confirmed before any fix goes in.
+> ℹ️ **Applied on this laptop** since 2026-10-28 15:37. It was removed 15:12–15:37 on purpose until the second attack (15:28) confirmed the cause.
 
 On a LAN where someone ARP-spoofs the gateway, pin the real gateway MAC so Windows ignores fake replies (admin):
 

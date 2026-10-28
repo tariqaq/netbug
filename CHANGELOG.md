@@ -5,6 +5,12 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-10-28
 
+### 15:38: `HASH` gateway pin re-applied
+- **Machine (user-approved: "yes, re-pin the gateway MAC"), 15:37:57:** `netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 <MikroTik MAC> store=persistent`.
+  - Before, the cache still held the impostor's MAC (Unreachable). After: Permanent in the active and persistent stores.
+  - The user replugged Ethernet after the pin.
+- Docs: incident report §8/§11, scan report §11/§12, README, RCC report and `AGENTS.md` (expect `static`; a drop while pinned means the router side is poisoned too).
+
 ### 15:35: `82c38dd` second ARP-spoofing attack (15:28) confirmed; netbug trusted gateway MAC
 - **Incident #2:**
   - At 15:28:54 netbug logged `GATEWAY MAC CHANGED` (`2C-C8-…` to `7A-EC-…`) plus a snapshot. The 155 s outage ended when the user unplugged at 15:31:31.

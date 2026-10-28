@@ -1,0 +1,12 @@
+{
+  "name": "netbug-incident-video",
+  "private": true,
+  "type": "module",
+  "description": "Explainer video for the 2026-10-28 ARP spoofing incident, rendered with kinetograph",
+  "dependencies": {
+    "kinetograph": "0.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  }
+}

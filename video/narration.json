@@ -1,0 +1,27 @@
+{
+  "voice": "en-US-AndrewNeural",
+  "rate": "+5%",
+  "lines": [
+    { "id": "title1",  "text": "Two attacks in one day." },
+    { "id": "title2",  "text": "On October 28th, the hostel internet died twice: at 5:34 in the morning, and again at 3:28 in the afternoon. Both times, we caught exactly why." },
+    { "id": "normal1", "text": "On the hostel network, every device first asks one question: who is the router?" },
+    { "id": "normal2", "text": "The real router, a MikroTik, answers with its hardware address. From then on, all internet traffic flows through it.",
+      "say": "The real router, a Micro-Tik, answers with its hardware address. From then on, all internet traffic flows through it." },
+    { "id": "a1_1",    "text": "At 5:34 and 3 seconds, another device on the network started answering instead. Its message: I am the router." },
+    { "id": "a1_2",    "text": "The laptop believed it, and so did two other devices nearby." },
+    { "id": "a1_3",    "text": "From that moment, every packet went to the impostor. 71 packets went out. Zero came back." },
+    { "id": "sym1",    "text": "That's why Discord shows five thousand milliseconds, friends can't hear you, and pages load forever, with no error at all." },
+    { "id": "sym2",    "text": "Nothing comes back, so nothing can even fail properly." },
+    { "id": "a1_end",  "text": "It lasted two and a half minutes, until the cable was pulled. netbug recorded every second of it.",
+      "say": "It lasted two and a half minutes, until the cable was pulled. Net-bug recorded every second of it." },
+    { "id": "test1",   "text": "To be sure, we removed the protection and waited." },
+    { "id": "test2",   "text": "At 3:28 that afternoon, it happened again." },
+    { "id": "a2_1",    "text": "Same device. Same address. Same lie. 42 packets out, zero back." },
+    { "id": "a2_2",    "text": "This time, four other devices lost the router too, and the capture caught the attacker looking up its next victim: one it had already cut off that morning." },
+    { "id": "cmp",     "text": "Every detail matched. This is not a broken router or a bad cable. Someone on this network is cutting people off on purpose." },
+    { "id": "fix1",    "text": "The fix on the laptop is to pin the real router's address. Fake replies are then simply ignored." },
+    { "id": "fix2",    "text": "After pinning, reconnecting worked instantly. But the pin protects only this laptop, and only its outgoing traffic." },
+    { "id": "rcc",     "text": "For the hostel team: find this device on the MikroTik, then turn on client isolation and ARP protection. That protects everyone.",
+      "say": "For the hostel team: find this device on the Micro-Tik, then turn on client isolation and A.R.P. protection. That protects everyone." }
+  ]
+}

@@ -20,7 +20,7 @@ Switching to a phone hotspot *seemed* to bring things back while the cable was o
 
 Nothing in Windows explains it. So netbug watches every layer and timestamps exactly what breaks first.
 
-> 🎯 **Found it (2026-10-28 05:34, and again 15:28 from the same device):** another device on the hostel LAN was **ARP spoofing the gateway**. It told the laptop "I'm the router", then swallowed every packet. netbug caught the gateway MAC change, the outage and the spoofed ARP replies live. Write-up: [`REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`](REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md). Report for the hostel: [`REDACTED_RCC_REPORT.md`](REDACTED_RCC_REPORT.md).
+> 🎯 **Found it (2026-10-28 05:34, and again 15:28 from the same device):** another device on the hostel LAN was **ARP spoofing the gateway**. It told the laptop "I'm the router", then swallowed every packet. netbug caught the gateway MAC change, the outage and the spoofed ARP replies live. Write-up: [`REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`](REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md). Report for the hostel: [`REDACTED_RCC_REPORT.md`](REDACTED_RCC_REPORT.md). 🎬 2-minute narrated explainer: [`video/incident-redacted.mp4`](video/incident-redacted.mp4).
 
 ---
 
@@ -170,6 +170,7 @@ netbug shows the pin status (`gw_arp` = `static`) and keeps reporting spoofing a
 | `tools/dashboard.html` | Live dashboard page, served by netbug on port 8787 |
 | `tools/arpwatch.ps1` | 10 s ARP capture every 5 min: prints every MAC that claimed the gateway IP |
 | `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md` | 🔒 Full incident report: the 05:34 ARP spoofing attack, evidence, mitigation |
+| `video/` | 🎬 2-minute narrated explainer of both attacks and the fix (kinetograph); see `video/README.md` |
 | `REDACTED_RCC_REPORT.md` | 🔒 Report for the hostel RCC: who to look for and how to stop it |
 | `tools/fonts/` | Inter font for the dashboard (SIL Open Font License, `OFL.txt`) |
 | `tools/redact.ps1` | Builds `REDACTED_<name>.md` from gitignored notes: MACs + terms in `redact.local.txt` → `xxx`, refuses to write if any PII remains |

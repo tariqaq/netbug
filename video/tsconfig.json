@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx", "module": "ESNext", "moduleResolution": "Bundler", "target": "ES2022",
+    "strict": true, "skipLibCheck": true, "noEmit": true, "resolveJsonModule": true, "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": { "remotion": ["node_modules/@kinetographdev/core/dist/index.d.ts"] }
+  },
+  "include": ["src"]
+}

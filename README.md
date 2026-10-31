@@ -35,8 +35,9 @@ flowchart TD
     C --> T["🔗 TLS thread: HEAD on one long-lived connection every 15 s"]
     C --> U["📡 UDP thread: STUN on one long-lived socket every 2 s"]
     C --> W["🖥️ Dashboard thread: port 8787, all interfaces"]
-    C --> AW["🕵️ ARP watch: 10 s ARP capture every 5 min (arpwatch.ps1)"]
-    AW -->|"another MAC claims the gateway IP"| SP["ARP SPOOFING DETECTED"]
+    C --> AW["🕵️ ARP watch thread: continuous ARP capture (pktmon, read every 60 s), checked every 5 min and at each snapshot"]
+    C --> AN["📢 MAC announce thread: one ARP request about every second"]
+    AW -->|"another MAC claims the gateway IP or this laptop's IP"| SP["ARP SPOOFING DETECTED"]
     SP --> S
     SP --> E
     E --> W
@@ -77,7 +78,8 @@ flowchart TD
 | 2 s | STUN over one long-lived UDP socket | UDP path loss, **NAT mapping changes** (what kills voice/game sessions) |
 | 10 s (every 1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
 | 10 s | UDP ports per process, gateway MAC via ARP, gateway ARP entry type (static = pinned / dynamic) | Port leaks, **gateway MAC change = possible ARP spoofing** (alert + snapshot), pin removed |
-| 5 min | 10 s ARP-only `pktmon` capture (`arpwatch.ps1`) | **Any other device claiming the gateway IP**, even while a pinned entry makes Windows ignore it |
+| always | Continuous ARP-only `pktmon` capture (rotated and read by netbug every 60 s, last 15 min kept in memory), checked every 5 min and when a snapshot starts | **Any other device claiming the gateway IP**, even while a pinned entry makes Windows ignore it, and **any other device claiming this laptop's IP** (poisoning the router about this laptop) |
+| ~1 s | MAC announce: an ARP request for a neighbor next to the gateway (switch "Keep the router updated") | Not a check: the router hears this laptop's real MAC every second, so a fake entry for this laptop lasts about a second |
 | 15 s | HEAD on one long-lived TLS connection | Connections silently killed (FIN / RST / timeout) |
 | 5 min | Public IP | ISP / PPPoE reconnects |
 | 1 h | Own RAM / handles / threads | Leaks (auto-restarts past limits) |
@@ -94,7 +96,7 @@ All output goes to `logs/`, which is gitignored and stays on the machine.
 |---|---|
 | `netbug-<date>.csv` | One row per 5 s (per 1 s around failures). Columns: interface, link, IP, gateway + MAC + ARP entry type (`gw_arp`), ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures |
 | `events.log` | Human-readable timeline: `OUTAGE START/END`, `LAG`, `GATEWAY MAC CHANGED`, `ARP SPOOFING DETECTED`, link/interface changes, gateway MAC / ARP entry / public IP / NAT mapping changes, TCP connection deaths, high UDP usage, hourly `health:` lines |
-| `snapshots/` | Full dump per incident: adapter counters, NCSI state, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, recent system events, plus a 15 s `pktmon` packet capture and a list of every MAC that claimed to be the gateway in it |
+| `snapshots/` | Full dump per incident: adapter counters, NCSI state, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, recent system events, plus a `pktmon` packet capture that starts first and runs while the probes do (at least 15 s), the list of every MAC that claimed to be the gateway or this laptop in it, and `<name>.ring.txt`: the ARP frames about the gateway or this laptop from the continuous capture, i.e. the minutes before |
 
 🧹 Files older than **30 days** are deleted, and `logs/` is hard-capped at **500 MB**: the oldest snapshots go first, then the oldest CSVs.
 
@@ -125,7 +127,7 @@ The page makes no external requests, so it keeps working while the internet is d
 Opened on the laptop (`http://localhost:8787/`), the page also shows a **Router protection** panel. Other devices never see it: netbug only gives the page its control token on localhost. The panel has:
 
 - **Check now:** finds the real router MAC for the current gateway, in four steps:
-  1. **Collect candidates:** the ARP table entry, any pinned entry, and every MAC that answers for the gateway IP in a 10 s `pktmon` capture. During the capture the laptop asks for the router again, unless the entry is pinned, so the real router answers too.
+  1. **Collect candidates:** the ARP table entry, any pinned entry, and every MAC that answers for the gateway IP in 10 s of the continuous ARP capture. During the capture the laptop asks for the router again, unless the entry is pinned, so the real router answers too.
   2. **Test each candidate:** it is set for a moment as a temporary static ARP entry (active store only; the persistent store is never touched).
   3. **Judge it:** it's the real router when pings to 1.1.1.1/8.8.8.8 get through it **and** a TTL-1 ping comes back "TTL expired" from the gateway IP itself. A blackholing impostor passes nothing. A device in the middle that forwards traffic answers the TTL-1 ping with its own IP.
   4. **Put the ARP entry back** as it was.
@@ -133,6 +135,8 @@ Opened on the laptop (`http://localhost:8787/`), the page also shows a **Router 
   Each check cuts the connection for a few seconds.
 - **Auto-detect the real router** (switch): checks now, every 30 min, when the gateway changes, and after a spoofing alert (at most every 5 min). It never changes a pin by itself; if a check disagrees with the pin, the panel says so.
 - **Pin it permanently** (switch): pins the MAC the last check verified (`netsh … store=persistent`), or removes the pin. The pin survives restarts. Turn it off before plugging the same adapter into another network that uses the same router address.
+- **Keep the router updated** (switch, on by default): the pin only protects the laptop's own ARP table. An attacker can still tell the *router* that the laptop's IP is their MAC, and the router then sends the laptop's traffic to them. So about once a second netbug has Windows re-resolve a neighbor address next to the gateway (`ResolveIpNetEntry2`). Each ARP request is a broadcast that carries the laptop's real IP and MAC, and routers update their existing entry from it. A fake entry then lasts about a second instead of until the router asks again. The panel shows how many were sent, and how many of the laptop's ARP requests the last capture check saw on the wire.
+  - It can't help if the router ignores ARP it didn't ask for, and a fake claim sent only to the router never reaches the laptop, so a clean capture doesn't rule it out. The real fix is on the hostel's switch (DHCP snooping + Dynamic ARP Inspection).
 
 The control requests only work from the laptop itself:
 - loopback address
@@ -165,9 +169,9 @@ Running the exe again while netbug is already running just opens the page.
 
 | | |
 |---|---|
-| 🧠 RAM | ~25–37 MB |
-| ⚡ CPU | ~1% of one core (≈0.07% of a 16-thread CPU), BelowNormal priority. ARP watch adds ~0.5 s of CPU every 5 min (~0.15% of one core averaged). |
-| 🌐 Network | ~0.75 KB/s total, no traffic to game or voice servers. The dashboard adds under 1 KB/s per open tab, on the LAN only. |
+| 🧠 RAM | ~25–45 MB for netbug, plus **512 MB of kernel memory** that pktmon reserves for the continuous ARP capture (it can't be made smaller) |
+| ⚡ CPU | ~2% of one core, BelowNormal priority, locked to the 4 highest-numbered logical processors (its pktmon/PowerShell/netsh children too), so games keep the rest. |
+| 🌐 Network | ~0.75 KB/s total plus one 42-byte ARP broadcast about every second, no traffic to game or voice servers. The dashboard adds under 1 KB/s per open tab, on the LAN only. |
 | 💾 Disk | ~6 MB/day of small appends |
 | 🛡️ Safety | Restarts itself past 200 MB private memory, 5000 handles or 100 threads |
 
@@ -210,7 +214,7 @@ Or use the dashboard's **Router protection** panel, which finds and verifies the
 | `tools/netbug.cs` | The logger |
 | `tools/snapshot.ps1` | Incident snapshot, launched by netbug |
 | `tools/dashboard.html` | Live dashboard page, served by netbug on port 8787, with the Router protection panel on the laptop itself |
-| `tools/arpwatch.ps1` | 10 s ARP capture every 5 min: prints every MAC that claimed the gateway IP |
+| `tools/arpwatch.ps1` | Reads a pktmon capture file (the snapshot's) and prints every MAC that claimed the gateway IP or this laptop's IP |
 | `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md` | 🔒 Full incident report: the 05:34 ARP spoofing attack, evidence, mitigation |
 | `video/` | 🎬 2-minute narrated explainer of both attacks and the fix (kinetograph); see `video/README.md` |
 | `REDACTED_RCC_REPORT.md` | 🔒 Report for the hostel RCC: who to look for and how to stop it |

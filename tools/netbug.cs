@@ -14,8 +14,14 @@
 // ARP spoofing defence: every 10 s the gateway's ARP entry type is read (static = pinned,
 // dynamic = learned). A MAC for the gateway IP other than the trusted one (the first seen
 // for that IP, or the pinned one) is logged as GATEWAY MAC CHANGED.
-// Every 5 min arpwatch.ps1 captures 10 s of ARP and reports any other MAC claiming the
-// gateway IP (ARP SPOOFING DETECTED), even while a pinned entry makes Windows ignore it.
+// A continuous ARP-only capture (pktmon, read by netbug every 60 s, last 15 min kept in memory) runs
+// all the time. Every 5 min, and when a snapshot starts, its new frames are judged: any other MAC
+// claiming the gateway IP or this laptop's IP is ARP SPOOFING DETECTED, even while a pinned entry makes
+// Windows ignore it. A snapshot saves the ARP from the 15 min before it (<snapshot>.ring.txt). See the
+// "ARP watch" section.
+// MAC announce: about once a second this laptop sends an ARP request (sender = its own IP and MAC),
+// so a router told a fake MAC for this laptop learns the real one again within a second. See the
+// "MAC announce" section.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
 // A read-only dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served
@@ -44,6 +50,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,6 +64,12 @@ class NetBug
 
     [DllImport("iphlpapi.dll")]
     static extern int GetIpNetTable(IntPtr table, ref int size, bool order);
+
+    [DllImport("iphlpapi.dll")]
+    static extern int ResolveIpNetEntry2(IntPtr row, IntPtr sourceAddress);
+
+    [DllImport("iphlpapi.dll")]
+    static extern int DeleteIpNetEntry2(IntPtr row);
 
     [DllImport("iphlpapi.dll", SetLastError = true)]
     static extern IntPtr IcmpCreateFile();
@@ -97,14 +110,14 @@ class NetBug
     static int tcpMs = 0, dnsMs = 0;
     static string gwMac = "";
     // ARP spoofing defence: the gateway's ARP entry type (static = pinned, dynamic = learned),
-    // a loud alert when the gateway MAC changes while the gateway IP stays the same, and a
-    // 10 s ARP-only capture every 5 min (arpwatch.ps1) that reports anyone else claiming the gateway IP.
+    // a loud alert when the gateway MAC changes while the gateway IP stays the same, and the
+    // continuous ARP capture (see "ARP watch"), which reports anyone else claiming the gateway IP or
+    // this laptop's IP.
     // The trusted MAC is the first one seen for a gateway IP (or the pinned one). It is not replaced
     // by a changed MAC, so a poisoned ARP cache can't make the impostor "trusted".
     static string gwArp = "", lastGwArp = "", trustedGwMac = "", trustedGwIp = "";
     static volatile string gwAlert = "";
     static DateTime gwAlertAt = DateTime.MinValue;
-    static volatile bool arpWatchRunning;
     static volatile string arpWatch = "";
     static bool udpWarned;
     static int failStreak;
@@ -149,7 +162,14 @@ class NetBug
         // started by the launcher (it opens the page itself), the logon task or a self-restart.
         bool openPage = !args.Contains("--from-launcher") && ParentName() == "explorer";
 
-        using (var self = Process.GetCurrentProcess()) self.PriorityClass = ProcessPriorityClass.BelowNormal;
+        using (var self = Process.GetCurrentProcess())
+        {
+            self.PriorityClass = ProcessPriorityClass.BelowNormal;
+            // at most 4 logical processors: the 4 highest-numbered (core 0 takes most interrupts). Child
+            // processes (pktmon, PowerShell, netsh) inherit it. netbug needs far less than one core.
+            int n = Environment.ProcessorCount;
+            if (n > 4 && n <= 64) self.ProcessorAffinity = (IntPtr)(0xFL << (n - 4));
+        }
         ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;   // TLS 1.2; .NET 4.0 defaults to TLS 1.0
 
         if (portable)
@@ -172,6 +192,8 @@ class NetBug
             new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(StunLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(DashboardLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+            new Thread(AnnounceLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+            new Thread(RingLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             if (openPage) Task.Run(() => { for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500); OpenPage(); });
             Run();
         }
@@ -247,15 +269,22 @@ class NetBug
                 res.CopyTo(file);
     }
 
-    // The page's "auto-detect" switch, kept across restarts in logs/netbug.settings.
+    // The page's "auto-detect" (off by default) and "keep the router updated" (on by default) switches,
+    // kept across restarts in logs/netbug.settings.
     static void LoadSettings()
     {
-        try { string f = Path.Combine(logDir, "netbug.settings"); autoDetect = File.Exists(f) && File.ReadAllText(f).Contains("auto=1"); } catch { }
+        try
+        {
+            string f = Path.Combine(logDir, "netbug.settings"), s = File.Exists(f) ? File.ReadAllText(f) : "";
+            autoDetect = s.Contains("auto=1");
+            announce = !s.Contains("announce=0");
+        }
+        catch { }
     }
 
     static void SaveSettings()
     {
-        try { File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\n"); } catch { }
+        try { File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\nannounce=" + (announce ? "1" : "0") + "\r\n"); } catch { }
     }
 
     static void Run()
@@ -290,7 +319,7 @@ class NetBug
                     gwMac = gw != null && ip != null ? Arp(gw, ip) : "";
                     gwArp = gw != null && ni != null ? ArpEntryType(gw, ni) : "";
                 }
-                if (tick % 300 == 150 && gw != null && trustedGwIp == gw.ToString()) ArpWatchStart(gw, trustedGwMac);
+                if (tick % 300 == 150 && gw != null && ip != null) ArpWatchStart(gw, ip, trustedGwIp == gw.ToString() ? trustedGwMac : "");
                 if (autoDetect && gw != null && tick >= 20 && !fixBusy)
                 {
                     double since = (DateTime.Now - lastDetect).TotalSeconds;
@@ -639,66 +668,311 @@ class NetBug
 
     static void SetGwAlert(string text) { gwAlertAt = DateTime.Now; gwAlert = text; }
 
-    // Runs tools/arpwatch.ps1 (needs admin for pktmon): a 10 s ARP-only capture on the NICs. Returns
-    // every MAC that claimed the gateway IP, with how often.
-    static Dictionary<string, int> ArpCapture(IPAddress gw)
+    // ---------------------------------------------------------------- ARP watch
+    //
+    // The ring: an ARP-only pktmon capture (all NICs) runs all the time, into logs/arpring-a.etl and
+    // arpring-b.etl in turn. Every 60 s RingLoop stops it, starts the other file at once (blind for about
+    // a second) and reads the stopped one with "pktmon etl2txt"; the ARP frames of the last 15 min are
+    // kept in memory. Every 5 min the frames not judged yet are checked; the router check reads its 10 s
+    // from the ring too. pktmon runs one capture at a time, so a snapshot (its own capture of ARP +
+    // gateway + 1.1.1.1 traffic while its probes run) pauses the ring under pktmonLock and resumes it
+    // afterwards. A pause stops and reads the current file first, so a snapshot judges and saves the ARP
+    // from right up to the moment it started (<snapshot>.ring.txt), and the router check pauses the ring
+    // for a moment to get its last seconds. If something else stops pktmon, the next rotation restarts it.
+    // pktmon's default file size on purpose: with a small --file-size it silently loses most frames. Any
+    // pktmon capture reserves 512 MB of kernel memory while it runs (its real-time mode adds ~500 MB more).
+    // A claim of the gateway IP by any MAC other than the trusted gateway MAC, or of this laptop's IP by
+    // any MAC other than this laptop's, is ARP SPOOFING DETECTED. The second kind is aimed at the router
+    // (it then sends this laptop's traffic to that MAC); the pin can't stop it, the MAC announce makes it
+    // short. A fake claim sent only to the router is unicast and never reaches this laptop, so a clean
+    // capture doesn't rule it out.
+
+    static readonly object pktmonLock = new object(), ringLock = new object();
+    static readonly List<ArpFrame> ring = new List<ArpFrame>();
+    static readonly ManualResetEvent ringIdle = new ManualResetEvent(true);   // set while no ring capture is being read
+    static volatile bool ringPaused;
+    static DateTime ringCheckedTo = DateTime.MinValue;   // frames up to here were already judged
+    static volatile int announceSeen = -1;   // this laptop's own ARP requests in the last judged frames
+    static DateTime announceSeenAt = DateTime.MinValue;
+
+    struct ArpFrame { public DateTime T; public string Line; }
+
+    class Claim
     {
-        var claims = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        string script = Path.Combine(baseDir, "tools", "arpwatch.ps1");
-        if (!File.Exists(script)) return claims;
-        var psi = new ProcessStartInfo("powershell.exe",
-            string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Gw {1} -Work \"{2}\"", script, gw, Path.Combine(logDir, "arpwatch")))
-        { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
-        string output;
-        using (var p = Process.Start(psi))
-        {
-            try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
-            output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(60000);
-        }
-        foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var parts = line.Trim().Split(' ');
-            int n;
-            if (parts.Length != 2 || parts[0].Length != 17 || !int.TryParse(parts[1], out n)) continue;
-            string mac = parts[0].ToUpperInvariant();
-            claims[mac] = (claims.ContainsKey(mac) ? claims[mac] : 0) + n;
-        }
-        return claims;
+        public string Mac, First, Last; public int N;
+        public override string ToString() { return string.Format("{0} x{1} ({2}-{3})", Mac, N, First, Last); }
     }
 
-    // Every 5 min in the background: any MAC other than the trusted gateway MAC claiming the gateway IP
-    // is logged as ARP spoofing. Skipped while a snapshot or a router check may be using pktmon.
-    static void ArpWatchStart(IPAddress gw, string expectMac)
+    static readonly AutoResetEvent ringWake = new AutoResetEvent(false);   // set by RingPause: stop and read now
+
+    static void RingLoop()
     {
-        if (arpWatchRunning || fixBusy || (DateTime.Now - lastSnapshot).TotalSeconds < 90) return;
-        arpWatchRunning = true;
-        Task.Run(() =>
+        int n = 0;
+        while (true)
         {
             try
             {
-                var rogue = new List<string>();
-                int good = 0;
-                foreach (var kv in ArpCapture(gw))
+                while (ringPaused) Thread.Sleep(500);
+                string etl;
+                lock (pktmonLock)
                 {
-                    if (string.Equals(kv.Key, expectMac, StringComparison.OrdinalIgnoreCase)) good += kv.Value;
-                    else rogue.Add(kv.Key + " x" + kv.Value);
+                    if (ringPaused) continue;
+                    Run("pktmon.exe", "stop"); Run("pktmon.exe", "filter remove"); Run("pktmon.exe", "filter add arp -d ARP");
+                    etl = RingFile(n++);
+                    RingStartFile(etl);
+                    ringIdle.Reset();
                 }
-                if (rogue.Count > 0)
+                while (true)
                 {
-                    arpWatch = string.Format("spoofing seen {0:HH:mm}: {1}", DateTime.Now, string.Join(", ", rogue));
-                    SetGwAlert(string.Format("ARP spoofing seen at {0:HH:mm:ss}: {1} claimed to be gateway {2}", DateTime.Now, string.Join(", ", rogue), gw));
-                    Event(string.Format("ARP SPOOFING DETECTED: gateway {0} claimed by {1} in a 10 s capture (trusted {2}: {3} claims, ARP entry {4})",
-                        gw, string.Join(", ", rogue), expectMac, good, gwArp));
-                    Snapshot("arp_spoof");
-                    autoKick = true;
+                    ringWake.WaitOne(60000);
+                    // rotate: stop, start the next file at once (not while pausing: the pauser holds the lock),
+                    // then read the stopped one
+                    bool pausing = ringPaused;
+                    Run("pktmon.exe", "stop");
+                    string next = null;
+                    if (!pausing && Monitor.TryEnter(pktmonLock))
+                    {
+                        try { if (!ringPaused) { next = RingFile(n++); RingStartFile(next); } }
+                        finally { Monitor.Exit(pktmonLock); }
+                    }
+                    RingRead(etl);
+                    if (next == null) { ringIdle.Set(); break; }
+                    etl = next;
                 }
-                else arpWatch = string.Format("clean at {0:HH:mm}", DateTime.Now);
             }
+            catch (Exception ex) { ringIdle.Set(); Event("ARP capture error: " + ex.Message); Thread.Sleep(30000); }
+        }
+    }
+
+    static string RingFile(int n) { return Path.Combine(logDir, n % 2 == 0 ? "arpring-a.etl" : "arpring-b.etl"); }
+
+    static void RingStartFile(string etl)
+    {
+        if (File.Exists(etl)) File.Delete(etl);
+        Run("pktmon.exe", string.Format("start --capture --comp nics --pkt-size 64 --file-name \"{0}\"", etl));
+    }
+
+    // Adds the ARP frames of a stopped capture file to the ring and deletes the file. In the text, a
+    // header line ("[06]08FC.4F98::2026-11-01 02:35:31.450248500 [Microsoft-Windows-PktMon] ...") gives the
+    // time of the frame line (tab-indented) after it. pktmon logs each frame at two driver components,
+    // microseconds apart: an equal frame line within 5 ms is the same frame.
+    static void RingRead(string etl)
+    {
+        if (!File.Exists(etl)) return;
+        string txt = etl + ".txt";
+        try
+        {
+            Run("pktmon.exe", string.Format("etl2txt \"{0}\" --out \"{1}\"", etl, txt));
+            if (!File.Exists(txt)) return;
+            var frames = new List<ArpFrame>();
+            DateTime t = DateTime.MinValue, prevT = DateTime.MinValue;
+            string prev = "";
+            foreach (var line in File.ReadLines(txt))
+            {
+                if (line.StartsWith("\t"))
+                {
+                    if (t == DateTime.MinValue || line.IndexOf("ARP", StringComparison.Ordinal) < 0) continue;
+                    if (line == prev && (t - prevT).TotalMilliseconds < 5) continue;
+                    prev = line; prevT = t;
+                    frames.Add(new ArpFrame { T = t, Line = line.Trim() });
+                }
+                else
+                {
+                    int i = line.IndexOf("::", StringComparison.Ordinal);
+                    DateTime ht;
+                    if (i >= 0 && line.Length >= i + 28 && DateTime.TryParseExact(line.Substring(i + 2, 26), "yyyy-MM-dd HH:mm:ss.ffffff",
+                            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out ht)) t = ht;
+                }
+            }
+            lock (ringLock)
+            {
+                ring.AddRange(frames);
+                int old = 0;
+                while (old < ring.Count && (ring[old].T < DateTime.Now.AddMinutes(-15) || ring.Count - old > 50000)) old++;
+                if (old > 0) ring.RemoveRange(0, old);
+            }
+        }
+        finally { try { File.Delete(etl); File.Delete(txt); } catch { } }
+    }
+
+    // Stops the ring capture and waits until all its frames are read. The caller holds pktmonLock and
+    // calls RingResume when done with pktmon.
+    static void RingPause() { ringPaused = true; ringWake.Set(); ringIdle.WaitOne(30000); }
+    static void RingResume() { ringPaused = false; }
+
+    // The ring frames newer than ringCheckedTo (and marks them judged).
+    static List<ArpFrame> RingTake()
+    {
+        lock (ringLock)
+        {
+            var since = ringCheckedTo;
+            var frames = ring.Where(f => f.T > since).ToList();
+            if (frames.Count > 0) ringCheckedTo = frames[frames.Count - 1].T;
+            return frames;
+        }
+    }
+
+    static string Run(string exe, string args)
+    {
+        var psi = new ProcessStartInfo(exe, args) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
+        using (var p = Process.Start(psi))
+        {
+            string output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(15000);
+            return output;
+        }
+    }
+
+    const string MacRe = "((?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2})";
+
+    // Same rules as arpwatch.ps1 (used by snapshot.ps1): a MAC claims an IP with an ARP reply "<ip> is-at <mac>" or by sending an
+    // ARP request from that IP. Returns the frames that mention the gateway or this laptop's IP.
+    static List<ArpFrame> Analyze(List<ArpFrame> frames, IPAddress gw, IPAddress me, List<Claim> gwClaims, List<Claim> meClaims)
+    {
+        var mentioned = new List<ArpFrame>();
+        var rules = new[] { gw, me }.Select(ip => Regex.Escape(ip.ToString())).Select(ip => new[] {
+            new Regex("Reply " + ip + " is-at " + MacRe), new Regex("^" + MacRe + " > .*Request who-has \\S+ (?:\\(\\S+\\) )?tell " + ip + ","),
+            new Regex("(?<![\\d.])" + ip + "(?![\\d.])") }).ToArray();
+        var lists = new[] { gwClaims, meClaims };
+        foreach (var f in frames)
+        {
+            bool hit = false;
+            for (int i = 0; i < 2; i++)
+            {
+                var m = rules[i][0].Match(f.Line);
+                if (!m.Success) m = rules[i][1].Match(f.Line);
+                if (m.Success)
+                {
+                    string mac = m.Groups[1].Value.ToUpperInvariant(), at = f.T.ToString("HH:mm:ss");
+                    var c = lists[i].FirstOrDefault(x => x.Mac == mac);
+                    if (c == null) lists[i].Add(c = new Claim { Mac = mac, First = at });
+                    c.N++; c.Last = at;
+                }
+                if (rules[i][2].IsMatch(f.Line)) hit = true;
+            }
+            if (hit) mentioned.Add(f);
+        }
+        return mentioned;
+    }
+
+    static string OwnMac(NetworkInterface ni)
+    {
+        try { var b = ni.GetPhysicalAddress().GetAddressBytes(); return b.Length == 6 ? BitConverter.ToString(b) : ""; }
+        catch { return ""; }
+    }
+
+    // Judges ring frames: logs every foreign claim. expectMac "" = no trusted gateway MAC yet (the gateway
+    // claims are then not judged). Returns true when spoofing was seen.
+    static bool ReportClaims(List<ArpFrame> frames, IPAddress gw, IPAddress me, string expectMac, string where)
+    {
+        var g = new List<Claim>(); var m = new List<Claim>();
+        Analyze(frames, gw, me, g, m);
+        string own = OwnMac(curNi);
+        Func<string, string, bool> same = (a, b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        var rogueGw = expectMac == "" ? new List<Claim>() : g.Where(c => !same(c.Mac, expectMac)).ToList();
+        var rogueMe = own == "" ? new List<Claim>() : m.Where(c => !same(c.Mac, own)).ToList();
+        int mine = m.Where(c => same(c.Mac, own)).Sum(c => c.N);
+        announceSeen = mine; announceSeenAt = DateTime.Now;
+        if (rogueGw.Count > 0)
+        {
+            string who = string.Join(", ", rogueGw.Select(c => c.ToString()));
+            SetGwAlert(string.Format("ARP spoofing seen at {0:HH:mm:ss}: {1} claimed to be gateway {2}", DateTime.Now, who, gw));
+            Event(string.Format("ARP SPOOFING DETECTED: gateway {0} claimed by {1} in {2} (trusted {3}: {4} claims, ARP entry {5})",
+                gw, who, where, expectMac, g.Where(c => same(c.Mac, expectMac)).Sum(c => c.N), gwArp));
+            autoKick = true;
+        }
+        if (rogueMe.Count > 0)
+        {
+            string who = string.Join(", ", rogueMe.Select(c => c.ToString()));
+            SetGwAlert(string.Format("ARP spoofing seen at {0:HH:mm:ss}: {1} claimed to be this laptop ({2})", DateTime.Now, who, me));
+            Event(string.Format("ARP SPOOFING DETECTED: this laptop's IP {0} claimed by {1} in {2} (this laptop is {3}): the router may send this laptop's traffic there",
+                me, who, where, own));
+        }
+        bool spoof = rogueGw.Count + rogueMe.Count > 0;
+        arpWatch = spoof
+            ? string.Format("spoofing seen {0:HH:mm}: {1}", DateTime.Now, string.Join(", ", rogueGw.Concat(rogueMe).Select(c => c.Mac)))
+            : string.Format("clean at {0:HH:mm} ({1} ARP frames, {2} from this laptop)", DateTime.Now, frames.Count, mine);
+        return spoof;
+    }
+
+    // Every 5 min: judge the ring frames that arrived since the last check.
+    static void ArpWatchStart(IPAddress gw, IPAddress me, string expectMac)
+    {
+        Task.Run(() =>
+        {
+            try { if (ReportClaims(RingTake(), gw, me, expectMac, "the continuous ARP capture")) Snapshot("arp_spoof"); }
             catch (Exception ex) { arpWatch = "error: " + ex.Message; }
-            finally { arpWatchRunning = false; }
         });
     }
+
+    // ---------------------------------------------------------------- MAC announce
+    //
+    // Router-side ARP spoofing: someone tells the router that this laptop's IP belongs to their MAC, and
+    // the router sends this laptop's traffic there until it learns the real MAC again. The pin can't stop
+    // that: it only protects this laptop's own ARP table. So about once a second (switch "Keep the router
+    // updated", on by default) netbug deletes Windows' entry for a neighbor address next to the gateway
+    // and resolves it again (DeleteIpNetEntry2 + ResolveIpNetEntry2: a fresh ARP request). Each request is a broadcast
+    // whose sender is this laptop's IP and MAC, and routers update an existing entry from any ARP they
+    // hear from that IP (RFC 826; Linux-based routers after a 1 s lock time), so a fake entry for this
+    // laptop lasts about a second. Which neighbor is asked doesn't matter. When nobody has that address,
+    // one call sends a request about every second for ~3 s.
+
+    static volatile bool announce = true;
+    static int announceSent;   // ARP resolutions started since netbug started
+    static volatile string announceTarget = "", announceErr = "";
+
+    static void AnnounceLoop()
+    {
+        IntPtr row = Marshal.AllocHGlobal(88);   // MIB_IPNET_ROW2
+        int lastCode = 0;
+        while (true)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                NetworkInterface ni = curNi; IPAddress ip = curIp, gw = curGw;
+                int idx = IfIndex(ni);
+                IPAddress t = announce && ip != null && gw != null && idx >= 0 ? AnnounceTarget(ni, ip, gw) : null;
+                if (t != null)
+                {
+                    for (int i = 0; i < 88; i += 4) Marshal.WriteInt32(row, i, 0);
+                    Marshal.WriteInt16(row, 0, 2);                          // Address: SOCKADDR_IN, AF_INET
+                    Marshal.Copy(t.GetAddressBytes(), 0, row + 4, 4);       // sin_addr
+                    Marshal.WriteInt32(row, 28, idx);                       // InterfaceIndex
+                    DeleteIpNetEntry2(row);                                 // a cached entry would be returned without asking
+                    int code = ResolveIpNetEntry2(row, IntPtr.Zero);        // returns on a reply, or after ~3 s of retries
+                    Interlocked.Increment(ref announceSent);
+                    announceTarget = t.ToString();
+                    bool ok = code == 0 || code == 67 || code == 1168;      // answered / ERROR_BAD_NET_NAME / ERROR_NOT_FOUND: nobody has it
+                    announceErr = ok ? "" : "ResolveIpNetEntry2 error " + code;
+                    if (!ok && code != lastCode) Event(string.Format("MAC announce failing: ResolveIpNetEntry2 error {0} for {1} on '{2}'", code, t, ni.Name));
+                    lastCode = ok ? 0 : code;
+                }
+            }
+            catch (Exception ex) { announceErr = ex.Message; }
+            int sleep = 1000 - (int)sw.ElapsedMilliseconds;
+            Thread.Sleep(sleep > 0 ? sleep : 50);
+        }
+    }
+
+    // A neighbor address next to the gateway in this laptop's subnet: not the gateway, not this laptop,
+    // not the subnet's network or broadcast address. null if the subnet is too small.
+    static IPAddress AnnounceTarget(NetworkInterface ni, IPAddress ip, IPAddress gw)
+    {
+        IPAddress mask = null;
+        foreach (var a in ni.GetIPProperties().UnicastAddresses) if (a.Address.Equals(ip)) mask = a.IPv4Mask;
+        if (mask == null) return null;
+        uint m = HostOrder(mask), g = HostOrder(gw), me = HostOrder(ip);
+        foreach (int d in new[] { -1, 1, -2, 2, -3, 3 })
+        {
+            uint t = unchecked((uint)(g + d));
+            if ((t & m) != (g & m) || (t & ~m) == 0 || (t | m) == 0xFFFFFFFF || t == me) continue;
+            return new IPAddress(new[] { (byte)(t >> 24), (byte)(t >> 16), (byte)(t >> 8), (byte)t });
+        }
+        return null;
+    }
+
+    static uint HostOrder(IPAddress a) { var b = a.GetAddressBytes(); return (uint)b[0] << 24 | (uint)b[1] << 16 | (uint)b[2] << 8 | b[3]; }
 
     // Counts UDP endpoints (IPv4 + IPv6) per owning process.
     static void UdpUsage(out int total, out string top)
@@ -750,6 +1024,10 @@ class NetBug
         });
     }
 
+    // Runs snapshot.ps1 in the background. First the ARP ring is paused (which reads everything pktmon
+    // still had buffered): its new frames are judged, and the last 15 min about the gateway or this laptop
+    // are saved as <snapshot>.ring.txt. snapshot.ps1 then captures while it probes, and the ring is resumed
+    // when it is done.
     static void Snapshot(string reason)
     {
         if (fixBusy || (DateTime.Now - lastSnapshot).TotalSeconds < 60) return;   // a router check breaks the link on purpose
@@ -757,15 +1035,41 @@ class NetBug
         string script = Path.Combine(baseDir, "tools", "snapshot.ps1");
         if (!File.Exists(script)) return;
         string outFile = Path.Combine(snapDir, DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + "_" + reason + ".txt");
-        try
+        IPAddress gw = curGw, me = curIp;
+        string expect = gw != null && trustedGwIp == gw.ToString() ? trustedGwMac : "";
+        Task.Run(() =>
         {
-            var psi = new ProcessStartInfo("powershell.exe",
-                string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Out \"{1}\"", script, outFile))
-            { CreateNoWindow = true, UseShellExecute = false };
-            using (var p = Process.Start(psi)) { p.PriorityClass = ProcessPriorityClass.BelowNormal; }
-        }
-        catch (Exception ex) { Event("snapshot failed: " + ex.Message); }
-        EnforceSizeCap();
+            bool havePktmon = Monitor.TryEnter(pktmonLock, 20000);
+            try
+            {
+                if (havePktmon)
+                {
+                    RingPause();
+                    if (gw != null && me != null)
+                    {
+                        List<ArpFrame> all;
+                        lock (ringLock) all = ring.ToList();
+                        var about = Analyze(all, gw, me, new List<Claim>(), new List<Claim>());
+                        File.WriteAllLines(Path.ChangeExtension(outFile, ".ring.txt"), about.Select(f => f.T.ToString("HH:mm:ss.fff") + "  " + f.Line));
+                        ReportClaims(RingTake(), gw, me, expect, "the ARP capture before the " + reason + " snapshot");
+                    }
+                }
+                var psi = new ProcessStartInfo("powershell.exe",
+                    string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Out \"{1}\"{2}", script, outFile, havePktmon ? "" : " -NoCapture"))
+                { CreateNoWindow = true, UseShellExecute = false };
+                using (var p = Process.Start(psi))
+                {
+                    try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+                    p.WaitForExit(300000);
+                }
+            }
+            catch (Exception ex) { Event("snapshot failed: " + ex.Message); }
+            finally
+            {
+                if (havePktmon) { RingResume(); Monitor.Exit(pktmonLock); }
+                EnforceSizeCap();
+            }
+        });
     }
 
     static void RotateIfNewDay()
@@ -998,7 +1302,7 @@ class NetBug
     // it was (pinned again, or deleted and learned again).
     // Pin: the verified MAC becomes a permanent ARP entry (netsh, persistent store), so Windows ignores
     // fake replies. Unpin removes it from both stores.
-    // Control: GET /api/fix (status) and POST /api/fix/{check,pin,unpin,auto,stop}, only from this laptop
+    // Control: GET /api/fix (status) and POST /api/fix/{check,pin,unpin,auto,announce,stop}, only from this laptop
     // (loopback, Host localhost/127.0.0.1, against DNS rebinding) with the per-run token the page was
     // served (X-Netbug-Token: other websites can't read it, and the custom header can't be sent cross-site
     // without a CORS preflight, which netbug never answers).
@@ -1042,10 +1346,21 @@ class NetBug
                 Event("router auto-detect " + (autoDetect ? "on" : "off"));
                 if (autoDetect && !fixBusy) StartDetect("auto");
                 break;
+            case "/api/fix/announce":
+                announce = ctx.Request.QueryString["on"] == "1";
+                SaveSettings();
+                Event("MAC announce (keep the router updated) " + (announce ? "on" : "off"));
+                break;
             case "/api/fix/stop":
                 if (!portable) { error = "This netbug runs as a scheduled task; stop it there."; break; }
                 Event("netbug stopped from the page");
-                Task.Run(() => { Thread.Sleep(500); Environment.Exit(0); });
+                Task.Run(() =>
+                {
+                    Thread.Sleep(500);
+                    // the ARP ring capture would otherwise keep running after netbug is gone
+                    if (Monitor.TryEnter(pktmonLock, 10000)) RingPause();
+                    Environment.Exit(0);
+                });
                 break;
             default: ctx.Response.StatusCode = 404; return "{}";
         }
@@ -1059,9 +1374,12 @@ class NetBug
         int idx = IfIndex(ni);
         if (gw != null && idx >= 0) pinned = PersistentPin(idx, gw);
         bool verifiedHere = gw != null && verifiedMac != "" && verifiedGw == gw.ToString() && verifiedIf == idx;
-        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11}}}",
+        string ann = string.Format("{{\"on\":{0},\"target\":{1},\"sent\":{2},\"seen\":{3},\"seenAt\":{4},\"error\":{5}}}",
+            announce ? "true" : "false", J(announceTarget), Thread.VolatileRead(ref announceSent), announceSeen,
+            announceSeenAt == DateTime.MinValue ? 0 : Unix(announceSeenAt), J(announceErr));
+        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12}}}",
             fixBusy ? "true" : "false", J(fixStep), autoDetect ? "true" : "false", portable ? "true" : "false", J(iface), J(gw == null ? "" : gw.ToString()),
-            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error));
+            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann);
     }
 
     static int IfIndex(NetworkInterface ni)
@@ -1069,16 +1387,7 @@ class NetBug
         try { return ni == null ? -1 : ni.GetIPProperties().GetIPv4Properties().Index; } catch { return -1; }
     }
 
-    static string Netsh(string args)
-    {
-        var psi = new ProcessStartInfo("netsh.exe", args) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
-        using (var p = Process.Start(psi))
-        {
-            string output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(15000);
-            return output;
-        }
-    }
+    static string Netsh(string args) { return Run("netsh.exe", args); }
 
     // The gateway's MAC in the persistent ARP store of an interface ("" if none). Cached for 20 s:
     // the page asks every 2 s and netsh is a process start.
@@ -1158,21 +1467,19 @@ class NetBug
             add(Arp(gw, ip), "ARP table (" + (arpType == "" ? "?" : arpType) + ")");
             add(pinned, "pinned");
 
+            // the ring captures all the time: ask for the router again so the real one answers too (a pinned
+            // entry is never asked about), then pause the ring once so pktmon hands over what it buffered
             fixStep = "Listening for who answers as the router (10 s)";
-            for (int i = 0; i < 40 && arpWatchRunning; i++) Thread.Sleep(500);
-            arpWatchRunning = true;
-            Dictionary<string, int> claims;
-            try
-            {
-                var capture = Task.Run(() => ArpCapture(gw));
-                Thread.Sleep(2500);
-                // ask for the router again so the real one answers too (a pinned entry is never asked about)
-                if (arpType != "static")
-                    for (int i = 0; i < 3; i++) { SetActive(idx, gw, ""); Arp(gw, ip); Thread.Sleep(1500); }
-                claims = capture.Result;
-            }
-            finally { arpWatchRunning = false; }
-            foreach (var kv in claims) add(kv.Key, string.Format("answered as the router {0}x", kv.Value));
+            var t0 = DateTime.Now.AddSeconds(-1);
+            if (arpType != "static")
+                for (int i = 0; i < 3; i++) { SetActive(idx, gw, ""); Arp(gw, ip); Thread.Sleep(1500); }
+            Thread.Sleep(Math.Max(0, 10000 - (int)(DateTime.Now - t0).TotalMilliseconds));
+            List<ArpFrame> heard;
+            lock (pktmonLock) { RingPause(); RingResume(); }
+            lock (ringLock) heard = ring.Where(f => f.T >= t0).ToList();
+            var claims = new List<Claim>();
+            Analyze(heard, gw, ip, claims, new List<Claim>());
+            foreach (var c in claims) add(c.Mac, string.Format("answered as the router {0}x", c.N));
 
             var cf = IPAddress.Parse("1.1.1.1"); var g = IPAddress.Parse("8.8.8.8");
             try

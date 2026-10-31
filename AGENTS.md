@@ -25,6 +25,6 @@
    - If it's `dynamic` or missing (for example the dongle was renamed), **tell the user first** and give the re-pin command (incident report §8).
    - Apply nothing without the user's explicit OK.
 2. Search `events.log` for `ARP SPOOFING DETECTED` and `GATEWAY MAC CHANGED`, and report each with its time and MAC.
-3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway.
+3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway (or, for the router side, another MAC claiming the laptop's IP: snapshot capture and `<snapshot>.ring.txt`).
    - If it matches while pinned, the pin isn't enough: the router side is probably poisoned too. Report it and propose next steps; apply nothing without the user's OK.
    - If it doesn't match, look for the actual layer that broke.

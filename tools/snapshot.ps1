@@ -1,12 +1,31 @@
 # snapshot.ps1 - detailed network state dump, launched by netbug.exe when an
 # outage starts, lag lasts 5 s, UDP usage gets high, the gateway MAC changes or
-# arpwatch sees ARP spoofing (at most once per 60 s), so it can afford heavier commands.
+# ARP spoofing is seen (at most once per 60 s), so it can afford heavier commands.
+# With admin rights a packet capture (ARP + traffic to/from the gateway and 1.1.1.1) starts first
+# and runs until every probe is done, so it covers the problem while it is still going on.
+# netbug pauses its continuous ARP capture just before and saves its ARP from the 15 min before
+# as <name>.ring.txt (-NoCapture: netbug couldn't hand over pktmon, so no capture here).
 
-param([Parameter(Mandatory)][string]$Out)
+param([Parameter(Mandatory)][string]$Out, [switch]$NoCapture)
 
 $ErrorActionPreference = 'SilentlyContinue'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
+$capture = $isAdmin -and -not $NoCapture
+$cfg = Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1
+$gw = $cfg.IPv4DefaultGateway.NextHop
+$me = @($cfg.IPv4Address.IPAddress)[0]
+$etl = [IO.Path]::ChangeExtension($Out, '.etl')
+if ($capture) {
+    pktmon stop 2>&1 | Out-Null
+    pktmon filter remove | Out-Null
+    pktmon filter add arp -d ARP | Out-Null
+    pktmon filter add gw -i $gw | Out-Null
+    pktmon filter add cf -i 1.1.1.1 | Out-Null
+    # default file size on purpose: pktmon files with a small --file-size silently lose most frames
+    pktmon start --capture --comp nics --pkt-size 128 --file-name $etl | Out-Null
+    $capStart = Get-Date
+}
 
 & {
     "==== snapshot $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  admin=$isAdmin ===="
@@ -20,8 +39,6 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 
     "`n--- ip config ---"
     Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Out-String -Width 220
-
-    $gw = (Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).IPv4DefaultGateway.NextHop
 
     "`n--- neighbors (non-unreachable; Permanent only for the gateway = pinned) ---"
     Get-NetNeighbor -AddressFamily IPv4 | Where-Object { $_.State -ne 'Unreachable' -and ($_.State -ne 'Permanent' -or $_.IPAddress -eq $gw) } |
@@ -71,33 +88,28 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
         Format-Table @{ n = 't'; e = { $_.TimeCreated.ToString('HH:mm:ss') } }, ProviderName, Id,
             @{ n = 'msg'; e = { ($_.Message -split "`n")[0] } } -AutoSize | Out-String -Width 250
 
-    if ($isAdmin) {
-        "`n--- 15 s packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon) ---"
-        $etl = [IO.Path]::ChangeExtension($Out, '.etl')
-        pktmon stop 2>&1 | Out-Null
-        pktmon filter remove | Out-Null
-        pktmon filter add arp -d ARP | Out-Null
-        pktmon filter add gw -i $gw | Out-Null
-        pktmon filter add cf -i 1.1.1.1 | Out-Null
-        pktmon start --capture --comp nics --pkt-size 128 --file-name $etl | Out-Null
-        Start-Sleep 1
-        1..5 | ForEach-Object { ping -n 1 -w 500 1.1.1.1 | Out-Null; ping -n 1 -w 500 $gw | Out-Null; Start-Sleep 2 }
+    if ($capture) {
+        # keep the capture going a few more seconds after the probes, for at least 15 s in all
+        $left = 15 - ((Get-Date) - $capStart).TotalSeconds
+        if ($left -gt 0) { Start-Sleep -Seconds ([Math]::Ceiling($left)) }
         pktmon stop | Out-Null
         pktmon filter remove | Out-Null
+        "`n--- packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon), $($capStart.ToString('HH:mm:ss'))-$((Get-Date).ToString('HH:mm:ss')) ---"
         $pkt = [IO.Path]::ChangeExtension($Out, '.pkt.txt')
         pktmon etl2txt $etl --out $pkt | Out-Null
         "saved: $etl"
+        $ring = [IO.Path]::ChangeExtension($Out, '.ring.txt')
+        if (Test-Path $ring) { "ARP from the minutes before (netbug's continuous capture): $ring" }
 
-        # same rule as arpwatch.ps1: every MAC that claimed the gateway IP (frames are logged twice)
+        # same rules as netbug's ARP watch (arpwatch.ps1): every MAC that claimed the gateway IP or
+        # this laptop's IP. This laptop's own MAC claims its own IP with every ARP request it sends.
+        $lines = & (Join-Path $PSScriptRoot 'arpwatch.ps1') -Etl $etl -Gw $gw -Me $me -NoDelete
+        $own = (Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).NetAdapter.MacAddress
         "`n--- who claimed to be the gateway $gw in the capture (more than one MAC = ARP spoofing) ---"
-        $gwRe = [regex]::Escape($gw); $claims = @{}; $prev = ''
-        foreach ($line in [IO.File]::ReadLines($pkt)) {
-            if (-not $line.StartsWith("`t") -or $line -eq $prev) { continue }
-            $prev = $line; $mac = $null
-            if ($line -match "Reply $gwRe is-at ((?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2})") { $mac = $Matches[1] }
-            elseif ($line -match "^\s*((?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}) > .*Request who-has \S+ (?:\(\S+\) )?tell $gwRe,") { $mac = $Matches[1] }
-            if ($mac) { $claims[$mac.ToUpper()]++ }
-        }
-        if ($claims.Count) { foreach ($k in $claims.Keys) { "{0}  {1} frame(s)" -f $k, $claims[$k] } } else { "nobody (no ARP for the gateway seen)" }
+        $g = @($lines | Where-Object { $_ -like 'gw *' })
+        if ($g.Count) { foreach ($l in $g) { $p = $l -split ' '; "{0}  {1} frame(s), {2}-{3}" -f $p[1], $p[2], $p[3], $p[4] } } else { "nobody (no ARP for the gateway seen)" }
+        "`n--- who claimed to be this laptop $me in the capture (any MAC other than $own = someone poisoning the router about this laptop) ---"
+        $m = @($lines | Where-Object { $_ -like 'me *' })
+        if ($m.Count) { foreach ($l in $m) { $p = $l -split ' '; "{0}  {1} frame(s), {2}-{3}{4}" -f $p[1], $p[2], $p[3], $p[4], $(if ($p[1] -eq $own) { '  (this laptop)' } else { '  <-- NOT this laptop' }) } } else { "nobody (no ARP for this laptop seen)" }
     }
 } *> $Out

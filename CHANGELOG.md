@@ -3,6 +3,23 @@
 All times are the user's system time: Kuala Lumpur, MYT (UTC+08:00). Newest first.
 Entries cover repo changes (with commit hash) and changes made to the machine itself.
 
+## 2026-11-01
+
+### 03:28: `HASH` router-side ARP defence: MAC announce and a continuous ARP capture
+- Why: three short drops (02:34, 02:35, 02:38; 3-8 s) while pinned. The gateway didn't answer, rx fell to 0, the link stayed up and the pin held. That fits someone poisoning the router about this laptop, which the pin can't stop. The snapshot captures started after each drop had ended, so they couldn't show it.
+- **MAC announce** (new thread, switch "Keep the router updated", on by default, kept in `logs/netbug.settings`): about once a second `ResolveIpNetEntry2` re-resolves a neighbor next to the gateway. Each ARP request broadcasts this laptop's real IP and MAC, so the router replaces a fake entry within about a second. API: POST `/api/fix/announce?on=0|1`; `/api/fix` reports sent count, target and how many of the laptop's ARP requests the last capture saw.
+- **Continuous ARP capture:** an ARP-only pktmon capture runs all the time into `logs/arpring-a.etl`/`-b.etl`. Every 60 s netbug stops it, starts the other file at once and reads the stopped one; the last 15 min of ARP frames stay in memory. Every 5 min the new frames are checked (before: a 10 s sample every 5 min). A snapshot pauses it first, judges what came in and saves the ARP about the gateway or this laptop as `<snapshot>.ring.txt`. The router check reads its 10 s from it too.
+  - Tested and dropped: circular pktmon files with `--file-size` 8 or 64 MB silently kept about a third of the frames (11 of 30 announces in 30 s); the default size kept 30 of 30. Real-time mode was lossless too but cost ~1 GB RAM (512 MB kernel + ~500 MB `pktmon.exe`); file mode costs the 512 MB kernel reservation only (user's choice).
+  - `arpwatch.ps1` is now only the parser for snapshot captures. Its dedup no longer merges identical frames more than 5 ms apart (it counted back-to-back repeats as one).
+- netbug and its child processes are locked to the 4 highest-numbered logical processors.
+- ARP SPOOFING DETECTED now also fires when another MAC claims **this laptop's IP**.
+- `snapshot.ps1`: the capture starts before the probes and runs until they finish (at least 15 s). It also lists who claimed this laptop's IP.
+- One lock (`pktmonLock`) orders the ring and snapshots; if anything else stops pktmon, the next rotation restarts it. Stop netbug (portable) stops pktmon too.
+- `snapshot.ps1` capture uses pktmon's default file size again (a small one loses frames).
+- README, AGENTS.md log-analysis rule and code comments updated.
+- Verified live: announces reach the wire about once a second (121 of the laptop's ARP requests in ~120 s of capture); ring rotation, snapshot.ps1 capture and the panel (headless screenshot) checked. Not live-tested: a real outage snapshot through netbug, a router check.
+- **Machine:** netbug restarted with the new build (scheduled task, old exe kept as `tools/netbug.old.exe`, gitignored).
+
 ## 2026-10-28
 
 ### 22:48: `4e0503d` router protection panel and a self-contained exe for friends

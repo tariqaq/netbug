@@ -190,6 +190,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     <p class="fix-sub" id="fx-sub"></p>
     <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small>Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. It never changes a pin by itself.</small></span></label>
     <label class="sw"><input type="checkbox" id="fx-pin" disabled><span><b>Pin it permanently</b><small id="fx-pin-note">Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop.</small></span></label>
+    <label class="sw"><input type="checkbox" id="fx-ann"><span><b>Keep the router updated</b><small id="fx-ann-note">Tells the router this laptop’s real address about once a second.</small></span></label>
     <ul class="cands" id="fx-cands"></ul>
     <div class="fix-actions"><button class="btn" id="fx-check" type="button">Check now</button><button class="btn ghost" id="fx-stop" type="button" hidden>Stop netbug</button></div>
     <div class="fix-err" id="fx-err"></div>
@@ -492,6 +493,12 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     pin.checked = !!f.pinned;
     pin.disabled = f.busy || !f.gw || (!f.pinned && !f.verified);
     putText($('fx-pin-note'), (!f.pinned && !f.verified ? 'Run a check first. ' : '') + 'Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop. Turn it off before plugging this adapter into another network that uses the same router address (' + (f.gw || '–') + ').');
+    const a = f.announce;
+    $('fx-ann').checked = a.on;
+    putText($('fx-ann-note'), 'Tells the router this laptop’s real address about once a second (an ARP request asking for ' + (a.target || 'a neighbor of the router') +
+      '), so if someone tells the router they are this laptop, it lasts about a second. The pin can’t block that kind of attack.' +
+      (a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
+      (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen + ' ARP requests from this laptop seen on the wire.' : ''));
     $('fx-check').disabled = f.busy || !f.gw;
     put($('fx-cands'), res && res.cands ? res.cands.map(c =>
       '<li><span class="mac ' + (c.mac === res.chosen ? 'ok' : c.works ? '' : 'bad') + '">' + esc(c.mac) + '</span><span class="why">' + esc(c.verdict) +
@@ -504,6 +511,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     $('fx-check').onclick = () => fixCall('/check', 'POST');
     $('fx-auto').onchange = e => fixCall('/auto?on=' + (e.target.checked ? 1 : 0), 'POST');
     $('fx-pin').onchange = e => fixCall(e.target.checked ? '/pin' : '/unpin', 'POST');
+    $('fx-ann').onchange = e => fixCall('/announce?on=' + (e.target.checked ? 1 : 0), 'POST');
     $('fx-stop').onclick = () => {
       if (!stopArmed) { stopArmed = true; putText($('fx-stop'), 'Click again to stop'); setTimeout(() => { stopArmed = false; putText($('fx-stop'), 'Stop netbug'); }, 4000); return; }
       fixCall('/stop', 'POST');

@@ -5,6 +5,14 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 03:37: `HASH` full-code review fixes
+- Interface scan (~7 ms CPU) now runs on Windows network-change events, every second while anything fails, else every 10 s (was every second). netbug CPU 1.74% -> 0.83% of one core.
+- Console tools run by netbug (pktmon, netsh) are killed after 30 s instead of possibly hanging the ARP capture or router check.
+- ARP watch shows "no ARP captured" instead of "clean" when the capture got no frames.
+- Portable mode unpacks its files only once it is the running instance.
+- `snapshot.ps1` no longer pings a hardcoded ISP hop (it was this network's, useless elsewhere, and PII in git since `4ebf18e`; the traceroute shows that hop anyway). Git history still contains it.
+- **Machine:** netbug restarted with the new build.
+
 ### 03:28: `a0c88ac` router-side ARP defence: MAC announce and a continuous ARP capture
 - Why: three short drops (02:34, 02:35, 02:38; 3-8 s) while pinned. The gateway didn't answer, rx fell to 0, the link stayed up and the pin held. That fits someone poisoning the router about this laptop, which the pin can't stop. The snapshot captures started after each drop had ended, so they couldn't show it.
 - **MAC announce** (new thread, switch "Keep the router updated", on by default, kept in `logs/netbug.settings`): about once a second `ResolveIpNetEntry2` re-resolves a neighbor next to the gateway. Each ARP request broadcasts this laptop's real IP and MAC, so the router replaces a fake entry within about a second. API: POST `/api/fix/announce?on=0|1`; `/api/fix` reports sent count, target and how many of the laptop's ARP requests the last capture saw.

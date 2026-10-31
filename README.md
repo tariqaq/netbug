@@ -73,7 +73,8 @@ flowchart TD
 | ⏱️ Every | 🔍 Check | 🎯 Catches |
 |---|---|---|
 | 1 s | Ping gateway, `1.1.1.1`, `8.8.8.8` | LAN lag, internet loss |
-| 1 s | Active interface, dongle link state, tx/rx packet counters | Cable/link drops, hotspot switch, one-way traffic |
+| 1 s | tx/rx packet counters | One-way traffic |
+| on change (Windows network events), every 1 s while anything fails, else every 10 s | Active interface, dongle link state | Cable/link drops, hotspot switch |
 | 2 s (every 1 s after a failure) | DNS query to the router | Resolver stalls ("sites load forever") |
 | 2 s | STUN over one long-lived UDP socket | UDP path loss, **NAT mapping changes** (what kills voice/game sessions) |
 | 10 s (every 1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
@@ -170,7 +171,7 @@ Running the exe again while netbug is already running just opens the page.
 | | |
 |---|---|
 | 🧠 RAM | ~25–45 MB for netbug, plus **512 MB of kernel memory** that pktmon reserves for the continuous ARP capture (it can't be made smaller) |
-| ⚡ CPU | ~2% of one core, BelowNormal priority, locked to the 4 highest-numbered logical processors (its pktmon/PowerShell/netsh children too), so games keep the rest. |
+| ⚡ CPU | ~1% of one core, BelowNormal priority, locked to the 4 highest-numbered logical processors (its pktmon/PowerShell/netsh children too), so games keep the rest. |
 | 🌐 Network | ~0.75 KB/s total plus one 42-byte ARP broadcast about every second, no traffic to game or voice servers. The dashboard adds under 1 KB/s per open tab, on the LAN only. |
 | 💾 Disk | ~6 MB/day of small appends |
 | 🛡️ Safety | Restarts itself past 200 MB private memory, 5000 handles or 100 threads |

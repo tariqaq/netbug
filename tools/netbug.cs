@@ -172,11 +172,7 @@ class NetBug
         }
         ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;   // TLS 1.2; .NET 4.0 defaults to TLS 1.0
 
-        if (portable)
-        {
-            baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "netbug");
-            Unpack();
-        }
+        if (portable) baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "netbug");
         else baseDir = Path.GetFullPath(Path.Combine(exeDir, ".."));
         logDir = Path.Combine(baseDir, "logs");
         snapDir = Path.Combine(logDir, "snapshots");
@@ -188,6 +184,7 @@ class NetBug
             // wait a little so a self-restart (see Health) can take over from the exiting instance
             try { if (!mutex.WaitOne(15000)) { if (openPage) OpenPage(); return; } }   // another instance is running
             catch (AbandonedMutexException) { }
+            if (portable) Unpack();   // only once this is the running instance: never under a running one's feet
             Event("netbug started" + (portable ? " (portable, files in " + baseDir + ")" : ""));
             new Thread(PersistentTcpLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(StunLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
@@ -287,8 +284,15 @@ class NetBug
         try { File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\nannounce=" + (announce ? "1" : "0") + "\r\n"); } catch { }
     }
 
+    static volatile bool ifDirty = true;
+    static NetworkInterface scanNi;
+    static IPAddress scanIp, scanGw;
+    static string scanName = "", scanLink = "absent";
+
     static void Run()
     {
+        NetworkChange.NetworkAddressChanged += (s, e) => ifDirty = true;
+        NetworkChange.NetworkAvailabilityChanged += (s, e) => ifDirty = true;
         long tick = 0;
         DateTime lastRow = DateTime.MinValue;
         while (true)
@@ -298,9 +302,16 @@ class NetBug
             {
                 RotateIfNewDay();
 
-                IPAddress ip, gw;
-                string ifaceName, ethLink;
-                NetworkInterface ni = PickInterface(out ip, out gw, out ifaceName, out ethLink);
+                // the interface scan costs ~7 ms of CPU: redo it when Windows reports an address or
+                // availability change, while anything is failing, and every 10 s as a backstop
+                if (ifDirty || failStreak > 0 || tick % 10 == 0)
+                {
+                    ifDirty = false;
+                    scanNi = PickInterface(out scanIp, out scanGw, out scanName, out scanLink);
+                }
+                IPAddress ip = scanIp, gw = scanGw;
+                string ifaceName = scanName, ethLink = scanLink;
+                NetworkInterface ni = scanNi;
                 curNi = ni; curIp = ip; curGw = gw;
 
                 // pings in parallel
@@ -812,14 +823,16 @@ class NetBug
         }
     }
 
+    // Runs a console tool and returns its output. A tool that hangs is killed after 30 s, so the ring
+    // capture and the router check never get stuck behind it.
     static string Run(string exe, string args)
     {
         var psi = new ProcessStartInfo(exe, args) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
         using (var p = Process.Start(psi))
         {
-            string output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(15000);
-            return output;
+            var output = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(30000)) { try { p.Kill(); } catch { } }
+            return output.Wait(5000) ? output.Result : "";
         }
     }
 
@@ -889,8 +902,10 @@ class NetBug
                 me, who, where, own));
         }
         bool spoof = rogueGw.Count + rogueMe.Count > 0;
+        // no frames at all: the capture isn't working (any LAN has some ARP every few minutes), not "clean"
         arpWatch = spoof
             ? string.Format("spoofing seen {0:HH:mm}: {1}", DateTime.Now, string.Join(", ", rogueGw.Concat(rogueMe).Select(c => c.Mac)))
+            : frames.Count == 0 ? string.Format("no ARP captured by {0:HH:mm}: the capture may not be running", DateTime.Now)
             : string.Format("clean at {0:HH:mm} ({1} ARP frames, {2} from this laptop)", DateTime.Now, frames.Count, mine);
         return spoof;
     }

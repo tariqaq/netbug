@@ -58,7 +58,7 @@ if ($capture) {
     "`n--- probes ---"
     "gateway $gw"
     # ping.exe, not Test-Connection: -TimeoutSeconds doesn't exist in Windows PowerShell 5.1
-    foreach ($t in @($gw, '1.1.1.1', '8.8.8.8', '180.74.19.193')) {
+    foreach ($t in @($gw, '1.1.1.1', '8.8.8.8')) {
         $r = ping -n 3 -w 1000 $t | Select-String 'Reply from .*time'
         "ping {0}: {1}/3 ok  {2}" -f $t, @($r).Count, (($r | ForEach-Object { ($_ -replace '.*time[=<]', '' -replace ' .*', '') }) -join ' ')
     }

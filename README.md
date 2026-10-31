@@ -123,6 +123,16 @@ Running it again while it runs just opens the page.
 
 The panel only appears on the laptop itself (`http://localhost:8787/`).
 
+The status at the top right of the panel:
+
+| Status | Meaning |
+|---|---|
+| **Protected** (green) | The gateway is pinned to a MAC. Fake router replies are ignored. |
+| **Not pinned** (orange) | No pin. If a check has found the real router, the line under it names that router's MAC. If not, it shows the current ARP entry and asks you to run a check. |
+| **Pin differs** (red) | The pinned MAC isn't the one the last check found. If the router was replaced, turn the pin off and on again. |
+| **Checking…** (orange) | A check is running. The connection drops for a few seconds per tested MAC. |
+| **No network** (orange) | No adapter with a gateway. |
+
 | Control | What it does |
 |---|---|
 | **Check now** | Finds the real router MAC. Candidates: the ARP entry, any pin, and every MAC that answers for the gateway IP during 10 s of the ARP capture (the laptop asks for the router meanwhile, unless pinned). Each is set briefly as a temporary static ARP entry: it's the real router when internet pings pass **and** a TTL-1 ping comes back "TTL expired" from the gateway IP itself. The entry is then put back. |

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 03:28: `HASH` router-side ARP defence: MAC announce and a continuous ARP capture
+### 03:28: `a0c88ac` router-side ARP defence: MAC announce and a continuous ARP capture
 - Why: three short drops (02:34, 02:35, 02:38; 3-8 s) while pinned. The gateway didn't answer, rx fell to 0, the link stayed up and the pin held. That fits someone poisoning the router about this laptop, which the pin can't stop. The snapshot captures started after each drop had ended, so they couldn't show it.
 - **MAC announce** (new thread, switch "Keep the router updated", on by default, kept in `logs/netbug.settings`): about once a second `ResolveIpNetEntry2` re-resolves a neighbor next to the gateway. Each ARP request broadcasts this laptop's real IP and MAC, so the router replaces a fake entry within about a second. API: POST `/api/fix/announce?on=0|1`; `/api/fix` reports sent count, target and how many of the laptop's ARP requests the last capture saw.
 - **Continuous ARP capture:** an ARP-only pktmon capture runs all the time into `logs/arpring-a.etl`/`-b.etl`. Every 60 s netbug stops it, starts the other file at once and reads the stopped one; the last 15 min of ARP frames stay in memory. Every 5 min the new frames are checked (before: a 10 s sample every 5 min). A snapshot pauses it first, judges what came in and saves the ARP about the gateway or this laptop as `<snapshot>.ring.txt`. The router check reads its 10 s from it too.

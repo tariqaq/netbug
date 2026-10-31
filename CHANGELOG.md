@@ -5,6 +5,11 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 03:46: `HASH` README rewrite, doc sync, stale comments
+- README rewritten: problem and finding up top, then **Setup** (requirements, build, register the logon task with the exact settings in use, open the dashboard, protect the laptop, update, uninstall), friend mode, Router protection table, checks, logs, dashboard, footprint, repo layout.
+- Incident report: dated 2026-11-01 update note under §9 (continuous ARP capture, MAC announce, what it narrows in §8); `REDACTED_*` regenerated.
+- Stale code comments fixed in `netbug.cs`: header (interface scan cadence, dashboard localhost-only in portable mode), unpack timing, router-check candidates (now from the ARP ring), ARP watch notes; long comment lines wrapped.
+
 ### 03:37: `547a129` full-code review fixes
 - Interface scan (~7 ms CPU) now runs on Windows network-change events, every second while anything fails, else every 10 s (was every second). netbug CPU 1.74% -> 0.83% of one core.
 - Console tools run by netbug (pktmon, netsh) are killed after 30 s instead of possibly hanging the ARP capture or router check.

@@ -1,6 +1,7 @@
 // netbug - lightweight always-on network health logger.
 //
-// Probes every second (gateway ping, 1.1.1.1 + 8.8.8.8 ping), DNS via the
+// Probes every second (gateway ping, 1.1.1.1 + 8.8.8.8 ping, packet counters), the active
+// interface on Windows network events (every second while failing, else every 10 s), DNS via the
 // gateway every 2 s (a failed query is retried the next second), a TCP connect +
 // UDP port usage + gateway MAC every 10 s (a failed TCP connect is retried every
 // second), and the public IP every 5 min.
@@ -24,8 +25,8 @@
 // "MAC announce" section.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
-// A read-only dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served
-// on port 8787 on all interfaces.
+// A dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served on port 8787,
+// read-only, on all interfaces (localhost only for a lone exe, see below).
 // Router check and pin (the dashboard's "Router protection" panel, for the person at this laptop
 // only): finds the real router MAC by testing every MAC that claims the gateway IP, and can pin it
 // as a permanent ARP entry. See the "router check and pin" section.
@@ -254,7 +255,7 @@ class NetBug
     }
 
     // A lone netbug.exe writes its page, font and scripts (embedded resources) to %ProgramData%\netbug\tools
-    // on every start, so the rest of netbug finds them where it always does.
+    // each time it becomes the running instance, so the rest of netbug finds them where it always does.
     static void Unpack()
     {
         string tools = Path.Combine(baseDir, "tools");
@@ -691,7 +692,7 @@ class NetBug
     // from right up to the moment it started (<snapshot>.ring.txt), and the router check pauses the ring
     // for a moment to get its last seconds. If something else stops pktmon, the next rotation restarts it.
     // pktmon's default file size on purpose: with a small --file-size it silently loses most frames. Any
-    // pktmon capture reserves 512 MB of kernel memory while it runs (its real-time mode adds ~500 MB more).
+    // pktmon capture reserves 512 MB of kernel memory while it runs.
     // A claim of the gateway IP by any MAC other than the trusted gateway MAC, or of this laptop's IP by
     // any MAC other than this laptop's, is ARP SPOOFING DETECTED. The second kind is aimed at the router
     // (it then sends this laptop's traffic to that MAC); the pin can't stop it, the MAC announce makes it
@@ -838,8 +839,9 @@ class NetBug
 
     const string MacRe = "((?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2})";
 
-    // Same rules as arpwatch.ps1 (used by snapshot.ps1): a MAC claims an IP with an ARP reply "<ip> is-at <mac>" or by sending an
-    // ARP request from that IP. Returns the frames that mention the gateway or this laptop's IP.
+    // Same rules as arpwatch.ps1 (used by snapshot.ps1): a MAC claims an IP with an ARP reply
+    // "<ip> is-at <mac>" or by sending an ARP request from that IP. Returns the frames that mention the
+    // gateway or this laptop's IP.
     static List<ArpFrame> Analyze(List<ArpFrame> frames, IPAddress gw, IPAddress me, List<Claim> gwClaims, List<Claim> meClaims)
     {
         var mentioned = new List<ArpFrame>();
@@ -926,8 +928,8 @@ class NetBug
     // the router sends this laptop's traffic there until it learns the real MAC again. The pin can't stop
     // that: it only protects this laptop's own ARP table. So about once a second (switch "Keep the router
     // updated", on by default) netbug deletes Windows' entry for a neighbor address next to the gateway
-    // and resolves it again (DeleteIpNetEntry2 + ResolveIpNetEntry2: a fresh ARP request). Each request is a broadcast
-    // whose sender is this laptop's IP and MAC, and routers update an existing entry from any ARP they
+    // and resolves it again (DeleteIpNetEntry2 + ResolveIpNetEntry2: a fresh ARP request). Each request
+    // is a broadcast whose sender is this laptop's IP and MAC, and routers update an existing entry from any ARP they
     // hear from that IP (RFC 826; Linux-based routers after a 1 s lock time), so a fake entry for this
     // laptop lasts about a second. Which neighbor is asked doesn't matter. When nobody has that address,
     // one call sends a request about every second for ~3 s.
@@ -1308,8 +1310,8 @@ class NetBug
     // ---------------------------------------------------------------- router check and pin
     //
     // Check: finds the real router MAC for the current gateway IP. Candidates are the ARP table entry, a
-    // pinned entry and every MAC that answers for the gateway IP in a 10 s capture (the laptop asks for
-    // the router 3 times during it, unless the entry is pinned, so the real router answers too). Each
+    // pinned entry and every MAC that answers for the gateway IP in 10 s of the ARP ring (the laptop asks
+    // for the router 3 times meanwhile, unless the entry is pinned, so the real router answers too). Each
     // candidate is then set for a moment as a temporary static ARP entry (active store only) and tested:
     // it is the real router when pings to 1.1.1.1/8.8.8.8 get through it AND a TTL-1 ping comes back
     // "TTL expired" from the gateway IP itself. A blackholing impostor passes nothing; a device in the

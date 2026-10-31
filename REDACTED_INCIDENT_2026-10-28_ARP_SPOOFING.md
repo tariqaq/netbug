@@ -249,6 +249,10 @@ Verified on the laptop after the change:
 - arpwatch run by hand: 11 s, only the real gateway seen, temp files removed
 - netbug logged `gateway ARP entry … -> dynamic` (Wi-Fi) and wrote the new `gw_arp` CSV column
 
+> **Update 2026-11-01** (after three short drops at 02:34–02:38 while pinned, see CHANGELOG):
+> - **ARP watch is continuous now:** an ARP-only pktmon capture runs all the time (read every 60 s, last 15 min in memory) instead of a 10 s sample every 5 min. Snapshots save its last 15 min as `<snapshot>.ring.txt`. It also flags any other MAC claiming **the laptop's own IP** (the router-side attack).
+> - **MAC announce** ("Keep the router updated"): about once a second the laptop broadcasts an ARP request carrying its real IP and MAC, so a poisoned router entry for the laptop is corrected within about a second. This narrows the router-side gap in §8; it doesn't close it (only the hostel's switch can).
+
 ---
 
 ## 11. Second occurrence: 2026-10-28 15:28 (same attacker, confirmed)

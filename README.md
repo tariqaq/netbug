@@ -31,6 +31,14 @@ Nothing in Windows explained it, so netbug watches every layer and timestamps wh
 - Admin rights (packet captures, ARP entries, the dashboard on port 8787)
 - Nothing to install: it builds with the C# compiler that ships with Windows (.NET Framework 4.x)
 
+### Quick install (no build)
+
+1. Download `netbug.exe` from [Releases](https://github.com/tariqaq/netbug/releases/latest).
+2. Double-click it and accept the admin prompt (UAC). It isn't code-signed, so SmartScreen may say "Windows protected your PC": click **More info**, then **Run anyway**.
+3. Then do [step 4](#4-protect-the-laptop).
+
+It installs itself to `C:\ProgramData\netbug`, sets up the `netbug` logon task (the same settings as step 2 below), starts, and opens the dashboard. More in [Sending netbug to a friend](#-sending-netbug-to-a-friend).
+
 ### 1. Build
 
 In PowerShell, from the repo folder:
@@ -47,7 +55,9 @@ This makes `tools\netbug.exe`, with the dashboard page, font and scripts embedde
 
 ### 2. Start it at every logon
 
-In an **admin** PowerShell, from the repo folder:
+Double-click `tools\netbug.exe` and accept the admin prompt. When no `netbug` task exists, it registers one for itself and keeps running. An existing `netbug` task is left as it is.
+
+The same task by hand, in an **admin** PowerShell from the repo folder:
 
 ```powershell
 $tools = "$PWD\tools"
@@ -87,7 +97,12 @@ Start-ScheduledTask netbug
 
 ### Uninstalling
 
-In an admin PowerShell:
+Run `tools\netbug.exe --uninstall` and accept the admin prompt. It:
+- stops netbug and its packet capture
+- removes the `netbug` task
+- removes the router pin
+
+Logs in `logs\` stay. The same by hand, in an admin PowerShell:
 
 ```powershell
 Stop-ScheduledTask netbug; Get-Process netbug -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -95,25 +110,35 @@ Unregister-ScheduledTask netbug -Confirm:$false
 pktmon stop
 ```
 
-Turn off the pin first in the dashboard, or remove it by hand (see [Pinning by hand](#-pinning-by-hand)).
+Then remove the pin (see [Pinning by hand](#-pinning-by-hand)).
 
 ---
 
 ## 🤝 Sending netbug to a friend
 
-`tools\netbug.exe` is self-contained. Send **only the exe** (zip it if the chat app blocks `.exe`):
+Send them the [latest release](https://github.com/tariqaq/netbug/releases/latest) link, or `tools\netbug.exe` itself (zip it if the chat app blocks `.exe`). The exe is self-contained.
 
 1. They double-click it and accept the admin prompt (UAC).
-2. Their browser opens `http://localhost:8787/`.
+2. It installs itself and their browser opens `http://localhost:8787/`.
 3. In **Router protection**: **Check now** (or turn on **Auto-detect**), then **Pin it permanently**.
 
-A lone exe (no `dashboard.html` next to it) runs in **portable mode**:
-- files and logs go to `C:\ProgramData\netbug`
-- the page is served on localhost only
-- the panel has a **Stop netbug** button
-- it doesn't start at logon, but the pin stays after a restart
+A lone exe (no `dashboard.html` next to it) installs itself on the first run:
+- copies itself to `C:\ProgramData\netbug\netbug.exe` (only admins can change that folder)
+- registers the `netbug` logon task with the same settings as on this laptop, and starts it
+- puts its logs in `C:\ProgramData\netbug\logs`
 
-Running it again while it runs just opens the page.
+It then runs like the repo copy, with two differences:
+- The page is served on localhost only (other devices on the LAN can't see it).
+- The panel has an **Uninstall netbug** button (click twice).
+
+Double-click again:
+
+| What they run | What happens |
+|---|---|
+| The same build again | Only opens the page. |
+| A newer build | Replaces the installed copy, restarts it, opens the page. This is how to update. |
+
+To uninstall, use the button, or run `netbug.exe --uninstall`. Either way it removes the task, the router pin and `C:\ProgramData\netbug`, logs included.
 
 > ⚠️ The exe isn't code-signed: SmartScreen may say "Windows protected your PC" (More info → Run anyway), and some antivirus tools may flag a program that asks for admin and runs `netsh` and `pktmon`.
 
@@ -207,7 +232,7 @@ flowchart TD
 
 ## 🗒️ Logs
 
-Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` in portable mode).
+Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` for a lone exe).
 
 | File | Contents |
 |---|---|

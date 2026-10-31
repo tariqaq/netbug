@@ -32,9 +32,11 @@
 // as a permanent ARP entry. See the "router check and pin" section.
 //
 // Started without admin rights (a double-click), netbug asks for UAC, starts an elevated copy and
-// opens the dashboard in the default browser. A lone netbug.exe (no dashboard.html next to it, e.g.
-// sent to a friend) runs from %ProgramData%\netbug: it unpacks its page, font and scripts from its
-// own resources and serves the dashboard on localhost only.
+// opens the dashboard in the default browser. The first elevated start sets up the "netbug" logon task
+// (see the "install" section). A lone netbug.exe (no dashboard.html next to it, e.g. a GitHub release
+// download) installs itself to %ProgramData%\netbug, runs from there, unpacks its page, font and
+// scripts from its own resources and serves the dashboard on localhost only.
+// netbug.exe --uninstall removes the task and the router pin (and %ProgramData%\netbug for a lone exe).
 //
 // Build (in tools/): csc /target:winexe /optimize /out:netbug.exe /resource:dashboard.html,netbug.dashboard.html
 //   /resource:fonts\inter.woff2,netbug.inter.woff2 /resource:arpwatch.ps1,netbug.arpwatch.ps1
@@ -90,6 +92,9 @@ class NetBug
 
     [StructLayout(LayoutKind.Sequential)]
     struct ProcessInfo { public IntPtr Reserved1, Peb, Reserved2, Reserved3, Pid, ParentPid; }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern bool MoveFileEx(string existing, string newName, int flags);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern int MessageBox(IntPtr owner, string text, string caption, uint type);
@@ -158,7 +163,19 @@ class NetBug
     {
         string exeDir = AppDomain.CurrentDomain.BaseDirectory;
         portable = !File.Exists(Path.Combine(exeDir, "dashboard.html"));
-        if (!IsAdmin()) { Launch(); return; }
+        if (portable) baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "netbug");
+        else baseDir = Path.GetFullPath(Path.Combine(exeDir, ".."));
+        logDir = Path.Combine(baseDir, "logs");
+        snapDir = Path.Combine(logDir, "snapshots");
+        bool uninstall = args.Contains("--uninstall");
+        if (!IsAdmin()) { if (uninstall) Elevate("--uninstall"); else Launch(); return; }
+        if (uninstall)
+        {
+            Uninstall(Process.GetCurrentProcess().Id);
+            MessageBox(IntPtr.Zero, "netbug is removed: its scheduled task, the router pin and " +
+                (portable ? baseDir : "nothing else (logs stay in " + logDir + ")") + ".", "netbug", 0x40);
+            return;
+        }
         // opened by hand as admin (UAC off, or "Run as administrator"): show the page too. Not when
         // started by the launcher (it opens the page itself), the logon task or a self-restart.
         bool openPage = !args.Contains("--from-launcher") && ParentName() == "explorer";
@@ -173,11 +190,8 @@ class NetBug
         }
         ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;   // TLS 1.2; .NET 4.0 defaults to TLS 1.0
 
-        if (portable) baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "netbug");
-        else baseDir = Path.GetFullPath(Path.Combine(exeDir, ".."));
-        logDir = Path.Combine(baseDir, "logs");
-        snapDir = Path.Combine(logDir, "snapshots");
         Directory.CreateDirectory(snapDir);
+        if (Install(openPage)) return;   // the scheduled task's copy runs instead of this one
         LoadSettings();
 
         using (var mutex = new Mutex(false, "Global\\netbug"))
@@ -206,24 +220,34 @@ class NetBug
         using (var id = WindowsIdentity.GetCurrent()) return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-    // Not elevated: if netbug already runs, just open its page. Otherwise start an elevated copy (UAC
-    // prompt), wait for its dashboard and open it here, so the browser itself doesn't run as admin.
+    // Not elevated: if netbug already runs (and, for a lone exe, this copy is the installed one), just
+    // open its page. Otherwise start an elevated copy (UAC prompt), which installs or updates netbug and
+    // starts it, then wait for the dashboard and open it here, so the browser itself doesn't run as admin.
     static void Launch()
     {
-        if (PageUp()) { OpenPage(); return; }
+        if (PageUp() && !(portable && !InstalledCopyMatches())) { OpenPage(); return; }
+        if (!Elevate("--from-launcher")) return;
+        for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500);
+        OpenPage();
+    }
+
+    static bool Elevate(string arg)
+    {
         try
         {
-            string exe;
-            using (var me = Process.GetCurrentProcess()) exe = me.MainModule.FileName;
-            Process.Start(new ProcessStartInfo(exe, "--from-launcher") { UseShellExecute = true, Verb = "runas" });
+            Process.Start(new ProcessStartInfo(SelfPath(), arg) { UseShellExecute = true, Verb = "runas" });
+            return true;
         }
         catch (System.ComponentModel.Win32Exception)
         {
             MessageBox(IntPtr.Zero, "netbug needs administrator rights to watch the network and to pin the router's address.\n\nRun it again and choose Yes.", "netbug", 0x30);
-            return;
+            return false;
         }
-        for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500);
-        OpenPage();
+    }
+
+    static string SelfPath()
+    {
+        using (var me = Process.GetCurrentProcess()) return Path.GetFullPath(me.MainModule.FileName);
     }
 
     static bool PageUp()
@@ -244,14 +268,168 @@ class NetBug
 
     static string ParentName()
     {
+        try { using (var parent = Process.GetProcessById(ParentPid())) return parent.ProcessName.ToLowerInvariant(); }
+        catch { return ""; }
+    }
+
+    static int ParentPid()
+    {
+        var info = new ProcessInfo(); int returned;
+        using (var me = Process.GetCurrentProcess())
+            return NtQueryInformationProcess(me.Handle, 0, ref info, Marshal.SizeOf(info), out returned) == 0 ? info.ParentPid.ToInt32() : -1;
+    }
+
+    // ---------------------------------------------------------------- install
+    // netbug runs from a logon task named "netbug" (elevated, no time limit, restarted every minute
+    // after a crash, also on battery). The first elevated start sets it up:
+    // - lone exe: copies itself to %ProgramData%\netbug\netbug.exe (Administrators and SYSTEM write,
+    //   Users read), registers the task for that copy, starts it and exits. A different build run later
+    //   replaces the installed copy the same way (update).
+    // - repo copy (tools\netbug.exe): registers the task for this exe only when no "netbug" task exists,
+    //   and keeps running.
+    // --uninstall (or the page's Uninstall button, lone exe only) removes the task, the router pin and,
+    // for a lone exe, %ProgramData%\netbug.
+
+    const string TaskName = "netbug";
+
+    static string InstalledExe() { return Path.Combine(baseDir, "netbug.exe"); }
+
+    static bool PathEq(string a, string b) { return string.Equals(a, b, StringComparison.OrdinalIgnoreCase); }
+
+    // a lone exe: true when this process is the installed copy or byte-identical to it
+    static bool InstalledCopyMatches()
+    {
+        string self = SelfPath(), inst = InstalledExe();
+        if (PathEq(self, inst)) return true;
+        try { return File.Exists(inst) && File.ReadAllBytes(self).SequenceEqual(File.ReadAllBytes(inst)); }
+        catch { return false; }
+    }
+
+    // the exe the "netbug" task runs, "" when there is no such task
+    static string TaskCommand()
+    {
+        var m = Regex.Match(Run("schtasks.exe", "/Query /TN " + TaskName + " /XML").Replace("\0", ""), "<Command>([^<]*)</Command>");
+        return m.Success ? System.Security.SecurityElement.FromString("<c>" + m.Groups[1].Value + "</c>").Text.Trim('"') : "";
+    }
+
+    // Returns true when this process should exit because the task's copy runs instead.
+    static bool Install(bool openPage)
+    {
         try
         {
-            var info = new ProcessInfo(); int returned;
-            using (var me = Process.GetCurrentProcess())
-                if (NtQueryInformationProcess(me.Handle, 0, ref info, Marshal.SizeOf(info), out returned) != 0) return "";
-            using (var parent = Process.GetProcessById(info.ParentPid.ToInt32())) return parent.ProcessName.ToLowerInvariant();
+            string self = SelfPath(), cmd = TaskCommand();
+            if (!portable)
+            {
+                if (cmd != "") return false;
+                RegisterTask(self);
+                Event("netbug installed: logon task '" + TaskName + "' runs " + self);
+                return false;
+            }
+            string inst = InstalledExe();
+            bool isInstalled = PathEq(self, inst);
+            if (PathEq(cmd, inst) && InstalledCopyMatches())
+            {
+                if (isInstalled) return false;
+                Run("schtasks.exe", "/Run /TN " + TaskName);   // already installed: make sure it runs
+            }
+            else
+            {
+                Event((cmd == "" ? "installing netbug: " : "updating netbug: ") + inst);
+                if (cmd != "") Run("schtasks.exe", "/End /TN " + TaskName);
+                StopOthers();
+                if (!isInstalled)
+                    for (int i = 0; ; i++)
+                    {
+                        try { File.Copy(self, inst, true); break; }
+                        catch (IOException) { if (i == 10) throw; Thread.Sleep(500); }
+                    }
+                // %ProgramData% lets every user add files to new folders; an elevated task must not load
+                // anything a non-admin could drop next to it
+                Run("icacls.exe", "\"" + baseDir + "\" /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /Q");   // the folder only: its contents inherit this (with /T, files got an empty ACL)
+                RegisterTask(inst);
+                Event("netbug installed: logon task '" + TaskName + "' runs " + inst);
+                if (isInstalled) return false;
+                Run("schtasks.exe", "/Run /TN " + TaskName);
+            }
+            if (openPage) { for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500); OpenPage(); }
+            return true;
         }
-        catch { return ""; }
+        catch (Exception ex) { Event("install failed, running without the task: " + ex.Message); return false; }
+    }
+
+    // the same settings as the task set up by hand on the original laptop
+    static void RegisterTask(string exe)
+    {
+        string user, sid;
+        using (var id = WindowsIdentity.GetCurrent()) { user = id.Name; sid = id.User.Value; }
+        Func<string, string> x = System.Security.SecurityElement.Escape;
+        string xml = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n" +
+            "<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">" +
+            "<RegistrationInfo><Description>netbug: lightweight network outage logger</Description></RegistrationInfo>" +
+            "<Principals><Principal id=\"Author\"><UserId>" + x(sid) + "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>" +
+            "<Settings><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" +
+            "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" +
+            "<RestartOnFailure><Count>999</Count><Interval>PT1M</Interval></RestartOnFailure></Settings>" +
+            "<Triggers><LogonTrigger><UserId>" + x(user) + "</UserId></LogonTrigger></Triggers>" +
+            "<Actions Context=\"Author\"><Exec><Command>" + x(exe) + "</Command><WorkingDirectory>" + x(Path.GetDirectoryName(exe)) + "</WorkingDirectory></Exec></Actions></Task>";
+        string file = Path.Combine(Path.GetTempPath(), "netbug-task.xml");
+        File.WriteAllText(file, xml, Encoding.Unicode);
+        try { Run("schtasks.exe", "/Create /TN " + TaskName + " /XML \"" + file + "\" /F"); }
+        finally { File.Delete(file); }
+        if (!PathEq(TaskCommand(), exe)) throw new Exception("schtasks /Create did not register the task");
+    }
+
+    // ends every other netbug except this process and the launcher that started it (it opens the page)
+    static void StopOthers()
+    {
+        int me = Process.GetCurrentProcess().Id, parent = ParentPid();
+        foreach (var p in Process.GetProcessesByName("netbug"))
+            using (p)
+                if (p.Id != me && p.Id != parent) try { p.Kill(); p.WaitForExit(5000); } catch { }
+        Run("pktmon.exe", "stop");   // the killed copy's ARP capture would keep running
+    }
+
+    // `keep`: a process to spare (the uninstalling one, which exits right after)
+    static void Uninstall(int keep)
+    {
+        if (!portable) Event("netbug uninstalled: logon task removed, router pin removed");
+        Run("schtasks.exe", "/Delete /TN " + TaskName + " /F");   // not /End: that would end `keep` when the task runs it
+        foreach (var p in Process.GetProcessesByName("netbug"))
+            using (p)
+                if (p.Id != keep && p.Id != ParentPid()) try { p.Kill(); p.WaitForExit(5000); } catch { }
+        Run("pktmon.exe", "stop");
+        foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            int idx = IfIndex(ni);
+            if (idx < 0) continue;
+            foreach (var g in ni.GetIPProperties().GatewayAddresses)
+                if (g.Address.AddressFamily == AddressFamily.InterNetwork && PersistentPin(idx, g.Address) != "")
+                {
+                    Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1}", idx, g.Address));
+                    lock (pinLock) pinCacheAt = DateTime.MinValue;
+                }
+        }
+        if (portable) RemoveDir(baseDir);
+    }
+
+    // Deletes a lone exe's folder. A file still in use (the installed exe, when the page's Uninstall runs
+    // it) is moved to the temp folder and deleted at the next restart, so the folder goes now and a later
+    // reinstall isn't deleted with it. A helper process can't do this: it would die with the task's process.
+    static void RemoveDir(string dir)
+    {
+        Directory.SetCurrentDirectory(Path.GetTempPath());   // the task starts netbug with `dir` as its working folder
+        for (int i = 0; i < 10; i++)   // a just-killed copy may still hold files for a moment
+            try { Directory.Delete(dir, true); return; } catch { Thread.Sleep(500); }
+        foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+            try { File.Delete(f); }
+            catch
+            {
+                string tmp = Path.Combine(Path.GetTempPath(), "netbug-removed-" + Guid.NewGuid().ToString("N") + Path.GetExtension(f));
+                try { File.Move(f, tmp); } catch { tmp = f; }
+                MoveFileEx(tmp, null, 4);   // 4 = MOVEFILE_DELAY_UNTIL_REBOOT
+            }
+        foreach (var d in Directory.GetDirectories(dir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length).Concat(new[] { dir }))
+            try { Directory.Delete(d); } catch { MoveFileEx(d, null, 4); }
     }
 
     // A lone netbug.exe writes its page, font and scripts (embedded resources) to %ProgramData%\netbug\tools
@@ -1368,14 +1546,13 @@ class NetBug
                 SaveSettings();
                 Event("MAC announce (keep the router updated) " + (announce ? "on" : "off"));
                 break;
-            case "/api/fix/stop":
-                if (!portable) { error = "This netbug runs as a scheduled task; stop it there."; break; }
-                Event("netbug stopped from the page");
+            case "/api/fix/uninstall":
+                if (!portable) { error = "This netbug runs from its repo; run netbug.exe --uninstall instead."; break; }
                 Task.Run(() =>
                 {
-                    Thread.Sleep(500);
-                    // the ARP ring capture would otherwise keep running after netbug is gone
+                    Thread.Sleep(500);   // let this reply reach the page first
                     if (Monitor.TryEnter(pktmonLock, 10000)) RingPause();
+                    Uninstall(Process.GetCurrentProcess().Id);
                     Environment.Exit(0);
                 });
                 break;
@@ -1428,7 +1605,7 @@ class NetBug
     // Replaces the gateway's entry in the active ARP store only: a static entry for `mac`, or none ("").
     static void SetActive(int ifIndex, IPAddress gw, string mac)
     {
-        Netsh(string.Format("interface ipv4 delete neighbors interface={0} address={1} store=active", ifIndex, gw));
+        Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1} store=active", ifIndex, gw));
         if (mac != "") Netsh(string.Format("interface ipv4 add neighbors interface={0} address={1} neighbor={2} store=active", ifIndex, gw, mac));
     }
 
@@ -1563,7 +1740,7 @@ class NetBug
             if (gw == null || verifiedMac == "" || verifiedGw != gw.ToString() || verifiedIf != idx) return "Run a check first: nothing is verified for this network yet.";
             mac = verifiedMac;
         }
-        Netsh(string.Format("interface ipv4 delete neighbors interface={0} address={1}", idx, gw));
+        Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1}", idx, gw));
         string output = Netsh(string.Format("interface ipv4 add neighbors interface={0} address={1} neighbor={2} store=persistent", idx, gw, mac));
         lock (pinLock) pinCacheAt = DateTime.MinValue;
         if (PersistentPin(idx, gw) != mac) return "Pinning failed: " + output.Trim();
@@ -1577,7 +1754,7 @@ class NetBug
         int idx = IfIndex(ni);
         if (gw == null || idx < 0) return "No network with a router right now.";
         if (fixBusy) return "Wait for the check to finish.";
-        Netsh(string.Format("interface ipv4 delete neighbors interface={0} address={1}", idx, gw));
+        Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1}", idx, gw));
         lock (pinLock) pinCacheAt = DateTime.MinValue;
         if (PersistentPin(idx, gw) != "") return "Unpinning failed.";
         Event(string.Format("gateway {0} unpinned on '{1}' from the page", gw, ni.Name));

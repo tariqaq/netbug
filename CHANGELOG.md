@@ -5,6 +5,23 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 05:35: `HASH` self-install, uninstall, netsh delete fix, first GitHub release
+- `netbug.cs` install section: the first elevated start sets up the `netbug` logon task. The settings match the task on this laptop: logon trigger, highest privileges, no time limit, restart 999 x 1 min, on battery, IgnoreNew.
+  - **Lone exe:** copies itself to `%ProgramData%\netbug\netbug.exe` and locks that folder (Administrators/SYSTEM full, Users read). It then registers the task, starts it and exits.
+  - **Same lone exe run again:** only opens the page.
+  - **A different build:** replaces the installed copy and restarts it (update).
+  - **Repo copy:** registers a task only when none exists, so this laptop's task is untouched.
+- `--uninstall` and the page's **Uninstall netbug** button (lone exe only; replaces **Stop netbug**) remove the task, the router pin and, for a lone exe, `%ProgramData%\netbug`.
+- Fix: every `netsh interface ipv4 delete neighbors` call used `interface=`, which that command rejects (it takes `name=`). So the page's Unpin and the router check's "put the entry back" step never deleted anything.
+- README: Quick install from Releases, the self-registering task, `--uninstall`, and the friend section rewritten for the installer.
+- Tested here, with the lone exe:
+  - install, then the same exe again with no reinstall
+  - update with a different build
+  - uninstall from the page and with `--uninstall`: task, pin and files removed
+  - The empty folder is removed at the next restart.
+  - This laptop's task and pin were backed up and restored after each run.
+- **Machine:** rebuilt `tools\netbug.exe` and restarted the task. During the tests the `netbug` task and the gateway pin were briefly replaced/removed, then restored (task XML from backup; pin back to the same MAC). An empty `C:\ProgramData\netbug` is queued for deletion at the next restart.
+
 ### 05:19: `1d1dd4c` README: Router protection status labels
 - README explains the panel's status labels (Protected, Not pinned, Pin differs, Checking…, No network), matching `renderFix` in `dashboard.html`.
 

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 03:37: `HASH` full-code review fixes
+### 03:37: `547a129` full-code review fixes
 - Interface scan (~7 ms CPU) now runs on Windows network-change events, every second while anything fails, else every 10 s (was every second). netbug CPU 1.74% -> 0.83% of one core.
 - Console tools run by netbug (pktmon, netsh) are killed after 30 s instead of possibly hanging the ARP capture or router check.
 - ARP watch shows "no ARP captured" instead of "clean" when the capture got no frames.

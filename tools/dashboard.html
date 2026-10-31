@@ -239,6 +239,16 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
 
   // ---------- formatting ----------
   const ms = v => v < 0 ? null : v;
+  // Cloudflare drops some pings on its own (ICMP rate limiting) while Google and real traffic
+  // are fine, so a Cloudflare-only miss is hidden: the dashboard keeps the last answered value.
+  // The CSV still logs it as -1.
+  const cfHidden = r => r[2] < 0 && r[3] >= 0;
+  const cfShown = last => {
+    if (!cfHidden(last)) return ms(last[2]);
+    const rows = [...hist.values()];
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i][2] >= 0) return rows[i][2];
+    return null;
+  };
   const dur = s => {
     s = Math.max(0, Math.round(s));
     if (s < 60) return s + ' s';
@@ -308,7 +318,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     if (!s) return;
     const last = [...hist.values()].pop();
     if (last) {
-      setReadout('r-gw', ms(last[1])); setReadout('r-cf', ms(last[2])); setReadout('r-g', ms(last[3]));
+      setReadout('r-gw', ms(last[1])); setReadout('r-cf', cfShown(last)); setReadout('r-g', ms(last[3]));
       setReadout('r-udp', ms(last[4])); setReadout('r-dns', ms(last[5])); setReadout('r-tcp', ms(last[6]));
     }
     // "cf=1.2.3.4:5678" -> address + which STUN server saw it
@@ -380,6 +390,8 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
       let pen = false, prev = 0;
       for (const r of rows) {
         const v = r[i];
+        // a Cloudflare-only miss is skipped without breaking the line (see cfHidden)
+        if (i === 2 && cfHidden(r)) continue;
         if (v < 0 || r[0] - prev > 2) pen = false;
         prev = r[0];
         if (v < 0) continue;

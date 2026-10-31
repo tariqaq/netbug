@@ -5,6 +5,12 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 04:44: `HASH` dashboard hides Cloudflare-only ping loss
+- Log analysis: since 03:40, 63 of 1154 one-second 1.1.1.1 pings were lost, in 1-3 s bursts every 30 s to 3 min. In those seconds DNS, UDP (STUN to `stun.cloudflare.com`) and Google stayed fine. This is ICMP rate limiting on the path, not an outage.
+- `dashboard.html`: a lost Cloudflare ping while Google answers no longer shows as **lost**. The readout keeps the last answered value and the chart line doesn't break. The CSV still logs `-1`, and outage detection is unchanged (it already needed Cloudflare and Google both lost).
+- README dashboard section notes this.
+- **Machine:** rebuilt `netbug.exe` and restarted the `netbug` task.
+
 ### 03:46: `5f5e997` README rewrite, doc sync, stale comments
 - README rewritten: problem and finding up top, then **Setup** (requirements, build, register the logon task with the exact settings in use, open the dashboard, protect the laptop, update, uninstall), friend mode, Router protection table, checks, logs, dashboard, footprint, repo layout.
 - Incident report: dated 2026-11-01 update note under §9 (continuous ARP capture, MAC announce, what it narrows in §8); `REDACTED_*` regenerated.

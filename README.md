@@ -216,6 +216,7 @@ Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` in portable
 
 - Status line: healthy, lagging (orange), down (red), **possible ARP spoofing** (red, 30 min after an alert), plus the last outage or lag
 - 5-minute chart of gateway, Cloudflare and UDP round-trip times, with outages and lag shaded
+- A lost Cloudflare ping is hidden while Google still answers: Cloudflare drops some pings on its own (rate limiting), so the readout keeps the last value and the line doesn't break. The CSV still logs it as `-1`.
 - Latest readings: interface, IPs, gateway MAC with pin status and the last ARP watch result, NAT mapping, packets, UDP ports
 - `events.log` live (alerts red, lag orange, hourly health lines cyan and hideable)
 

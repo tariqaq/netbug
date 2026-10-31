@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 05:35: `HASH` self-install, uninstall, netsh delete fix, first GitHub release
+### 05:35: `bca06da` self-install, uninstall, netsh delete fix, first GitHub release
 - `netbug.cs` install section: the first elevated start sets up the `netbug` logon task. The settings match the task on this laptop: logon trigger, highest privileges, no time limit, restart 999 x 1 min, on battery, IgnoreNew.
   - **Lone exe:** copies itself to `%ProgramData%\netbug\netbug.exe` and locks that folder (Administrators/SYSTEM full, Users read). It then registers the task, starts it and exits.
   - **Same lone exe run again:** only opens the page.

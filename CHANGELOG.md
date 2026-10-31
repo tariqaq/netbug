@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 05:19: `HASH` README: Router protection status labels
+### 05:19: `1d1dd4c` README: Router protection status labels
 - README explains the panel's status labels (Protected, Not pinned, Pin differs, Checking…, No network), matching `renderFix` in `dashboard.html`.
 
 ### 04:44: `7f17eb2` dashboard hides Cloudflare-only ping loss

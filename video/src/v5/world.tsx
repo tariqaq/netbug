@@ -75,13 +75,29 @@ const TABLE = BASE - 0.9;  // the table the slab stands on
 /** Floor centre of room (floor, col). */
 export const room = (fl: number, col: number): V3 => [X0 + RW * (col + 0.5), fl * RH, 0];
 
+/** Why a camera can't see its target, or null when it can. Only targets inside a room are checked: the camera must be in
+ *  that room, or look in through that room's open front, clear of the pillars and slab lips (the walls between rooms
+ *  hide everything else). Wide shots (camera more than 6 m from its target) look at the whole block and are skipped. */
+export const sightBlocked = (cam: Cam): string | null => {
+  const [tx, ty, tz] = cam.target;
+  if (dist(cam.pos, cam.target) > 6 || ty < 0 || ty >= FLOORS * RH || Math.abs(tz) >= RD / 2 || tx <= X0 || tx >= X0 + BW) return null;
+  const col = Math.floor((tx - X0) / RW), fl = Math.floor(ty / RH);
+  const inCell = (x: number, y: number, m: number, mt: number) =>
+    x > X0 + col * RW + m && x < X0 + (col + 1) * RW - m && y > fl * RH + mt && y < fl * RH + RH - mt;
+  const [px, py, pz] = cam.pos;
+  if (pz <= RD / 2) return inCell(px, py, 0.04, 0.04) ? null : `camera outside room ${fl},${col}`;
+  const s = (pz - RD / 2) / (pz - tz);
+  const x = px + s * (tx - px), y = py + s * (ty - py);
+  return inCell(x, y, 0.1, 0.06) ? null : `enters front at x ${(x - X0 - col * RW).toFixed(2)} y ${(y - fl * RH).toFixed(2)} (room ${fl},${col})`;
+};
+
 /** Which rooms matter (floor, col). */
 export const ROOMS = {
   mine: [1, 1] as const,
   attacker: [2, 4] as const,
   friend: [1, 4] as const,
-  morning: [[0, 3], [3, 1]] as const,                 // the two other devices at 05:34 ([3,1] = 10.255.23.47)
-  afternoon: [[0, 0], [2, 1], [3, 1], [3, 5]] as const, // the four at 15:28 ([3,1] again)
+  morning: [[3, 1], [0, 3]] as const,                 // the two other devices at 05:34, in data `victims1` order ([3,1] = 10.255.23.47)
+  afternoon: [[0, 0], [2, 1], [3, 1], [3, 5]] as const, // the four at 15:28, in data `victims2` order ([3,1] again)
 };
 const isRoom = (fl: number, col: number, k: readonly [number, number]) => fl === k[0] && col === k[1];
 const VICTIMS: (readonly [number, number])[] = [...ROOMS.morning, ...ROOMS.afternoon].filter((k, i, a) => a.findIndex((x) => x[0] === k[0] && x[1] === k[1]) === i);

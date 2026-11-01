@@ -20,7 +20,7 @@ import timing from '../../public/vo5/timing.json';
 import example from '../../data.example.json';
 import qr from './qr.json';
 import {
-  W, H, type V3, type Cam, type WorldState, type RoomState, add, mix3, project, handheld, room, laptopAt, ROOMS, ROUTER, SWITCH,
+  W, H, type V3, type Cam, type WorldState, type RoomState, add, mix3, project, handheld, sightBlocked, room, laptopAt, ROOMS, ROUTER, SWITCH,
   Building, Ground, Router, Switch, Laptop, Impostor, Packet, Ring, Skyline, along, pathToRouter, pathToRoom, pathToInternet, COL, mixHex,
 } from './world';
 import { Sky, Haze, Vignette, Letterbox, Tag, Captions, type CapPage, SANS, MONO, clamp, ease, prog, fadeOut } from './look';
@@ -130,6 +130,7 @@ const FRIEND = laptopAt(...ROOMS.friend);
 const ATT = laptopAt(...ROOMS.attacker);
 const ATTC = add(ATT, [0, 0.45, 0]);
 const HUNTED = room(3, 1);
+const TRAP = add(room(...ROOMS.attacker), [0.25, 0.8, -0.35]);
 
 const SHOT = {
   sky: C([0, 24, 30], [0, 6, 0], 32),
@@ -140,12 +141,20 @@ const SHOT = {
   mineFloor: C(add(MINE, [-4.5, 1.6, 6.5]), add(MINE, [1.5, -0.2, 0]), 40),
   router: C(add(ROUTER, [1.6, 0.7, 3.2]), add(ROUTER, [0, 0.1, 0]), 38),
   basementWide: C([1.9, -0.25, 5.6], add(ROUTER, [-0.2, 0.15, 0]), 40),
-  att: C(add(ATTC, [1.9, 0.6, 3.4]), ATTC, 38),
-  attClose: C(add(ATTC, [0.5, 0.15, 1.35]), ATTC, 36),
-  attLow: C(add(ATTC, [-0.9, -0.3, 1.6]), add(ATTC, [0, 0.12, 0]), 34),
+  att: C(add(ATTC, [-0.3, 0.3, 3.0]), ATTC, 38),
+  // the trap: the impostor's whole room, front-on, so packets are seen coming down the drop and into the gem
+  trap: C(add(TRAP, [-0.15, 0.2, 3.4]), TRAP, 40),
+  trapIn: C(add(TRAP, [-0.1, 0.1, 2.7]), TRAP, 40),
+  // the three slams of 15:28, all through the room's open front
+  slamDev: C(add(ATTC, [0.2, 0.1, 2.2]), ATTC, 34),
+  slamAddr: C(add(ATTC, [-0.45, 0.35, 2.6]), ATTC, 30),
+  slamLie: C(add(ATTC, [0.35, -0.25, 2.0]), add(ATTC, [0, 0.12, 0]), 34),
+  verdict: C(add(ATTC, [-0.3, 0.2, 3.6]), ATTC, 38),
+  verdictIn: C(add(ATTC, [-0.15, 0.1, 2.0]), ATTC, 34),
+  victims: C([0, 3.0, 13.5], [0, 2.6, 0], 40),
   attMine: C([-1.5, 3.4, 9.5], [0.8, 2.3, 0], 40),
   hunt: C([-0.6, 4.9, 11.5], [-0.4, 4.0, 0], 38),
-  corridor: C(add(FRIEND, [-5.5, 0.7, 2.2]), add(FRIEND, [0, 0.1, 0]), 40),
+  corridor: C(add(FRIEND, [-1.6, 0.8, 6.2]), add(FRIEND, [-0.6, 0.2, 0]), 40),
   friend: C(add(FRIEND, [-1.2, 0.6, 2.4]), add(FRIEND, [0.1, 0.05, 0]), 40),
   dawnWide: C([4, 3.0, 17], [0, 2.6, 0], 38),
   end: C([0, 6, 21], [0, 3.4, 0], 36),
@@ -172,10 +181,12 @@ const KEYS: Key[] = (() => {
   push(at('a1_1', 'replying') - 10, SHOT.att);
   push(at('a1_1', 'router') + 30, SHOT.attMine);
   push(at('a1_2', 'others'), C([0, 3.2, 14.5], [0, 2.4, 0], 38));
-  push(at('a1_3'), C([-1, 3.2, 12], [0.6, 2.2, 0], 38));
-  push(at('a1_3', 'zero') - 1, SHOT.attLow);
-  push(at('a1_3', 'zero'), SHOT.attLow);
-  push(endOf('a1_3') + 40, C(add(ATTC, [-0.6, -0.2, 1.3]), add(ATTC, [0, 0.1, 0]), 34));
+  // 71 out: packets leave my laptop (my room), then the trap: they go down into the gem and never come back
+  push(at('a1_3') - 1, C([0, 3.2, 14.5], [0, 2.4, 0], 38));
+  push(at('a1_3'), SHOT.mine);
+  push(at('a1_3', 'zero') - 1, mixCam(SHOT.mine, SHOT.mineClose, 0.25));
+  push(at('a1_3', 'zero'), SHOT.trap);
+  push(sceneFrom.sym - 1, SHOT.trapIn);
   // symptoms: close on the laptop
   push(sceneFrom.sym, SHOT.mineClose);
   push(sceneFrom.sym, SHOT.mineClose);
@@ -189,18 +200,23 @@ const KEYS: Key[] = (() => {
   // attack 2: clock, three slams (cuts), the count, the hunt, the verdict
   push(sceneFrom.a2 + CARD, SHOT.wide);
   push(at('a2_dev') - 1, SHOT.wide);
-  push(at('a2_dev'), SHOT.attClose);
-  push(at('a2_addr') - 1, mixCam(SHOT.attClose, SHOT.att, 0.15));
-  push(at('a2_addr'), C(add(ATTC, [-0.8, 0.45, 1.25]), ATTC, 34));
-  push(at('a2_lie') - 1, C(add(ATTC, [-0.75, 0.42, 1.2]), ATTC, 34));
-  push(at('a2_lie'), SHOT.attLow);
-  push(at('a2_count') - 1, C(add(ATTC, [-0.85, -0.28, 1.5]), add(ATTC, [0, 0.12, 0]), 34));
-  push(at('a2_count'), SHOT.wide);
+  push(at('a2_dev'), SHOT.slamDev);
+  push(at('a2_addr') - 1, mixCam(SHOT.slamDev, SHOT.slamAddr, 0.12));
+  push(at('a2_addr'), SHOT.slamAddr);
+  push(at('a2_lie') - 1, mixCam(SHOT.slamAddr, SHOT.slamLie, 0.12));
+  push(at('a2_lie'), SHOT.slamLie);
+  push(at('a2_count') - 1, mixCam(SHOT.slamLie, SHOT.trap, 0.1));
+  // 42 out: the trap again, then the four other rooms that lost the router
+  push(at('a2_count'), SHOT.trap);
+  push(at('a2_count', 'four') - 1, SHOT.trapIn);
+  push(at('a2_count', 'four'), SHOT.victims);
   push(at('a2_hunt'), C([0.5, 4.0, 14], [0, 3.2, 0], 38));
   push(at('a2_hunt', 'looking'), SHOT.hunt);
-  push(at('a2_verdict'), C(add(ATTC, [0.9, 0.15, 3.4]), add(ATTC, [0, -0.1, 0]), 38));
-  push(endOf('a2_verdict') + 50, C(add(ATTC, [0.9, 0.1, 1.8]), ATTC, 34));
-  // friend: along the corridor to the friend's room
+  push(at('a2_verdict') - 1, SHOT.hunt);
+  push(at('a2_verdict'), SHOT.verdict);
+  push(sceneFrom.friend - 1, SHOT.verdictIn);
+  // friend: the friend's floor, then into the room
+  push(sceneFrom.friend, SHOT.corridor);
   push(sceneFrom.friend + CARD, SHOT.corridor);
   push(at('f1', 'friend'), SHOT.friend);
   push(endOf('f2'), C(add(FRIEND, [-1.6, 0.9, 3.4]), add(FRIEND, [0.1, 0.2, 0]), 40));
@@ -235,6 +251,17 @@ const camAt = (f: number): Cam => {
   const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   return mixCam(ca, cb, e);
 };
+
+// NETBUG_CAMCHECK=1: print every frame range where the camera can't see its target (see sightBlocked in world.tsx).
+if ((globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.NETBUG_CAMCHECK) {
+  let from = -1, why = '';
+  for (let f = 0; f <= KEYS[KEYS.length - 1][0] + 1; f++) {
+    const b = f <= KEYS[KEYS.length - 1][0] ? sightBlocked(camAt(f)) : null;
+    if (b && from < 0) { from = f; why = b; }
+    if (!b && from >= 0) { console.log(`camcheck ${from}..${f - 1} (${(from / FPS).toFixed(1)}s): ${why}`); from = -1; }
+  }
+  console.log('camcheck done');
+}
 
 // ---------------------------------------------------------------- story state
 
@@ -297,6 +324,9 @@ const Flow: React.FC<{ f: number; pts: V3[]; a: number; n?: number; period?: num
 // my wires
 const P_MINE_ROUTER = pathToInternet(...ROOMS.mine);
 const P_MINE_ATT = [...pathToRoom(...ROOMS.mine, ...ROOMS.attacker), add(ATTC, [0, -0.3, 0])];
+/** The last stretch into the impostor (riser top on its floor -> ceiling run -> drop -> the gem): a denser flow here,
+ *  so the trap shot shows packets going in. */
+const P_TRAP = P_MINE_ATT.slice(-6);
 const P_FRIEND_ATT = [...pathToRoom(...ROOMS.friend, ...ROOMS.attacker), add(ATTC, [0, -0.3, 0])];
 const P_ROUTER_MINE = [...pathToRouter(...ROOMS.mine)].reverse();
 const PHONE: V3 = add(MINE, [0.28, 0.0, 0.1]);
@@ -399,8 +429,9 @@ const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
       {imp > 0.01 && <Impostor p={ATT} t={t} on={imp} />}
       {rings}
       <Flow f={f} pts={P_MINE_ROUTER} a={normal} n={9} period={260} />
-      <Flow f={f} pts={P_MINE_ATT} a={Math.max(attack1, attack2)} n={8} period={150} color={COL.packet} swallow />
+      <Flow f={f} pts={P_MINE_ATT} a={Math.max(attack1, attack2)} n={10} period={180} color={COL.packet} size={0.065} swallow />
       <Flow f={f} pts={P_FRIEND_ATT} a={friendAtt} n={6} period={150} swallow phase={40} />
+      <Flow f={f} pts={P_TRAP} a={Math.max(attack1, attack2)} n={5} period={100} color={COL.packet} size={0.065} swallow phase={17} />
       <Flow f={f} pts={P_HOTSPOT} a={hotspot} n={7} period={140} color={COL.ok} />
       {rp > 0 && rp < 1 && <Packet p={along(P_ROUTER_MINE, rp)} color={COL.gold} size={0.07} k={4} />}
       {/* phone on the desk */}
@@ -478,6 +509,14 @@ const Labels: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam, d }) => {
   tag('att', ATTC, span(f, at('a1_1', 'device') + 10, at('a1_2') + 30, 12), `${LABEL_ATT(d)} · ${d.attIp}`, 'claims to be the router', COL.bad, 70, -90);
   // victims (morning)
   ROOMS.morning.forEach((k, i) => tag('v1' + i, add(room(k[0], k[1]), [0, 0.8, 0]), span(f, at('a1_2', 'others') + i * 10, at('a1_3'), 12), d.victims1[i], 'lost the router too', COL.bad, i ? -40 : 40, -60, 20));
+  // the trap: packets go in, nothing comes out (counts match the capture HUD)
+  const trapCount = (from: number, total: number) => Math.round(total * interpolate(f, [from, from + 70], [0, 1], { ...clamp, easing: ease }));
+  tag('trap1', add(ATTC, [0, -0.2, 0.1]), span(f, at('a1_3', 'zero') + 4, sceneFrom.sym - 8, 12), `in ${trapCount(at('a1_3'), 71)}  ·  out 0`, 'takes every packet, forwards none', COL.bad, 150, -70, 26);
+  tag('trap2', add(ATTC, [0, -0.2, 0.1]), span(f, at('a2_count') + 4, at('a2_count', 'four') - 4, 12), `in ${trapCount(at('a2_count'), 42)}  ·  out 0`, 'takes every packet, forwards none', COL.bad, 150, -70, 26);
+  tag('me2', add(MINE, [0, 0.25, 0]), span(f, at('a2_count', 'four'), at('a2_hunt', 'looking') - 6, 12), 'this laptop', 'cut off again', COL.packet, -40, 60, 20);
+  // 15:28: the four other devices that lost the router ([3,1] is the morning victim the impostor goes looking for)
+  ROOMS.afternoon.forEach((k, i) => tag('v2' + i, add(room(k[0], k[1]), [0.45, 0.7, -0.4]), span(f, at('a2_count', 'four') + i * 9, at('a2_hunt', 'looking') - 6, 12),
+    d.victims2[i], k[0] === 3 && k[1] === 1 ? 'lost the router again' : 'lost the router', COL.bad, k[1] < 3 ? -40 : 40, -70, 20));
   // the hunt
   tag('hunt', add(HUNTED, [0, 0.7, 0]), span(f, at('a2_hunt', 'looking'), at('a2_verdict'), 12), `who has ${d.victims2[2]}?`, `asked by ${d.attIp}  ·  cut off at 05:34 too`, COL.bad, -60, -110, 26);
   // fix: candidates
@@ -584,7 +623,7 @@ const Titles: React.FC<{ f: number; cam: Cam }> = ({ f, cam }) => {
     );
   };
   hud('c1', span(f, at('a1_3') - 6, sceneFrom.sym - 6, 12), at('a1_3'), 71, at('a1_3', 'zero'));
-  hud('c2', span(f, at('a2_count') - 6, at('a2_hunt') + 10, 12), at('a2_count'), 42, at('a2_count', 'zero'), { text: '+4 devices lost the router', at: at('a2_count', 'four') });
+  hud('c2', span(f, at('a2_count') - 6, at('a2_count', 'four') - 4, 12), at('a2_count'), 42, at('a2_count', 'zero'));
   // jump from 05:36 to 15:28
   const j0 = sceneFrom.a2 + CARD - 30;
   const minutes = interpolate(f, [j0, at('a2_1', 'afternoon')], [5 * 60 + 36, 15 * 60 + 28], { ...clamp, easing: ease });

@@ -71,6 +71,7 @@ A second film in `src/v5/`, covering every incident (05:34 and 15:28 on 10-28, a
 .venv/Scripts/python scripts/tts5.py [line ids...]               # same venv as tts.py; all lines, or only the listed ones (the rest keep their timing)
 
 NETBUG_MB=0 npx kinetograph strip src/v5/index.tsx -n 24 -o out/v5.png   # draft contact sheet (no motion blur)
+NETBUG_CAMCHECK=1 npx kinetograph still src/v5/index.tsx 0 -o out/c.png  # prints frame ranges where a close camera can't see its target (walls, pillars)
 
 export KINETOGRAPH_FFMPEG="C:\path\to\ffmpeg.exe"                  # one with hevc_nvenc
 npx kinetograph render src/v5/index.tsx -o out/incident-v5-redacted.mov --codec h265 --encoder hevc_nvenc --crf 18 --audio-codec pcm --concurrency 2
@@ -80,10 +81,10 @@ ffmpeg -i out/incident-v5-redacted.mov -af loudnorm=I=-14:TP=-1.5:LRA=11:... -c:
 
 `pwsh -File scripts/render5.ps1` does all of the above for both cuts (the full cut only when `data.local.json` exists).
 
-To regenerate the narration you need the `.venv` venv (edge-tts), ffmpeg and internet access. Titles, chapter cards, the speech bubble and the netbug badge are 2D layers over the 3D scene, so type stays crisp.
+To regenerate the narration you need the `.venv` venv (edge-tts), ffmpeg and internet access. Nothing else is cached for it. Titles, chapter cards, the speech bubble and the netbug badge are 2D layers over the 3D scene, so type stays crisp.
 
 The `loudnorm` pass is 2-pass and linear: the first pass measures and the second applies. The mix comes out at -14.0 LUFS with a true peak of -1.4 dBTP; without it, true peak reaches 0 dBTP.
 
-On the RTX 4060 Laptop GPU a render takes ~11 min (~55 ms per frame, motion blur at 4 samples) and the file is ~399 MB (~15.5 Mbit/s). `NETBUG_MB` sets the motion-blur samples (0 = off). NVENC rejects `--pixel-format yuv420p10le` as kinetograph passes it, so the output is 8-bit. The v5 renders stay in `out/` (gitignored) and aren't committed.
+On the RTX 4060 Laptop GPU a render takes ~14 min (~70 ms per frame, motion blur at 4 samples) and the file is ~405 MB (~15.7 Mbit/s). `NETBUG_MB` sets the motion-blur samples (0 = off). NVENC rejects `--pixel-format yuv420p10le` as kinetograph passes it, so the output is 8-bit. The v5 renders stay in `out/` (gitignored) and aren't committed.
 
 Earlier cuts are tagged in git: `video-v2` (Andrew, no score) and `video-v3` (Christopher, film grain, ~2:04).

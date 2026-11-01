@@ -5,6 +5,17 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 23:04: `HASH` video: v5 revision 2 (camera sightlines, the trap shot, victim labels)
+- `video/src/v5/world.tsx`: `sightBlocked()` reports when a close camera can't see its target through a room's open front (walls, pillars, slab lips). `ROOMS.morning` reordered to match `victims1`, so the 05:34 labels name the right rooms ([3,1] is 10.255.23.47).
+- `video/src/v5/index.tsx`:
+  - `NETBUG_CAMCHECK=1` prints every frame range where the camera's view is blocked.
+  - Every close shot of the impostor (05:34 reveal, the three 15:28 slams, the verdict) now looks in through the room's open front.
+  - Glides that crossed the building (into the symptoms, into the friend's chapter) are now cuts.
+  - New trap shot for "71 out" and "42 out": the impostor's room front-on, with a dense packet flow down the drop into the gem and an `in N · out 0` tag.
+  - 15:28: the four other rooms are labelled with their IPs, plus "this laptop"; the capture panel hands over to them.
+- Rendered locally, not published: both cuts, 12,350 frames (3:25.9). -14.0 LUFS, true peak -1.4 dBTP. About 14.5 min per render; ~405 MB each. Redaction checked on a decoded frame.
+- `video/README.md`, `video/PLAN-v5.md`: the camera check, render numbers, log.
+- **Machine:** removed `video/.venv-qwen` and the Hugging Face models `Qwen3-TTS-12Hz-1.7B-Base` and `whisper-large-v3-turbo` (unused since the switch to Edge Andrew); 11.1 GB freed, C: at 115 GB free. Other Hugging Face cache entries were left alone.
 ### 22:25: `e1dea99` video: v5 revision 1 (Andrew voice, rebuilt world, 2D type, slower pacing)
 - Narration: `video/scripts/tts5.py` now uses Microsoft Edge `en-US-AndrewMultilingualNeural` through edge-tts (the `.venv` from v4), with per-line `rate`/`pitch` in `video/narration-v5.json`, the v4 studio chain and word timings from the voice's word boundaries. Script trimmed (how1, a2_1, f1, fix1, sym1, a1_end). 30 lines, every word matched, 150.6 s of speech. `public/vo5/reference.wav` removed (Qwen clone source, no longer used).
 - `video/src/v5/world.tsx` rebuilt:

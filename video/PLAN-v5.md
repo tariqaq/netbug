@@ -128,7 +128,7 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 ## Output
 
 - `out/incident-v5-redacted.mp4` (public-safe MACs) and `out/incident-v5-full.mp4` (real MACs, `data.local.json`).
-- H.265 via `hevc_nvenc` (`--crf 18`, constant quality), 1080p60, 8-bit yuv420p (NVENC rejects `yuv420p10le` as passed by kinetograph), `hvc1` tag. ~15.5 Mbit/s, ~399 MB per file. H.265 over H.264: half the size at the same quality for this kind of picture, and it plays in all current browsers, Windows, macOS, iOS and Android.
+- H.265 via `hevc_nvenc` (`--crf 18`, constant quality), 1080p60, 8-bit yuv420p (NVENC rejects `yuv420p10le` as passed by kinetograph), `hvc1` tag. ~15.7 Mbit/s, ~405 MB per file. H.265 over H.264: half the size at the same quality for this kind of picture, and it plays in all current browsers, Windows, macOS, iOS and Android.
 - Local only until the user OKs publishing.
 
 ## Files
@@ -166,6 +166,13 @@ Revision 1 (after the user watched the first cut):
 - [x] Slower pacing (longer pauses) under the 3:30 cap
 - [x] Render, checks, docs, CHANGELOG
 
+Revision 2 (camera and readability):
+
+- [x] Sightline check (`NETBUG_CAMCHECK=1`, `sightBlocked()` in `world.tsx`); every close shot of the impostor reframed through the room's open front; glides through the building replaced by cuts
+- [x] The trap shot (71 and 42 out): the impostor's room front-on, a dense packet flow down the drop into the gem, an `in N · out 0` tag
+- [x] 15:28: the four other rooms and this laptop labelled; morning victim labels matched to `victims1` order
+- [x] Render, checks, docs, CHANGELOG
+
 ## Log
 
 - 19:40 3D test scene renders on the 4060 (~15 ms/frame at 1080p60, hevc_nvenc).
@@ -178,3 +185,4 @@ Revision 1 (after the user watched the first cut):
 - 21:10 Film re-timed on real speech: 12,173 frames (3:22.9). Contact sheets reviewed.
 - 21:21 Rendered redacted and full (~4.3 min each on the 4060); -14.0 LUFS, true peak -1.3 dBTP; redaction checked on a decoded frame.
 - 22:25 Revision 1 done. User feedback on the first cut: narrator too high, friend timeline misaligned, world half-built, cable through a wall, too fast to read, 3D title text looks off; cap under 3:30. Narration regenerated with Edge Andrew Multilingual (30 lines, all words matched, 150.6 s of speech); world, type and pacing reworked; stills and contact sheets reviewed. Rendered redacted and full (~11 min each, heavier world): 12,350 frames (3:25.9), -14.0 LUFS, true peak -1.4 dBTP; redaction checked on a decoded frame.
+- 23:04 Revision 2 done. User feedback: close shots of the impostor stared at walls (0:41, 1:28, 1:51), the 71/42 shots didn't show packets going in and nothing out, the 15:28 wide shot was too far, and the four other victims weren't identifiable. Added the sightline check, reframed every impostor shot front-on, cut instead of gliding through the building, added the trap shot and victim labels. Rendered both cuts (~14.5 min each): 3:25.9, -14.0 LUFS, true peak -1.4 dBTP; redaction checked on a decoded frame.

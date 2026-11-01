@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 18:48: `HASH` friend's laptop analysis; trusted-MAC, mid-check and adapter-switch fixes (release v1.0.2)
+### 18:48: `4ee190b` friend's laptop analysis; trusted-MAC, mid-check and adapter-switch fixes (release v1.0.2)
 - Analyzed a friend's netbug export (10-28 22:55 to 11-01 18:40, same hostel LAN). It shows the **same attacker** (`10.255.18.145`, randomized MAC) blackholing that laptop on every wired session, for 4 days:
   - outages of 94 s, 232 s, 525 s and 37 min
   - a victim lookup by the attacker's own IP at 18:28:52

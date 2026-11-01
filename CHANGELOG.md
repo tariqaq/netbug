@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 18:18: `HASH` known router dropdown with Test and pin, stop any netbug* on install (release v1.0.1)
+### 18:18: `01dc2d6` known router dropdown with Test and pin, stop any netbug* on install (release v1.0.1)
 - Router protection panel: a **Router MAC** dropdown with the known routers for the current gateway IP, plus **Other MAC…** to type one. **Test and pin** (`POST /api/fix/trypin?mac=`):
   - runs the Check now test on that one MAC, without the 10 s listen
   - pins it only when it passes

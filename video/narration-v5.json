@@ -1,180 +1,158 @@
 {
- "about": "v5 narration. `text` is shown in captions; `say` (optional) is what the voice reads; `style` steers the delivery (voice-design instruct or exaggeration).",
- "voice": {
-  "engine": "Qwen3-TTS 12Hz 1.7B Base (voice clone of reference.wav)",
-  "reference": "public/vo5/reference.wav",
-  "design": "Male, early thirties, mid-range voice, an intelligent and conversational tech documentary host. Relaxed and curious, with a hint of sarcasm, crisp consonants, natural rhythm, close-mic studio sound.",
-  "ref_text": "Here's the catch. Nobody checks that answer. Whoever replies... gets believed. At five thirty-four and three seconds, a device on this network started replying: I am the router. Seventy-one packets went out. Zero came back.",
-  "seed": 7,
-  "takes": 3
- },
+ "about": "v5 narration. `text` is shown in captions; `say` (optional) is what the voice reads (same words, respelled for pronunciation); `rate` and `pitch` direct each line's delivery.",
+ "voice": "en-US-AndrewMultilingualNeural",
+ "rate": "+0%",
+ "pitch": "+0Hz",
  "lines": [
   {
    "id": "cold1",
    "text": "5:34 in the morning. The hostel is asleep. And somewhere in this building, one device is about to tell a lie.",
    "say": "Five thirty-four in the morning. The hostel is asleep. And somewhere in this building, one device is about to tell a lie.",
-   "style": "hushed, ominous, slow"
+   "rate": "-6%", "pitch": "-2Hz"
   },
   {
    "id": "how1",
-   "text": "Before your laptop sends anything to the internet, it asks the whole network one question: who's the router?",
-   "style": "curious, explanatory"
+   "text": "Before your laptop talks to the internet, it asks the whole network one question: who's the router?",
+   "rate": "+2%"
   },
   {
    "id": "how2",
-   "text": "The real one, a MikroTik downstairs, answers with its hardware address. Your laptop writes it down, and sends everything there.",
-   "say": "The real one, a Micro-Tik downstairs, answers with its hardware address. Your laptop writes it down, and sends everything there.",
-   "style": "explanatory"
+   "text": "The real one, a MikroTik downstairs, answers with its address. Your laptop writes it down, and sends everything there.",
+   "say": "The real one, a Micro-Tik downstairs, answers with its address. Your laptop writes it down, and sends everything there.",
+   "rate": "+2%"
   },
   {
    "id": "how3",
    "text": "Here's the catch. Nobody checks that answer. Whoever replies... gets believed.",
-   "style": "dry, wry, a knowing pause"
+   "rate": "-2%", "pitch": "-1Hz"
   },
   {
    "id": "a1_1",
-   "text": "At 5:34 and 3 seconds, a device on this network started replying: I am the router.",
-   "say": "At five thirty-four and three seconds, a device on this network started replying: I am the router.",
-   "style": "tense, low"
+   "text": "At 5:34 and 3 seconds, a device in this building started replying: I am the router.",
+   "say": "At five thirty-four and three seconds, a device in this building started replying: I am the router.",
+   "rate": "-3%", "pitch": "-1Hz"
   },
   {
    "id": "a1_2",
-   "text": "The laptop believed it. So did two others nearby.",
-   "style": "matter-of-fact"
+   "text": "The laptop believed it. So did two others nearby."
   },
   {
    "id": "a1_3",
    "text": "71 packets went out. Zero came back.",
    "say": "Seventy-one packets went out. Zero came back.",
-   "style": "grave, slow, weight on zero"
+   "rate": "-8%", "pitch": "-3Hz"
   },
   {
    "id": "sym1",
-   "text": "From the inside, it looks like this. Discord at 5,000 milliseconds. Your friends talk, you hear them. They can't hear you. Pages load... forever.",
-   "say": "From the inside, it looks like this. Discord at five thousand milliseconds. Your friends talk, you hear them. They can't hear you. Pages load... forever.",
-   "style": "relatable, slightly exasperated"
+   "text": "From the inside, it looks like this. Discord at 5,000 milliseconds. Your friends can't hear you. Pages load... forever.",
+   "say": "From the inside, it looks like this. Discord at five thousand milliseconds. Your friends can't hear you. Pages load... forever.",
+   "rate": "+2%"
   },
   {
    "id": "sym2",
    "text": "No error message, either. An error needs a reply. Nothing replies.",
-   "style": "dry"
+   "rate": "-2%", "pitch": "-1Hz"
   },
   {
    "id": "a1_end",
-   "text": "Pulling the cable ended it: the laptop jumped to a phone hotspot, a different network, and the internet came straight back.",
-   "say": "Pulling the cable ended it: the laptop jumped to a phone hot-spot, a different network, and the internet came straight back.",
-   "style": "relief"
+   "text": "Pulling the cable ended it. On a phone hotspot, a different network, the internet came straight back.",
+   "say": "Pulling the cable ended it. On a phone hot-spot, a different network, the internet came straight back."
   },
   {
    "id": "a1_rec",
    "text": "And a little monitor called netbug had recorded every second.",
-   "say": "And a little monitor called net-bug had recorded every second.",
-   "style": "a hint of a smile"
+   "say": "And a little monitor called Net-bug had recorded every second.",
+   "rate": "+2%"
   },
   {
    "id": "a2_1",
-   "text": "Ten hours later, at 3:28 in the afternoon, it happened again.",
-   "say": "Ten hours later, at three twenty-eight in the afternoon, it happened again.",
-   "style": "tense"
+   "text": "At 3:28 that afternoon, it happened again.",
+   "say": "At three twenty-eight that afternoon, it happened again.",
+   "rate": "-4%", "pitch": "-1Hz"
   },
-  {
-   "id": "a2_dev",
-   "text": "Same device.",
-   "style": "slow, heavy"
-  },
-  {
-   "id": "a2_addr",
-   "text": "Same address.",
-   "style": "slow, heavy"
-  },
-  {
-   "id": "a2_lie",
-   "text": "Same lie.",
-   "style": "slow, heaviest"
-  },
+  { "id": "a2_dev", "text": "Same device.", "rate": "-12%", "pitch": "-3Hz" },
+  { "id": "a2_addr", "text": "Same address.", "rate": "-12%", "pitch": "-3Hz" },
+  { "id": "a2_lie", "text": "Same lie.", "rate": "-14%", "pitch": "-4Hz" },
   {
    "id": "a2_count",
    "text": "42 packets out. Zero back. Four more devices lost the router.",
    "say": "Forty-two packets out. Zero back. Four more devices lost the router.",
-   "style": "grave"
+   "rate": "-4%", "pitch": "-2Hz"
   },
   {
    "id": "a2_hunt",
    "text": "And this time, the capture caught it shopping for a victim: looking up a device it had already cut off that morning.",
-   "style": "dark, wry"
+   "rate": "+0%"
   },
   {
    "id": "a2_verdict",
    "text": "Not a broken router. Not a bad cable. Someone is doing this. On purpose.",
-   "style": "firm, slow on the last words"
+   "rate": "-7%", "pitch": "-3Hz"
   },
   {
    "id": "f1",
-   "text": "It wasn't just one laptop. A friend's laptop down the hall ran netbug too, for four days.",
-   "say": "It wasn't just one laptop. A friend's laptop down the hall ran net-bug too, for four days.",
-   "style": "storytelling"
+   "text": "And it wasn't just me. A friend down the hall ran netbug too, for four days.",
+   "say": "And it wasn't just me. A friend down the hall ran Net-bug too, for four days."
   },
   {
    "id": "f2",
    "text": "Every time it plugged in, the impostor was already waiting. Six outages. The longest: 37 minutes.",
    "say": "Every time it plugged in, the impostor was already waiting. Six outages. The longest: thirty-seven minutes.",
-   "style": "somber"
+   "rate": "-4%", "pitch": "-2Hz"
   },
   {
    "id": "fix0",
    "text": "So netbug grew teeth.",
-   "say": "So net-bug grew teeth.",
-   "style": "dry, confident, a small smile"
+   "say": "So Net-bug grew teeth.",
+   "rate": "+2%"
   },
   {
    "id": "fix1",
-   "text": "It watches every second, and logs any device claiming to be the router, even while you're protected.",
-   "style": "confident"
+   "text": "It watches every second, and logs any device that claims to be the router.",
+   "rate": "+2%"
   },
   {
    "id": "fix2",
-   "text": "Press Test and pin. A real router passes traffic and answers as itself. The impostor can't. The real address gets pinned, and fake replies just bounce off.",
-   "style": "confident, satisfying"
+   "text": "Press Test and pin. The real router passes traffic and answers as itself. The impostor can't. The real address gets pinned, and fake replies just bounce off.",
+   "rate": "+2%"
   },
   {
    "id": "fix3",
    "text": "The attacker can also lie to the router about you. So netbug reminds the router who you are. Every second.",
-   "say": "The attacker can also lie to the router about you. So net-bug reminds the router who you are. Every second.",
-   "style": "clever, wry"
+   "say": "The attacker can also lie to the router about you. So Net-bug reminds the router who you are. Every second.",
+   "rate": "+1%"
   },
   {
    "id": "fix4",
    "text": "On the friend's laptop: pinned at 6:31 that evening. The next nine minutes: zero failures.",
    "say": "On the friend's laptop: pinned at six thirty-one that evening. The next nine minutes: zero failures.",
-   "style": "quiet triumph"
+   "rate": "-2%"
   },
   {
    "id": "prev1",
-   "text": "If the internet freezes with no error, and everyone around you drops too, switch to a hotspot. The impostor can't follow you there.",
-   "say": "If the internet freezes with no error, and everyone around you drops too, switch to a hot-spot. The impostor can't follow you there.",
-   "style": "helpful"
+   "text": "If the internet freezes with no error, and everyone around you drops too: switch to a hotspot. The impostor can't follow you there.",
+   "say": "If the internet freezes with no error, and everyone around you drops too: switch to a hot-spot. The impostor can't follow you there.",
+   "rate": "+2%"
   },
   {
    "id": "prev2",
    "text": "Better: run netbug, and press Test and pin.",
-   "say": "Better: run net-bug, and press Test and pin.",
-   "style": "helpful"
+   "say": "Better: run Net-bug, and press Test and pin."
   },
   {
    "id": "prev3",
    "text": "But a pin protects one laptop. The real fix belongs to the hostel.",
-   "style": "honest"
+   "rate": "-2%"
   },
   {
    "id": "prev4",
    "text": "Find this device on the MikroTik. Then turn on client isolation and ARP inspection, so a lie like this never gets through again.",
-   "say": "Find this device on the Micro-Tik. Then turn on client isolation and A.R.P. inspection, so a lie like this never gets through again.",
-   "style": "firm, hopeful"
+   "say": "Find this device on the Micro-Tik. Then turn on client isolation and A.R.P. inspection, so a lie like this never gets through again."
   },
   {
    "id": "end",
    "text": "Know who your router is.",
-   "style": "warm, final"
+   "rate": "-8%", "pitch": "-2Hz"
   }
  ]
 }

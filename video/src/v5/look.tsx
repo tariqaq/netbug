@@ -2,7 +2,7 @@
 // word-highlighted captions. All 2D; kept apart from the scenes so every shot gets the same treatment.
 
 import React from 'react';
-import { Layer, Rect, Text, Ellipse, interpolate, Easing } from 'remotion';
+import { Layer, Path, Rect, Text, Ellipse, interpolate, Easing } from 'remotion';
 import { W, H, mixHex } from './world';
 
 export const SANS = 'Inter';
@@ -15,7 +15,7 @@ export const prog = (f: number, a: number, d = 20) => interpolate(f, [a, a + d],
 export const fadeOut = (f: number, a: number, d = 20) => 1 - interpolate(f, [a, a + d], [0, 1], clamp);
 
 /** Sky gradient behind the 3D layer. `dawn` 0 = night navy, 1 = warm morning. `stars` 0..1. */
-export const Sky: React.FC<{ dawn: number; stars: number; red?: number }> = ({ dawn, stars, red = 0 }) => {
+export const Sky: React.FC<{ dawn: number; stars: number; red?: number; t?: number }> = ({ dawn, stars, red = 0, t = 0 }) => {
   const top = mixHex(mixHex('#02040a', '#3d6ea8', dawn), '#1a0204', red * 0.6);
   const mid = mixHex(mixHex('#070d1e', '#e6a26a', dawn), '#2a0508', red * 0.6);
   const low = mixHex(mixHex('#0d1630', '#ffd9a0', dawn), '#3a0a0c', red * 0.6);
@@ -32,6 +32,26 @@ export const Sky: React.FC<{ dawn: number; stars: number; red?: number }> = ({ d
     <Layer>
       <Rect width={W} height={H} fill={{ type: 'linear', x0: 0, y0: 0, x1: 0, y1: H, stops: [{ offset: 0, color: top }, { offset: 0.62, color: mid }, { offset: 1, color: low }] }} />
       {dots}
+      {/* the moon, setting as dawn comes */}
+      {dawn < 0.98 && (
+        <Layer opacity={(1 - dawn) * (1 - red * 0.5)} y={dawn * 160}>
+          <Ellipse x={W * 0.82 - 160} y={H * 0.16 - 160} width={320} height={320} fill={{ type: 'radial', cx: W * 0.82, cy: H * 0.16, r: 160, stops: [{ offset: 0, color: 'rgba(220,230,255,0.22)' }, { offset: 1, color: 'rgba(220,230,255,0)' }] }} />
+          <Ellipse x={W * 0.82 - 34} y={H * 0.16 - 34} width={68} height={68} fill="#eef0f6" />
+          <Ellipse x={W * 0.82 - 14} y={H * 0.16 - 20} width={16} height={16} fill="#d6d9e2" />
+          <Ellipse x={W * 0.82 + 6} y={H * 0.16 + 4} width={11} height={11} fill="#d6d9e2" />
+        </Layer>
+      )}
+      {/* clouds drifting across, lit warm at dawn */}
+      {[[0.1, 0.12, 520, 70, 9], [0.55, 0.07, 640, 80, 6], [0.8, 0.22, 420, 55, 12], [0.3, 0.26, 360, 46, 15]].map(([x0, y0, cw, ch, sp], i) => {
+        const cx = ((x0 * (W + 800) + t * sp) % (W + 800)) - 400;
+        const col = mixHex(mixHex('#1a2440', '#ffd2a8', dawn), '#3a1012', red * 0.6);
+        return (
+          <Layer key={'cl' + i} opacity={0.18 + 0.4 * dawn}>
+            <Ellipse x={cx - cw / 2} y={H * y0} width={cw} height={ch} fill={col} />
+            <Ellipse x={cx - cw * 0.2} y={H * y0 - ch * 0.4} width={cw * 0.5} height={ch * 1.1} fill={col} />
+          </Layer>
+        );
+      })}
       {/* the sun rising behind the city at dawn */}
       {dawn > 0.01 && (
         <Rect width={W} height={H} opacity={dawn} fill={{ type: 'radial', cx: W * 0.72, cy: H * (0.82 - 0.2 * dawn), r: W * 0.55,
@@ -73,25 +93,27 @@ export const Letterbox: React.FC<{ amt: number }> = ({ amt }) => {
   );
 };
 
-/** A small label pinned at screen point (x, y): a dot, a leader line and a dark chip with mono text. */
+/** A label pinned at screen point (x, y): a ringed dot, a straight leader to the nearest corner of the chip, and a dark
+ *  chip with a mono line and an optional sans line under it. The chip is kept inside the frame and above the captions. */
 export const Tag: React.FC<{ x: number; y: number; text: string; sub?: string; color?: string; a: number; dx?: number; dy?: number; size?: number }> =
   ({ x, y, text, sub, color = '#ffffff', a, dx = 40, dy = -60, size = 24 }) => {
     if (a <= 0.01) return null;
-    const w = Math.max(text.length, (sub ?? '').length * 0.82) * size * 0.62 + 32;
-    const h = sub ? size * 2.5 + 8 : size + 22;
-    // keep the chip inside the frame and above the captions
-    const ty = Math.max(40, Math.min(H - 250 - h, y + dy));
+    const subSize = Math.round(size * 0.8);
+    const w = Math.max(text.length * size * 0.6, (sub ?? '').length * subSize * 0.52) + 36;
+    const h = sub ? size + subSize + 38 : size + 26;
     const left = Math.max(30, Math.min(W - 30 - w, dx < 0 ? x + dx - w : x + dx));
-    const tx = dx < 0 ? left + w : left;
+    const top = Math.max(30, Math.min(H - 240 - h, y + dy));
+    // leader: from the dot to the nearest point on the chip's edge
+    const ax = Math.max(left, Math.min(left + w, x)), ay = Math.max(top, Math.min(top + h, y));
+    const inside = ax === x && ay === y;
     return (
       <Layer opacity={a}>
-        <Rect x={Math.min(x, tx)} y={Math.min(y, ty + h / 2)} width={1} height={1} fill="rgba(0,0,0,0)" />
-        <Ellipse x={x - 5} y={y - 5} width={10} height={10} fill={color} />
-        <Rect x={Math.min(x, dx < 0 ? left + w : left)} y={ty + h / 2 - 1} width={Math.abs((dx < 0 ? left + w : left) - x)} height={2} fill={color} opacity={0.7} />
-        <Rect x={x - 1} y={Math.min(y, ty + h / 2)} width={2} height={Math.abs(y - (ty + h / 2))} fill={color} opacity={0.7} />
-        <Rect x={left} y={ty} width={w} height={h} radius={10} fill="rgba(8,10,16,0.82)" stroke={{ color, width: 1.5 }} />
-        <Text x={left + 16} y={ty + 10} font={MONO} weight={500} size={size} color={color}>{text}</Text>
-        {sub && <Text x={left + 16} y={ty + 10 + size * 1.3} font={SANS} weight={600} size={size * 0.78} color="#c9d1e0">{sub}</Text>}
+        {!inside && <Path d={`M ${x} ${y} L ${ax} ${ay}`} stroke={{ color, width: 2 }} opacity={0.75} />}
+        <Ellipse x={x - 9} y={y - 9} width={18} height={18} stroke={{ color, width: 2 }} opacity={0.6} />
+        <Ellipse x={x - 4.5} y={y - 4.5} width={9} height={9} fill={color} />
+        <Rect x={left} y={top} width={w} height={h} radius={12} fill="rgba(8,10,16,0.86)" stroke={{ color, width: 1.5 }} />
+        <Text x={left + 18} y={top + 12} font={MONO} weight={500} size={size} color={color}>{text}</Text>
+        {sub && <Text x={left + 18} y={top + 18 + size} font={SANS} weight={600} size={subSize} color="#c9d1e0">{sub}</Text>}
       </Layer>
     );
   };

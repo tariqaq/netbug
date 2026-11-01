@@ -11,8 +11,8 @@
 
 import React from 'react';
 import {
-  Audio, Composition, Layer, Rect, Sequence, Text, interpolate, registerRoot, staticFile, useCurrentFrame, spring,
-  Scene3D, Camera3D, AmbientLight, DirectionalLight, PointLight, Mesh, Group3D, Extrude, glow, chromaticAberration, blur, motionBlur,
+  Audio, Composition, Ellipse, Layer, Path, Rect, Sequence, Text, interpolate, registerRoot, staticFile, useCurrentFrame, spring,
+  Scene3D, Camera3D, AmbientLight, DirectionalLight, PointLight, Mesh, Group3D, glow, chromaticAberration, blur, motionBlur,
 } from 'remotion';
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono';
@@ -21,13 +21,13 @@ import example from '../../data.example.json';
 import qr from './qr.json';
 import {
   W, H, type V3, type Cam, type WorldState, type RoomState, add, mix3, project, handheld, room, laptopAt, ROOMS, ROUTER, SWITCH,
-  Building, Router, Switch, Laptop, Impostor, Packet, Ring, Skyline, Uplink, UPLINK, along, pathToRouter, pathToRoom, Title3D, COL, mixHex, RH,
+  Building, Ground, Router, Switch, Laptop, Impostor, Packet, Ring, Skyline, along, pathToRouter, pathToRoom, pathToInternet, COL, mixHex,
 } from './world';
 import { Sky, Haze, Vignette, Letterbox, Tag, Captions, type CapPage, SANS, MONO, clamp, ease, prog, fadeOut } from './look';
 import { cue, setDuck, soloMutes, type Sfx } from './sound';
 import { scoreSection, type Mood } from './score';
 
-loadInter('normal', { weights: ['400', '600', '800'] });
+loadInter('normal', { weights: ['400', '600', '700', '800'] });
 loadMono('normal', { weights: ['500', '700', '800'] });
 
 export const FPS = 60;
@@ -42,10 +42,10 @@ type Line = { id: string; text: string; ms: number; speech: number; words: Word[
 type Placed = Line & { from: number; frames: number };
 type SceneDef = { id: string; lines: string[]; lead?: number; card?: [string, string] };
 
-const CARD = 110;       // chapter card length (frames)
+const CARD = 96;        // chapter card length (frames)
 const SCENES: SceneDef[] = [
-  { id: 'cold', lines: ['cold1'], lead: 170 },
-  { id: 'title', lines: [], lead: 200 },
+  { id: 'cold', lines: ['cold1'], lead: 120 },
+  { id: 'title', lines: [], lead: 170 },
   { id: 'how', lines: ['how1', 'how2', 'how3'], lead: 24 },
   { id: 'a1', lines: ['a1_1', 'a1_2', 'a1_3'], lead: CARD + 16, card: ['I', '05:34 · the first attack'] },
   { id: 'sym', lines: ['sym1', 'sym2'] },
@@ -61,12 +61,12 @@ const LEAD = 16;        // frames from a scene's start to its first line
 const TAIL = 14;        // after a line's last word
 const GAP = 16;         // between lines of a scene
 const SCENE_TAIL = 30;  // after a scene's last line
-const OUTRO = 330;      // end card after the last line
-/** Held silences after a line (frames), for weight. */
+const OUTRO = 300;      // end card after the last line
+/** Held silences after a line (frames): for weight, and for reading what is on screen. */
 const PAUSE: Record<string, number> = {
-  cold1: 40, how3: 40, a1_1: 14, a1_3: 50, sym1: 10, sym2: 26, a1_end: 16, a1_rec: 20, a2_1: 24,
-  a2_dev: 14, a2_addr: 14, a2_lie: 30, a2_count: 20, a2_hunt: 18, a2_verdict: 54, f2: 30, fix0: 24, fix2: 20, fix3: 14, fix4: 30,
-  prev3: 18, prev4: 30,
+  cold1: 30, how1: 20, how2: 30, how3: 40, a1_1: 24, a1_2: 20, a1_3: 50, sym1: 30, sym2: 50, a1_end: 20, a1_rec: 90, a2_1: 24,
+  a2_dev: 14, a2_addr: 14, a2_lie: 30, a2_count: 40, a2_hunt: 60, a2_verdict: 54, f1: 10, f2: 70, fix0: 24, fix1: 30, fix2: 50,
+  fix3: 40, fix4: 60, prev1: 50, prev2: 50, prev3: 18, prev4: 60,
 };
 
 const sec = (ms: number) => Math.round((ms / 1000) * FPS);
@@ -127,7 +127,7 @@ const mixCam = (a: Cam, b: Cam, t: number): Cam => ({ pos: mix3(a.pos, b.pos, t)
 
 const MINE = laptopAt(...ROOMS.mine);
 const FRIEND = laptopAt(...ROOMS.friend);
-const ATT = add(room(...ROOMS.attacker), [0, 0, 0]);
+const ATT = laptopAt(...ROOMS.attacker);
 const ATTC = add(ATT, [0, 0.45, 0]);
 const HUNTED = room(3, 1);
 
@@ -139,7 +139,7 @@ const SHOT = {
   mineClose: C(add(MINE, [-0.55, 0.28, 1.1]), add(MINE, [0, 0.1, -0.05]), 38),
   mineFloor: C(add(MINE, [-4.5, 1.6, 6.5]), add(MINE, [1.5, -0.2, 0]), 40),
   router: C(add(ROUTER, [1.6, 0.7, 3.2]), add(ROUTER, [0, 0.1, 0]), 38),
-  basementWide: C([1.5, 0.9, 8.5], [0, -0.3, 0], 42),
+  basementWide: C([1.9, -0.25, 5.6], add(ROUTER, [-0.2, 0.15, 0]), 40),
   att: C(add(ATTC, [1.9, 0.6, 3.4]), ATTC, 38),
   attClose: C(add(ATTC, [0.5, 0.15, 1.35]), ATTC, 36),
   attLow: C(add(ATTC, [-0.9, -0.3, 1.6]), add(ATTC, [0, 0.12, 0]), 34),
@@ -182,7 +182,8 @@ const KEYS: Key[] = (() => {
   push(endOf('sym2'), C(add(MINE, [-0.7, 0.4, 1.5]), add(MINE, [0, 0.12, 0]), 38));
   // unplug: pull back to the room, then wide
   push(sceneFrom.unplug, SHOT.mine);
-  push(at('a1_end', 'hotspot'), C(add(MINE, [-1.0, 1.4, 2.2]), add(MINE, [0, 0.5, 0]), 44));
+  push(at('a1_end', 'cable') - 20, C(add(MINE, [-0.75, 0.32, 1.35]), add(MINE, [0.15, 0.0, -0.2]), 40));
+  push(at('a1_end', 'hotspot'), C(add(MINE, [-0.9, 0.55, 1.9]), add(MINE, [0.2, 0.1, 0]), 42));
   push(at('a1_rec'), SHOT.mine);
   push(sceneTo('unplug'), SHOT.mineFloor);
   // attack 2: clock, three slams (cuts), the count, the hunt, the verdict
@@ -197,11 +198,11 @@ const KEYS: Key[] = (() => {
   push(at('a2_count'), SHOT.wide);
   push(at('a2_hunt'), C([0.5, 4.0, 14], [0, 3.2, 0], 38));
   push(at('a2_hunt', 'looking'), SHOT.hunt);
-  push(at('a2_verdict'), C(add(ATTC, [2.6, 0.4, 4.4]), ATTC, 36));
+  push(at('a2_verdict'), C(add(ATTC, [0.9, 0.15, 3.4]), add(ATTC, [0, -0.1, 0]), 38));
   push(endOf('a2_verdict') + 50, C(add(ATTC, [0.9, 0.1, 1.8]), ATTC, 34));
   // friend: along the corridor to the friend's room
   push(sceneFrom.friend + CARD, SHOT.corridor);
-  push(at('f1', "friend's"), SHOT.friend);
+  push(at('f1', 'friend'), SHOT.friend);
   push(endOf('f2'), C(add(FRIEND, [-1.6, 0.9, 3.4]), add(FRIEND, [0.1, 0.2, 0]), 40));
   // fix: dawn; my room, test and pin, announce, the friend's result
   push(sceneFrom.fix + CARD, C([-2, 3.2, 13], [-0.5, 2.2, 0], 40));
@@ -211,7 +212,8 @@ const KEYS: Key[] = (() => {
   push(at('fix2', 'pinned'), C(add(MINE, [-0.6, 0.6, 2.2]), add(MINE, [0.1, 0.15, 0.3]), 38));
   push(at('fix2', 'bounce'), SHOT.attMine);
   push(at('fix3') - 10, SHOT.attMine);
-  push(at('fix3', 'router'), C([-1, 0.8, 10.5], [-1.0, 0.6, 0], 42));
+  push(at('fix3', 'router'), C(add(ROUTER, [-0.25, 0.45, 2.7]), add(ROUTER, [0.05, 0.2, 0]), 40));
+  push(at('fix4') - 1, C(add(ROUTER, [-0.2, 0.42, 2.45]), add(ROUTER, [0.05, 0.2, 0]), 40));
   push(at('fix4'), SHOT.friend);
   push(endOf('fix4') + 30, C(add(FRIEND, [-1.4, 1.0, 3.2]), add(FRIEND, [0.1, 0.2, 0]), 40));
   // prevention: daylight wide, isolation walls, the switch
@@ -267,10 +269,12 @@ const FRIEND_JOINS = ['10-28 22:55', '10-28 23:10', '10-29 01:32', '11-01 07:06'
 const worldAt = (f: number): WorldState => {
   const dawn = DAWN(f);
   return {
+    t: f / FPS,
     dawn,
     windows: interpolate(f, [0, sceneFrom.how, sceneFrom.how + 60], [0.25, 0.3, 0.6], clamp) * (1 - 0.7 * dawn),
     cables: interpolate(f, [sceneFrom.how, at('how2', 'sends')], [0.25, 0.7], clamp),
     isolation: prog(f, at('prev4', 'isolation'), 50),
+    unplugged: span(f, at('a1_end', 'cable'), sceneFrom.a2 + CARD, 8),
     rooms: roomsAt(f),
   };
 };
@@ -291,15 +295,15 @@ const Flow: React.FC<{ f: number; pts: V3[]; a: number; n?: number; period?: num
   };
 
 // my wires
-const P_MINE_ROUTER = [...pathToRouter(...ROOMS.mine), ...UPLINK];
-const P_MINE_ATT = pathToRoom(...ROOMS.mine, ...ROOMS.attacker);
-const P_FRIEND_ATT = pathToRoom(...ROOMS.friend, ...ROOMS.attacker);
+const P_MINE_ROUTER = pathToInternet(...ROOMS.mine);
+const P_MINE_ATT = [...pathToRoom(...ROOMS.mine, ...ROOMS.attacker), add(ATTC, [0, -0.3, 0])];
+const P_FRIEND_ATT = [...pathToRoom(...ROOMS.friend, ...ROOMS.attacker), add(ATTC, [0, -0.3, 0])];
 const P_ROUTER_MINE = [...pathToRouter(...ROOMS.mine)].reverse();
-const PHONE: V3 = add(MINE, [0.32, 0.0, 0.12]);
+const PHONE: V3 = add(MINE, [0.28, 0.0, 0.1]);
 const P_HOTSPOT: V3[] = [MINE, add(PHONE, [0, 0.05, 0]), add(PHONE, [0.6, 0.9, 2.2]), add(PHONE, [3, 6, 6]), add(PHONE, [6, 14, 8])];
 
 /** The 3D card a candidate MAC sits on during "Test and pin" (fix2). */
-const CAND: V3[] = [add(MINE, [-0.42, 0.3, 0.5]), add(MINE, [0.42, 0.3, 0.5])];
+const CAND: V3[] = [add(MINE, [-0.27, 0.02, 0.12]), add(MINE, [0.3, 0.32, 0.25])];
 
 // ---------------------------------------------------------------- the 3D world
 
@@ -328,7 +332,7 @@ const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
     span(f, at('f2'), at('fix4'), 20), span(f, at('fix2', 'bounce') - 20, at('fix3'), 20));
   if (lying > 0.01) for (let i = 0; i < 3; i++) {
     const k = ((f / 70 + i / 3) % 1);
-    rings.push(<Ring key={'r' + i} p={add(ATTC, [0, 0, 0.3])} r={0.3 + k * 2.2} a={(1 - k) * lying} color={COL.bad} vertical />);
+    rings.push(<Ring key={'r' + i} p={add(ATTC, [0, 0, 0.1])} r={0.3 + k * 0.42} a={(1 - k) * lying} color={COL.bad} vertical />);
   }
   // reply packet: router -> laptop (gold)
   const rp = interpolate(f, [reply, reply + 60], [0, 1], clamp);
@@ -362,23 +366,10 @@ const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
   }
   // phone (hotspot)
   const phoneOn = Math.max(span(f, at('a1_end', 'hotspot') - 10, sceneFrom.a2, 20), span(f, at('prev1', 'switch'), at('prev2'), 20));
-  // the netbug icon over my room
-  const logo = slam(f, at('fix0', 'teeth')) * fadeOut(f, at('fix1', 'logs'), 30);
   // radar under the laptop (fix1)
   const radar = span(f, at('fix1') + 10, at('fix2', 'impostor'), 20);
   // isolation is in the world state; the switch gate:
   const gate = prog(f, at('prev4', 'inspection'), 40);
-  // big 3D words
-  const iAm = Math.max(span(f, at('a1_1', 'I'), at('a1_2'), 12), span(f, at('a2_lie'), at('a2_count'), 6));
-  const count1 = span(f, at('a1_3'), sceneFrom.sym, 12);
-  const count2 = span(f, at('a2_count'), at('a2_hunt'), 12);
-  const purpose = slam(f, at('a2_verdict', 'purpose')) * fadeOut(f, sceneFrom.friend - 30, 30);
-  const clock = span(f, sceneFrom.a2 + CARD - 30, at('a2_dev') - 4, 10);
-  const minutes = interpolate(f, [sceneFrom.a2 + CARD - 30, at('a2_1', 'afternoon')], [5 * 60 + 36, 15 * 60 + 28], { ...clamp, easing: ease });
-  const hh = String(Math.floor(minutes / 60)).padStart(2, '0'), mm = String(Math.floor(minutes % 60)).padStart(2, '0');
-  const coldClock = span(f, 40, sceneFrom.title - 10, 30);
-  const title = span(f, sceneFrom.title - 6, sceneFrom.how + 10, 24);
-  const titleIn = slam(f, sceneFrom.title - 6);
   // the searchlight
   const hunt = span(f, at('a2_hunt', 'looking') - 10, at('a2_verdict'), 20);
   const huntDir = add(HUNTED, [0, 0.5, 0.3]);
@@ -396,11 +387,11 @@ const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
         color={mixHex('#a9bfff', '#ffc890', w.dawn)} castShadow shadow={{ mapSize: 2048 }} />
       <PointLight position={add(ATTC, [0, 0.5, 0.6])} color="#ff3b30" intensity={3.5 * red} range={4.5} />
       <PointLight position={add(MINE, [0, 0.5, 0.5])} color={w.rooms[`${ROOMS.mine[0]},${ROOMS.mine[1]}`]?.red ? mixHex('#9ecbff', '#ff453a', w.rooms[`${ROOMS.mine[0]},${ROOMS.mine[1]}`]!.red!) : '#9ecbff'} intensity={0.9} range={2.5} />
-      <PointLight position={add(ROUTER, [0, 0.7, 0.8])} color="#3aa0ff" intensity={1.3} range={3.2} />
+      <PointLight position={add(ROUTER, [0, 0.6, 1.0])} color="#6fb6ff" intensity={2.2} range={3.6} />
       <PointLight position={add(FRIEND, [0, 0.5, 0.5])} color="#9ecbff" intensity={0.7} range={2.2} />
       <Building w={w} />
-      <Skyline dawn={w.dawn} />
-      <Uplink on={Math.max(normal, 0.25)} />
+      <Ground w={w} uplink={Math.max(normal, 0.25)} />
+      <Skyline dawn={w.dawn} t={t} />
       <Router t={t} on={0.4 + 0.6 * normal} bad={routerBad} />
       <Switch t={t} gate={gate} />
       <Laptop p={MINE} screen={mixHex('#9ecbff', '#ff6b5e', w.rooms[`${ROOMS.mine[0]},${ROOMS.mine[1]}`]?.red ?? 0)} glow={1.4} />
@@ -415,22 +406,11 @@ const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
       {/* phone on the desk */}
       <Mesh position={PHONE} rotation={[0, -20, 0]} geometry={{ kind: 'box', width: 0.07, height: 0.012, depth: 0.14 }}
         material={{ color: '#111', emissive: COL.ok, emissiveIntensity: 1.6 * phoneOn }} />
-      {/* test-and-pin candidates */}
-      {span(f, at('fix2') - 10, at('fix3'), 16) > 0.01 && CAND.map((p, i) => {
-        const ok = i === 0 ? prog(f, test0 + 50, 12) : 0;
-        const bad = i === 1 ? prog(f, test1 + 40, 12) : 0;
-        const show = span(f, at('fix2') - 10 + i * 8, at('fix3'), 16);
-        return (
-          <Mesh key={'c' + i} position={add(p, [0, 0.08 * (1 - show), 0])} rotation={[-12, 0, 0]} scale={show}
-            geometry={{ kind: 'box', width: 0.34, height: 0.15, depth: 0.02 }}
-            material={{ color: '#151820', metallic: 0.3, roughness: 0.4, emissive: ok ? COL.ok : bad ? COL.bad : '#334', emissiveIntensity: 0.2 + 0.35 * Math.max(ok, bad) }} />
-        );
-      })}
       {tA > 0 && tA < 1 && <Packet p={tA < 0.5 ? along(pathToRouter(...ROOMS.mine), tA * 2) : along(P_ROUTER_MINE, (tA - 0.5) * 2)} color={tA < 0.5 ? COL.packet : COL.gold} size={0.06} k={4} />}
       {tB > 0 && tB < 1 && <Packet p={along(P_MINE_ATT, tB)} size={0.06 * Math.min(1, (1 - tB) * 5)} k={4} />}
-      {/* the pin: a steel pushpin driving down onto the real router's card */}
+      {/* the pin: a pushpin driving into the desk beside the laptop */}
       {f >= pinned - 2 && span(f, pinned - 2, at('fix3'), 16) > 0.01 && (
-        <Group3D position={add(CAND[0], [0, 0.45 * (1 - pinDrop) + 0.02, 0.05])}>
+        <Group3D position={add(CAND[0], [0, 0.45 * (1 - pinDrop) - 0.01, 0])}>
           <Mesh position={[0, 0.12, 0]} geometry={{ kind: 'sphere', radius: 0.07, segments: 24, rings: 16 }} material={{ color: COL.gold, metallic: 0.6, roughness: 0.25, emissive: COL.gold, emissiveIntensity: 0.4 }} />
           <Mesh position={[0, 0.04, 0]} geometry={{ kind: 'cylinder', radiusTop: 0.012, radiusBottom: 0.002, height: 0.14 }} material={{ color: '#d8dde6', metallic: 1, roughness: 0.2 }} />
         </Group3D>
@@ -443,16 +423,9 @@ const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
       )}
       {fakes}
       {ann}
-      {/* the netbug icon */}
-      {logo > 0.01 && (
-        <Group3D position={add(MINE, [0, 1.15, 0.4])} scale={logo} rotation={[0, 18 * Math.sin(t * 0.8), 0]}>
-          <Extrude path={BUG} size={0.55} depth={0.12} position={[0, 0.05, 0]} bevel={{ thickness: 0.02, size: 0.01 }}
-            material={{ color: COL.ok, metallic: 0.4, roughness: 0.3, emissive: COL.ok, emissiveIntensity: 0.35 }} />
-        </Group3D>
-      )}
       {/* radar under my laptop */}
       {radar > 0.01 && (
-        <Group3D position={add(MINE, [0, -0.41, 0.1])}>
+        <Group3D position={add(MINE, [-0.3, -0.43, 0.3])}>
           {[0.5, 0.9, 1.3].map((r) => <Ring key={r} p={[0, 0, 0]} r={r} a={0.5 * radar} color={COL.ok} />)}
           <Mesh position={[0, 0.005, 0]} rotation={[-90, 0, -(f * 3) % 360]}
             geometry={{ kind: 'box', width: 1.3, height: 0.02, depth: 0.002 }} material={{ color: '#000', emissive: COL.ok, emissiveIntensity: 2.5 * radar }} />
@@ -463,35 +436,14 @@ const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
         <Group3D position={ATTC} rotation={[-pitch + 90, yaw, 0]}>
           <Mesh position={[0, -len / 2, 0]} rotation={[180, 0, 0]}
             geometry={{ kind: 'cylinder', radiusTop: 0.0, radiusBottom: 0.55, height: len, segments: 32, capped: false }}
-            material={{ color: '#000', emissive: COL.bad, emissiveIntensity: 0.6 * hunt, opacity: 0.22 * hunt, doubleSided: true }} />
+            material={{ color: '#000', emissive: COL.bad, emissiveIntensity: 1.6 * hunt, opacity: 0.32 * hunt, doubleSided: true }} />
         </Group3D>
       )}
-      {/* 3D words */}
-      {coldClock > 0.01 && <Title3D text="05:34:03" p={[0, 7.4, 0.5]} size={1.0} opacity={coldClock} emissive={0.5} color="#e8eefc" />}
-      {title > 0.01 && (
-        <Group3D position={[0, 3.4 + 0.25 * (1 - titleIn), 5.2]} scale={0.85 + 0.15 * titleIn}>
-          <Title3D text={"WHO'S THE ROUTER?"} p={[0, 0, 0]} size={0.82} opacity={title} emissive={1.1} depth={0.22} />
-        </Group3D>
-      )}
-      {iAm > 0.01 && <Title3D text="I AM THE ROUTER" p={add(ATTC, [0, 0.62, 1.3])} size={0.26} color={COL.bad} emissive={1.2} opacity={iAm} />}
-      {count1 > 0.01 && (
-        <Group3D position={add(ATTC, [-1.6, 0.35, 1.9])}>
-          <Title3D text="71 OUT" p={[0, 0.22, 0]} size={0.32} opacity={count1} color={COL.packet} emissive={0.9} />
-          {f >= at('a1_3', 'zero') && <Title3D text="0 BACK" p={[0, -0.2, 0]} size={0.32} opacity={count1} color={COL.bad} emissive={1.2} />}
-        </Group3D>
-      )}
-      {count2 > 0.01 && (
-        <Group3D position={[0, 6.9, 1]}>
-          <Title3D text="42 OUT · 0 BACK" p={[0, 0, 0]} size={0.6} opacity={count2} color="#ffffff" emissive={0.6} />
-        </Group3D>
-      )}
-      {clock > 0.01 && <Title3D text={`${hh}:${mm}`} p={[0, 7.2, 0.5]} size={1.2} opacity={clock} color="#e8eefc" emissive={0.55} />}
-      {purpose > 0.01 && <Title3D text="ON PURPOSE." p={add(ATTC, [0, 0.62, 1.3])} size={0.34 * (0.8 + 0.2 * purpose)} color={COL.bad} emissive={1.3} />}
     </Scene3D>
   );
 };
 
-/** The netbug bug icon as SVG path data (body, head, six legs, two feelers), extruded. */
+/** The netbug bug icon as SVG path data (body, head, six legs, two feelers) in a 100x100 box. */
 const BUG = [
   'M30 58 A20 26 0 1 0 70 58 A20 26 0 1 0 30 58 Z',
   'M40 27 A10 10 0 1 0 60 27 A10 10 0 1 0 40 27 Z',
@@ -516,7 +468,7 @@ const Labels: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam, d }) => {
   };
   // how: the broadcast question, the router's answer, the laptop's note
   tag('ask', add(MINE, [0, 0.3, 0]), span(f, at('how1', 'asks'), at('how2'), 12), `who has ${d.gwIp}?`, 'asked to everyone on the LAN', COL.packet, 50, -110);
-  tag('ans', add(ROUTER, [0, 0.2, 0]), span(f, at('how2', 'answers'), at('how2', 'writes') + 20, 12), `${d.gwIp} is at ${LABEL_ROUTER(d)}`, 'the real MikroTik', COL.gold, 60, -120);
+  tag('ans', add(ROUTER, [0.25, 0.04, 0.28]), span(f, at('how2', 'answers'), at('how2', 'writes') + 20, 12), `${d.gwIp} is at ${LABEL_ROUTER(d)}`, 'the real MikroTik', COL.gold, 60, -120);
   // the laptop's note of who the router is
   const believed = at('a1_2', 'believed');
   const noteA = Math.max(span(f, at('how2', 'writes'), at('how3') + 90, 12), span(f, at('a1_2') - 30, at('a1_3'), 12));
@@ -527,20 +479,126 @@ const Labels: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam, d }) => {
   // victims (morning)
   ROOMS.morning.forEach((k, i) => tag('v1' + i, add(room(k[0], k[1]), [0, 0.8, 0]), span(f, at('a1_2', 'others') + i * 10, at('a1_3'), 12), d.victims1[i], 'lost the router too', COL.bad, i ? -40 : 40, -60, 20));
   // the hunt
-  tag('hunt', add(HUNTED, [0, 0.7, 0]), span(f, at('a2_hunt', 'looking'), at('a2_verdict'), 12), `who has ${d.victims2[2]}?`, `asked by ${d.attIp}  ·  cut off at 05:34 too`, COL.bad, -60, -110);
+  tag('hunt', add(HUNTED, [0, 0.7, 0]), span(f, at('a2_hunt', 'looking'), at('a2_verdict'), 12), `who has ${d.victims2[2]}?`, `asked by ${d.attIp}  ·  cut off at 05:34 too`, COL.bad, -60, -110, 26);
   // fix: candidates
-  tag('cA', CAND[0], span(f, at('fix2') + 6, at('fix3'), 12), LABEL_ROUTER(d), f > at('fix2', 'real') + 40 ? 'TTL expired from the gateway: the real one' : 'testing…', f > at('fix2', 'real') + 40 ? COL.ok : '#ffffff', -40, -120, 20);
-  tag('cB', CAND[1], span(f, at('fix2') + 14, at('fix3'), 12), LABEL_ATT(d), f > at('fix2', 'impostor') + 40 ? 'nothing gets through: not the router' : 'testing…', f > at('fix2', 'impostor') + 40 ? COL.bad : '#ffffff', 40, -120, 20);
+  tag('cA', CAND[0], span(f, at('fix2') + 6, at('fix3'), 12), LABEL_ROUTER(d), f > at('fix2', 'real') + 40 ? 'answers as itself: real' : 'testing…', f > at('fix2', 'real') + 40 ? COL.ok : '#ffffff', -60, -130, 22);
+  tag('cB', CAND[1], span(f, at('fix2') + 14, at('fix3'), 12), LABEL_ATT(d), f > at('fix2', 'impostor') + 40 ? 'nothing gets through: fake' : 'testing…', f > at('fix2', 'impostor') + 40 ? COL.bad : '#ffffff', 60, -130, 22);
   tag('pin', add(MINE, [0, 0.35, 0]), span(f, at('fix2', 'pinned') + 20, at('fix3'), 12), 'PINNED', `router = ${LABEL_ROUTER(d)}`, COL.gold, -60, -160);
   // fix3: the router's entry for this laptop
   const fixed = f > at('fix3', 'second') + 10;
-  tag('rt', add(ROUTER, [0.3, 0.2, 0]), span(f, at('fix3', 'lie'), at('fix4'), 12), `${d.laptopIp} is at ${fixed ? 'the laptop' : LABEL_ATT(d)}`, fixed ? 'corrected by the announce, about once a second' : "the router's entry, poisoned", fixed ? COL.ok : COL.bad, 60, -130, 22);
+  tag('rt', add(ROUTER, [0.25, 0.04, 0.28]), span(f, at('fix3', 'lie'), at('fix4'), 12), `${d.laptopIp} is at ${fixed ? 'the laptop' : LABEL_ATT(d)}`, fixed ? 'corrected by the announce, about once a second' : "the router's entry, poisoned", fixed ? COL.ok : COL.bad, 60, -130, 22);
   // fix4: the friend's result
   tag('fr', add(FRIEND, [0, 0.3, 0]), span(f, at('fix4', 'pinned'), sceneFrom.prev, 12), 'pinned 18:31', 'next 9 min: 0 failures', COL.ok, 40, -120);
   // prevention
   tag('iso', add(room(2, 2), [-1, 0.8, 0.6]), span(f, at('prev4', 'isolation'), sceneFrom.end, 12), 'client isolation', 'rooms can’t send to each other', '#9fd8ff', -40, -90, 22);
-  tag('dai', add(SWITCH, [0, 0.4, 0]), span(f, at('prev4', 'inspection'), sceneFrom.end, 12), 'ARP inspection', 'DHCP snooping + DAI drop fake replies', COL.gold, 50, -110, 22);
-  tag('find', add(ROUTER, [0, 0.2, 0]), span(f, at('prev4', 'find'), at('prev4', 'isolation'), 12), `find ${LABEL_ATT(d)}`, `/ip arp print where mac-address=…`, COL.bad, 60, -110, 22);
+  tag('dai', add(SWITCH, [0.2, 0.03, 0.26]), span(f, at('prev4', 'inspection'), sceneFrom.end, 12), 'ARP inspection', 'DHCP snooping + DAI drop fake replies', COL.gold, 50, -110, 22);
+  tag('find', add(ROUTER, [0.25, 0.04, 0.28]), span(f, at('prev4', 'find'), at('prev4', 'isolation'), 12), `find ${LABEL_ATT(d)}`, `/ip arp print where mac-address=…`, COL.bad, 60, -110, 22);
+  return <Layer>{out}</Layer>;
+};
+
+/** All the big type, in 2D so it stays crisp: the cold-open clock, the title, the impostor's speech bubble, the packet
+ *  counters, the jump to 15:28 and the verdict. */
+const Titles: React.FC<{ f: number; cam: Cam }> = ({ f, cam }) => {
+  const out: React.ReactNode[] = [];
+  const chars = (from: number, n: number, step = 1.6, d = 18) =>
+    Array.from({ length: n }, (_, i) => { const p = prog(f, from + i * step, d); return { opacity: p, y: (1 - p) * 18 }; });
+  // a clock with a date line above it
+  const clock = (key: string, a: number, time: string, line: string, sub?: string) => {
+    if (a <= 0.01) return;
+    out.push(
+      <Layer key={key} opacity={a}>
+        <Rect width={W} height={H} fill={{ type: 'radial', cx: W / 2, cy: 300, r: 700, stops: [{ offset: 0, color: 'rgba(0,0,0,0.5)' }, { offset: 1, color: 'rgba(0,0,0,0)' }] }} />
+        <Text x={0} y={200} maxWidth={W} align="center" font={MONO} weight={500} size={26} color="#9aa3b5">{line}</Text>
+        <Text x={0} y={244} maxWidth={W} align="center" font={MONO} weight={700} size={140} color="#f2f5fb">{time}</Text>
+        {sub && <Text x={0} y={420} maxWidth={W} align="center" font={MONO} weight={500} size={30} color={COL.bad}>{sub}</Text>}
+      </Layer>,
+    );
+  };
+  // cold open: 05:33:59 ticking to 05:34:03
+  const c0 = 40;
+  const secs = Math.min(3, Math.max(-1, Math.floor((f - c0) / 50) - 1));
+  clock('cold', span(f, c0, sceneFrom.title - 16, 30), `05:${secs < 0 ? '33:59' : '34:0' + secs}`, 'WED 28 OCT 2026  ·  HOSTEL LAN');
+  // the title
+  const ta = span(f, sceneFrom.title, sceneFrom.how + 4, 20);
+  if (ta > 0.01) {
+    const t0 = sceneFrom.title;
+    const rule = prog(f, t0 + 30, 36);
+    out.push(
+      <Layer key="title" opacity={ta}>
+        <Rect width={W} height={H} fill={{ type: 'radial', cx: W / 2, cy: H / 2, r: 900, stops: [{ offset: 0, color: 'rgba(2,4,10,0.72)' }, { offset: 1, color: 'rgba(2,4,10,0.15)' }] }} />
+        <Text x={0} y={H / 2 - 120} maxWidth={W} align="center" font={SANS} weight={800} size={132} color="#ffffff" chars={chars(t0, 17, 1.5)}>WHO'S THE ROUTER?</Text>
+        <Rect x={W / 2 - 260 * rule} y={H / 2 + 52} width={520 * rule} height={3} fill={COL.bad} />
+        <Text x={0} y={H / 2 + 80} maxWidth={W} align="center" font={MONO} weight={500} size={32} color="#aab3c5" opacity={prog(f, t0 + 50, 24)}>the netbug incident files</Text>
+      </Layer>,
+    );
+  }
+  // the netbug badge, pinned above my desk
+  const logo = slam(f, at('fix0', 'teeth')) * fadeOut(f, at('fix1', 'logs'), 30);
+  if (logo > 0.01) {
+    const s = project(cam, add(MINE, [-0.05, 0.62, 0.3]));
+    if (s.ok) {
+      out.push(
+        <Layer key="logo" x={s.x} y={s.y} scale={logo} opacity={Math.min(1, logo * 1.5)}>
+          <Ellipse x={-110} y={-110} width={220} height={220} fill={{ type: 'radial', cx: 0, cy: 0, r: 110, stops: [{ offset: 0, color: 'rgba(48,209,88,0.35)' }, { offset: 1, color: 'rgba(48,209,88,0)' }] }} />
+          <Ellipse x={-64} y={-64} width={128} height={128} fill="rgba(8,12,16,0.9)" stroke={{ color: COL.ok, width: 3 }} />
+          <Path x={-38} y={-40} scale={0.76} d={BUG} fill={COL.ok} />
+          <Rect x={-78} y={76} width={156} height={44} radius={22} fill="rgba(8,12,16,0.9)" />
+          <Text x={-78} y={82} maxWidth={156} align="center" font={SANS} weight={800} size={28} color={COL.ok}>netbug</Text>
+        </Layer>,
+      );
+    }
+  }
+  // the impostor's speech bubble, pinned above it
+  const bubble = Math.max(span(f, at('a1_1', 'I'), at('a1_2') + 20, 10), span(f, at('a2_lie'), at('a2_count'), 6));
+  if (bubble > 0.01) {
+    const s = project(cam, add(ATTC, [0, 0.42, 0]));
+    if (s.ok) {
+      const text = 'I am the router.';
+      const size = 40, w = text.length * size * 0.56 + 56, h = size + 34;
+      const x = Math.max(40, Math.min(W - 40 - w, s.x - w / 2)), y = Math.max(40, s.y - h - 34);
+      const p = pop(f, f < at('a2_lie') ? at('a1_1', 'I') : at('a2_lie'));
+      out.push(
+        <Layer key="bubble" opacity={bubble} y={(1 - p) * 20}>
+          <Rect x={x} y={y} width={w} height={h} radius={h / 2} fill={COL.bad} />
+          <Path d={`M ${Math.max(x + h / 2, Math.min(x + w - h / 2, s.x)) - 14} ${y + h - 1} L ${s.x} ${y + h + 22} L ${Math.max(x + h / 2, Math.min(x + w - h / 2, s.x)) + 14} ${y + h - 1} Z`} fill={COL.bad} />
+          <Text x={x} y={y + 15} maxWidth={w} align="center" font={SANS} weight={800} size={size} color="#ffffff">{text}</Text>
+        </Layer>,
+      );
+    }
+  }
+  // packet counters: a capture HUD at the left
+  const hud = (key: string, a: number, from: number, outN: number, zeroAt: number, extra?: { text: string; at: number }) => {
+    if (a <= 0.01) return;
+    const n = Math.round(outN * interpolate(f, [from, from + 70], [0, 1], { ...clamp, easing: ease }));
+    const zero = prog(f, zeroAt, 12);
+    out.push(
+      <Layer key={key} x={110} y={330} opacity={a}>
+        <Rect width={430} height={extra ? 300 : 250} radius={22} fill="rgba(8,10,16,0.82)" stroke={{ color: 'rgba(255,255,255,0.14)', width: 1.5 }} />
+        <Text x={34} y={26} font={MONO} weight={500} size={22} color="#8b93a7">CAPTURE · this laptop</Text>
+        <Text x={34} y={70} font={SANS} weight={600} size={30} color="#c9d1e0">out</Text>
+        <Text x={34} y={58} maxWidth={360} align="right" font={MONO} weight={700} size={64} color={COL.packet}>{String(n)}</Text>
+        <Text x={34} y={150} font={SANS} weight={600} size={30} color="#c9d1e0" opacity={zero}>back</Text>
+        <Text x={34} y={138} maxWidth={360} align="right" font={MONO} weight={700} size={64} color={COL.bad} opacity={zero}>0</Text>
+        {extra && <Text x={34} y={236} font={SANS} weight={600} size={26} color={COL.bad} opacity={prog(f, extra.at, 14)}>{extra.text}</Text>}
+      </Layer>,
+    );
+  };
+  hud('c1', span(f, at('a1_3') - 6, sceneFrom.sym - 6, 12), at('a1_3'), 71, at('a1_3', 'zero'));
+  hud('c2', span(f, at('a2_count') - 6, at('a2_hunt') + 10, 12), at('a2_count'), 42, at('a2_count', 'zero'), { text: '+4 devices lost the router', at: at('a2_count', 'four') });
+  // jump from 05:36 to 15:28
+  const j0 = sceneFrom.a2 + CARD - 30;
+  const minutes = interpolate(f, [j0, at('a2_1', 'afternoon')], [5 * 60 + 36, 15 * 60 + 28], { ...clamp, easing: ease });
+  const hh = String(Math.floor(minutes / 60)).padStart(2, '0'), mm = String(Math.floor(minutes % 60)).padStart(2, '0');
+  clock('jump', span(f, j0, at('a2_dev') - 4, 10), `${hh}:${mm}`, 'SAME DAY', f > at('a2_1', 'again') ? 'again' : undefined);
+  // the verdict
+  const v0 = at('a2_verdict', 'purpose');
+  const va = slam(f, v0) * fadeOut(f, sceneFrom.friend - 24, 24);
+  if (va > 0.01) out.push(
+    <Layer key="purpose" opacity={Math.min(1, va * 1.4)}>
+      <Rect width={W} height={H} fill="rgba(0,0,0,0.35)" />
+      <Text x={0} y={H / 2 - 90 + (1 - va) * 30} maxWidth={W} align="center" font={SANS} weight={800} size={150} color={COL.bad}>ON PURPOSE.</Text>
+    </Layer>,
+  );
   return <Layer>{out}</Layer>;
 };
 
@@ -595,34 +653,40 @@ const Panels: React.FC<{ f: number; d: Data }> = ({ f, d }) => {
 
 /** The friend's four days as a strip: six cut-off joins and the longest outage. */
 const FriendStrip: React.FC<{ f: number }> = ({ f }) => {
-  const a = span(f, at('f2', 'plugged'), sceneFrom.fix, 16);
+  const a = span(f, at('f1', 'friend'), sceneFrom.fix, 16);
   if (a <= 0.01) return null;
-  const x0 = 240, x1 = W - 240, y = 150;
-  // hours since 10-28 00:00
-  const hrs = (s: string) => { const [d, t] = s.split(' '); const day = d === '10-28' ? 0 : d === '10-29' ? 1 : d === '10-30' ? 2 : d === '10-31' ? 3 : 4; const [h, m] = t.split(':').map(Number); return day * 24 + h + m / 60; };
-  const X = (h: number) => x0 + ((h - 12) / (24 * 4 + 7)) * (x1 - x0);
+  // panel and track geometry: five days, 10-28 00:00 to 11-02 00:00
+  const px = 190, py = 96, pw = W - 380, ph = 220;
+  const x0 = px + 60, x1 = px + pw - 60, ty = py + 128;
+  const day = (x1 - x0) / 5;
+  const hrs = (s: string) => { const [d, t] = s.split(' '); const k = ['10-28', '10-29', '10-30', '10-31', '11-01'].indexOf(d); const [h, m] = t.split(':').map(Number); return k * 24 + h + m / 60; };
+  const X = (h: number) => x0 + (h / 24) * day;
+  const n = FRIEND_JOINS.filter((_, i) => f >= at('f2', 'outages') + i * 14).length;
+  const lp = prog(f, at('f2', 'longest'), 24);
+  const ls = X(hrs('11-01 17:45')), le = X(hrs('11-01 18:22'));
   return (
     <Layer opacity={a}>
-      <Rect x={x0 - 30} y={y - 40} width={x1 - x0 + 60} height={170} radius={20} fill="rgba(8,10,16,0.72)" stroke={{ color: 'rgba(255,255,255,0.15)', width: 1.5 }} />
-      <Rect x={x0} y={y + 40} width={x1 - x0} height={3} fill="rgba(255,255,255,0.35)" />
+      <Rect x={px} y={py} width={pw} height={ph} radius={22} fill="rgba(8,10,16,0.88)" stroke={{ color: 'rgba(255,255,255,0.14)', width: 1.5 }} />
+      <Text x={x0} y={py + 26} font={SANS} weight={700} size={28} color="#e8eefc">Friend's laptop: every wired connection cut off</Text>
+      <Text x={x1 - 300} y={py + 24} maxWidth={300} align="right" font={MONO} weight={700} size={30} color={COL.bad} opacity={n ? 1 : 0}>{`${n} outage${n === 1 ? '' : 's'}`}</Text>
+      {/* track, midnight ticks, day labels centred in each day */}
+      <Rect x={x0} y={ty - 1.5} width={x1 - x0} height={3} fill="rgba(255,255,255,0.3)" />
+      {Array.from({ length: 6 }, (_, i) => <Rect key={'tk' + i} x={x0 + i * day - 1} y={ty - 10} width={2} height={20} fill="rgba(255,255,255,0.3)" />)}
       {['10-28', '10-29', '10-30', '10-31', '11-01'].map((dd, i) => (
-        <Text key={dd} x={X(i * 24 + 12) - 40} y={y + 60} font={MONO} weight={500} size={20} color="#9aa3b5">{dd}</Text>
+        <Text key={dd} x={x0 + i * day} y={ty + 22} maxWidth={day} align="center" font={MONO} weight={500} size={22} color="#9aa3b5">{dd}</Text>
       ))}
+      {/* one red mark per cut-off join, centred on the track */}
       {FRIEND_JOINS.map((j, i) => {
-        const p = pop(f, at('f2', 'outages') + i * 16);
-        return <Rect key={j} x={X(hrs(j)) - 7} y={y + 41 - 50 * p} width={14} height={50 * p} radius={4} fill={COL.bad} />;
+        const p = pop(f, at('f2', 'outages') + i * 14);
+        return p > 0.01 ? <Rect key={j} x={X(hrs(j)) - 6} y={ty - 18 * p} width={12} height={36 * p} radius={6} fill={COL.bad} /> : null;
       })}
-      {(() => {
-        const p = prog(f, at('f2', 'longest'), 30);
-        const s = X(hrs('11-01 17:45')), e = X(hrs('11-01 18:23'));
-        return p > 0 ? (
-          <Layer>
-            <Rect x={s} y={y - 18} width={Math.max(6, (e - s) * p)} height={10} radius={5} fill={COL.bad} />
-            <Text x={s - 230} y={y - 30} font={MONO} weight={700} size={26} color={COL.bad} opacity={p}>longest: 37 min</Text>
-          </Layer>
-        ) : null;
-      })()}
-      <Text x={x0} y={y - 26} font={SANS} weight={600} size={22} color="#c9d1e0">friend's laptop, wired joins cut off</Text>
+      {/* the longest outage, bracketed and labelled above its mark */}
+      {lp > 0.01 && (
+        <Layer opacity={lp}>
+          <Rect x={ls - 8} y={ty - 30} width={Math.max(16, le - ls + 16)} height={60} radius={10} stroke={{ color: COL.bad, width: 2 }} />
+          <Text x={x1 - 420} y={ty - 72} maxWidth={le + 8 - (x1 - 420)} align="right" font={MONO} weight={700} size={26} color={COL.bad}>longest: 37 min</Text>
+        </Layer>
+      )}
     </Layer>
   );
 };
@@ -848,13 +912,14 @@ const Film: React.FC<Data> = (d) => {
   const fadeEnd = interpolate(f, [TOTAL - 50, TOTAL - 1], [0, 1], clamp);
   return (
     <Layer>
-      <Sky dawn={w.dawn} stars={1 - w.dawn} red={redSky} />
+      <Sky dawn={w.dawn} stars={1 - w.dawn} red={redSky} t={f / FPS} />
       <Layer effects={[...(blurAmt > 0.01 ? [blur(14 * blurAmt)] : []), ...(sh.fringe > 0.05 ? [chromaticAberration(sh.fringe)] : []), ...(MB > 1 ? [motionBlur({ samples: MB, shutter: 0.5 })] : [])]}>
         <World f={f} cam={cam} d={d} />
       </Layer>
-      <Haze dawn={w.dawn} />
+      <Haze dawn={w.dawn} amt={0.5} />
       <Vignette strength={0.62 - 0.2 * w.dawn} />
       <Labels f={f} cam={cam} d={d} />
+      <Titles f={f} cam={cam} />
       <Panels f={f} d={d} />
       <FriendStrip f={f} />
       <Advice f={f} />

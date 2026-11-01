@@ -5,6 +5,24 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 22:25: `HASH` video: v5 revision 1 (Andrew voice, rebuilt world, 2D type, slower pacing)
+- Narration: `video/scripts/tts5.py` now uses Microsoft Edge `en-US-AndrewMultilingualNeural` through edge-tts (the `.venv` from v4), with per-line `rate`/`pitch` in `video/narration-v5.json`, the v4 studio chain and word timings from the voice's word boundaries. Script trimmed (how1, a2_1, f1, fix1, sym1, a1_end). 30 lines, every word matched, 150.6 s of speech. `public/vo5/reference.wav` removed (Qwen clone source, no longer used).
+- `video/src/v5/world.tsx` rebuilt:
+  - the block stands on a slab of city cut like a cake, with the basement in cross-section
+  - one cable system from every desk through the ceiling runs, riser, switch and router, out through the ONT and a conduit to the utility pole and ISP mast, with no section through a wall
+  - furnished rooms with a ceiling fan, a roof with a tank, AC fans and an aerial, plus a street with lamps, trees, and parked and passing cars
+  - the cable end drops off the desk when it is pulled
+- `video/src/v5/look.tsx`: sky with a setting moon and drifting clouds; label chips with straight leaders, kept inside the frame and above the captions.
+- `video/src/v5/index.tsx`:
+  - The title, chapter cards, the impostor's speech bubble, capture counters, the 15:28 jump clock, "ON PURPOSE." and the netbug badge are all 2D now; no 3D text.
+  - The friend timeline is realigned, cameras reframed, and pauses are longer so every panel can be read.
+  - 12,350 frames (3:25.9).
+- Rendered locally, not committed or published: `video/out/incident-v5-redacted.mp4` and `incident-v5-full.mp4`.
+  - HEVC (`hevc_nvenc`, hvc1), 1080p60.
+  - -14.0 LUFS, true peak -1.4 dBTP.
+  - About 11 min per render; ~399 MB each.
+  - Redaction checked on a decoded frame.
+- `video/README.md`, `video/PLAN-v5.md`: voice, world, render numbers, log.
 ### 21:30: `5293326` video: `scripts/render5.ps1`; disk cleanup
 - `video/scripts/render5.ps1`: the final v5 renders in one command (redacted, plus the full cut when `data.local.json` exists): NVENC HEVC, 2-pass loudnorm, AAC 320k, hvc1 mux. `video/README.md` and `PLAN-v5.md` name it and list what narration regeneration needs.
 - **Machine:** freed 13.9 GB on C: (95.1 GB free after):

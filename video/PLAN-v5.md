@@ -19,9 +19,10 @@ Resume point for any new session: read this file top to bottom, then continue fr
 | Question | Answer |
 |---|---|
 | 3D style | **Night-to-dawn diorama**: the hostel as a glowing miniature at night; attacks red and dark; the fix brings sunrise |
-| Voice | **Local AI voice bake-off** → picked **Qwen3-TTS "host" persona** (sample 03): early-30s mid-range tech-documentary host, relaxed, curious, a hint of sarcasm. Every line clones that sample (`public/vo5/reference.wav`). |
+| Voice | First cut: Qwen3-TTS "host" clone (bake-off sample 03). After watching it, the user found it too high and asked for the v4 narrator back with more personality → **Edge `en-US-AndrewMultilingualNeural`, directed per line** (`rate`/`pitch` in `narration-v5.json`). |
 | Music | **Upgraded synth score** (code-synthesized, cut to the picture) |
 | Publish | **Local only for now** (`video/out/`); nothing pushed until the user has watched it |
+| Length (revision) | **Hard cap under 3:30**; slower pacing so every panel can be read |
 | Tone | **Wry documentary**: serious and gripping, with a dry human edge; credible for the RCC |
 | Attacker | **A device, not a person**: a dark faceted object in a red room that swallows light, labelled MAC/IP (redacted in the public cut) |
 | Prevention | All four: residents run netbug, hostel IT fixes, quick self-help, honest limits |
@@ -33,39 +34,39 @@ Resume point for any new session: read this file top to bottom, then continue fr
 - Not in the React wrapper: fog, spot lights. Haze is faked with 2D gradient layers and point-light `range`.
 - Root must be `<Layer>`, not `<AbsoluteFill>` (AbsoluteFill lays children out as a flex column).
 - Test scene (24 shadowed boxes, torus, 3D text, extrude, glow), 1080p60: **~15 ms/frame**, `hevc_nvenc` in `.mp4` tagged `hvc1`. A 3:10 film (~11,400 frames) ≈ 3 min.
-- GPU everywhere: frames by Skia GPU (Vulkan), encode by `hevc_nvenc`, TTS on CUDA, alignment on CUDA. The CPU only builds the scene graph per frame.
+- GPU for the picture: frames by Skia GPU (Vulkan), encode by `hevc_nvenc`. The CPU only builds the scene graph per frame.
 - System ffmpeg `C:\Program Files\FFmpeg\bin\ffmpeg.exe` has `hevc_nvenc` (set `KINETOGRAPH_FFMPEG`).
 
 ## Story (target ~3:05)
 
-Narration draft below; line ids in brackets. Final wording follows the voice bake-off (timings decide the trims).
+Storyboard below; line ids in brackets. The narration here is the draft: the final wording is in `narration-v5.json`.
 
 ### Cold open (~0:00–0:14)
-Black. Wind and room tone. The camera drifts down through darkness onto the hostel diorama at night: a cut-away block of rooms, warm windows, glowing cable runs to a basement router. A 3D clock face resolves: **05:34:03**.
+Black. Wind and room tone. The camera drifts down through darkness onto the hostel diorama at night: a cut-away block of rooms, warm windows, glowing cable runs to a basement router. A clock ticks from 05:33:59 to **05:34:03**.
 - [cold1] "Five thirty-four in the morning. The hostel is asleep. And somewhere in this building, one device is about to tell a lie."
-- Hit. Title in 3D, extruded and bevelled: **WHO'S THE ROUTER?** with a small subtitle "the netbug incident files".
+- Hit. Title (2D, per-character reveal, red rule): **WHO'S THE ROUTER?** with a small subtitle "the netbug incident files".
 
 ### Act I: How it should work (~0:14–0:38)
-Camera pushes into your room (a desk, a laptop as a lit slab). The laptop sends a broadcast: a ring of light expands across the whole floor ("who has 10.255.31.254?"). The basement MikroTik (dark box, blinking LEDs) answers with a beam; a contact card floats above the laptop: `10.255.31.254 → xx-xx-…` (real MAC only in the full cut). Packets (glowing orbs) flow down the cable to the router and up into the sky.
+Camera pushes into your room (a desk, a laptop as a lit slab). The laptop sends a broadcast: a ring of light expands across the whole floor ("who has 10.255.31.254?"). The basement MikroTik (dark box, blinking LEDs) answers with a beam; a note label pins to the laptop: `router = xx-xx-…` (real MAC only in the full cut). Packets (glowing orbs) flow down the cable to the router and up into the sky.
 - [how1] "Before your laptop sends anything to the internet, it asks the whole network one question: who's the router?"
 - [how2] "The real one, a MikroTik downstairs, answers with its hardware address. Your laptop writes it down, and sends everything there."
 - [how3] "Here's the catch. Nobody checks that answer. Whoever replies... gets believed."
 
 ### Act II: 05:34 (~0:38–1:12)
-Chapter card in 3D: **I · 05:34**. A room two floors over turns red. In it, the impostor: a black faceted gem that eats light. Red rings pulse out; 3D text "I AM THE ROUTER" flies to the laptop. The contact card flips 180° and turns red (`→` the impostor's MAC, redacted in the public cut). Packets now bend away from the basement and fall into the gem; they vanish. Two more rooms flicker red (other victims). A counter in 3D: **71 OUT · 0 BACK**.
+Chapter card: **I · 05:34**. A room two floors over turns red. In it, the impostor: a black faceted gem that eats light. Red rings pulse out; a red speech bubble pops above it: "I am the router." The laptop's note flips red (`router =` the impostor's MAC, redacted in the public cut). Packets now bend away from the basement and fall into the gem; they vanish. Two more rooms flicker red (other victims). A capture panel: **71 out · 0 back**.
 - [a1_1] "At five thirty-four and three seconds, a device on this network started replying: I am the router."
 - [a1_2] "The laptop believed it. So did two others nearby."
 - [a1_3] "Seventy-one packets went out. Zero came back."
 Symptoms: floating glass panels around the laptop: Discord ping 5000 ms, a mic icon (you can hear them, they can't hear you), a browser spinner that never stops.
 - [sym1] "From the inside, it looks like this. Discord at five thousand milliseconds. Your friends talk; you hear them. They can't hear you. Pages load... forever."
 - [sym2] "No error message, either. An error needs a reply. Nothing replies."
-The cable unplugs (a plug slides out, sparks die); a phone hotspot lights up beside the laptop with its own little sky link; packets flow again.
+The cable is pulled (its end drops off the desk); a phone hotspot lights up beside the laptop; packets flow again.
 - [a1_end] "Pulling the cable ended it: the laptop jumped to a phone hotspot, a different network, and the internet came straight back. A little monitor called netbug had recorded every second."
 
 ### Act III: 15:28 (~1:12–1:42)
-A clock spins from 05:36 to 15:28 (the hands blur). Chapter card **II · 15:28**.
+A digital clock runs from 05:36 to 15:28. Chapter card **II · 15:28**.
 - [a2_1] "Ten hours later, at three twenty-eight in the afternoon, it happened again."
-Three slams, each a hard cut and a 3D stamp: the MAC tag, the IP tag, the speech bubble.
+Three slams, each a hard cut and a stamp: the MAC tag, the IP tag, the speech bubble.
 - [a2_dev] "Same device." [a2_addr] "Same address." [a2_lie] "Same lie."
 - [a2_count] "Forty-two packets out. Zero back. Four more devices lost the router."
 A red searchlight sweeps the building and stops on a room that was hit in the morning; a label "who has 10.255.23.47?" hangs in the beam.
@@ -73,16 +74,16 @@ A red searchlight sweeps the building and stops on a room that was hit in the mo
 - [a2_verdict] "Not a broken router. Not a bad cable. Someone is doing this. On purpose."
 
 ### Act IV: The friend's laptop (~1:42–2:02)
-Chapter card **III · four days**. Camera glides down the corridor to another room: a second laptop. Calendar tiles flip 10-28 → 11-01. Six plug-ins, six red flashes; a 3D bar grows for the longest outage: **37 min**.
+Chapter card **III · four days**. Camera glides down the corridor to another room: a second laptop. A five-day timeline (10-28 → 11-01) fills with six red outages; the longest is bracketed: **37 min**.
 - [f1] "It wasn't just one laptop. A friend's laptop down the hall ran netbug too, for four days."
 - [f2] "Every time it plugged in, the impostor was already waiting. Six outages. The longest: thirty-seven minutes."
 
 ### Act V: The fix, netbug (~2:02–2:42)
-Dawn begins: the key light warms and rises, the sky gradient goes from navy to amber. The netbug bug icon extrudes in 3D.
+Dawn begins: the key light warms and rises, the sky gradient goes from navy to amber. The netbug badge pops up over the desk.
 - [fix0] "So netbug grew teeth."
 1. **Watch:** a radar ring sweeps under the laptop, logging every claim.
    - [fix1] "It watches every second, and logs any device claiming to be the router, even while you're protected."
-2. **Test and pin:** MAC cards line up; a test ping runs through each. The real router answers "TTL expired" as itself (green); the impostor can't (red). A literal steel pushpin drives the real card onto the laptop's board; fake replies now shatter on a glass shield.
+2. **Test and pin:** A test packet runs to each candidate. The real router answers "TTL expired" as itself (green); the impostor can't (red). A pushpin drives into the desk beside the laptop; fake replies now bounce off a glass shield.
    - [fix2] "Press Test and pin. A real router passes traffic and answers as itself; the impostor can't. The real address gets pinned, and fake replies just bounce off."
 3. **Announce:** a heartbeat pulse runs from the laptop to the router once a second; the router's poisoned card for the laptop flips back to green.
    - [fix3] "The attacker can also lie to the router about you. So netbug reminds the router who you are. Every second."
@@ -90,7 +91,7 @@ Dawn begins: the key light warms and rises, the sky gradient goes from navy to a
    - [fix4] "On the friend's laptop: pinned at six thirty-one that evening. The next nine minutes: zero failures."
 
 ### Act VI: Prevention (~2:42–3:05)
-Full daylight. Three quick cards in 3D:
+Full daylight. Quick panels:
 - [prev1] "If the internet freezes with no error, and everyone around you drops too: switch to a hotspot. The impostor can't follow you there."
 - [prev2] "Better: run netbug, and press Test and pin."
 - [prev3] "But a pin protects one laptop. The real fix belongs to the hostel."
@@ -109,7 +110,8 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 
 ## Look
 
-- **World:** a 4-storey cut-away block (6 rooms per floor, front wall removed), a corridor, a basement with the MikroTik and a switch. All procedural (boxes, planes, cylinders, extruded SVG icons, 3D text); no downloaded models.
+- **World:** a 4-storey cut-away block (6 rooms per floor, front wall removed) on a slab of city cut like a cake, so the basement (MikroTik, switch, ONT) shows in cross-section. Furnished rooms (bed, desk, chair, shelf, rug, curtains, ceiling fan), a roof with tank, AC units and aerial, a street with lamps, trees, parked and passing cars, a utility pole, and an ISP mast on the skyline. One cable system runs from every desk through the ceiling runs and riser to the switch and router, out through the ONT and a conduit to the pole and the mast. All procedural primitives; no downloaded models.
+- **Type:** all titles, chapter cards, the speech bubble, counters and the netbug badge are 2D layers (crisp), never 3D text.
 - **Light:** night = navy ambient, cool moon key from above, warm window glow (emissive), red point lights for attacks. Dawn = an amber key that rises, ambient goes warm, sky gradient behind (2D layer) and a generated equirectangular environment for reflections (written by a script, not downloaded).
 - **Camera:** every shot moves (dolly, crane, orbit), eased; a slight handheld drift from smooth noise; a long-lens push for reveals. Hard cuts on slams.
 - **Labels:** small crisp 2D text pinned to 3D points by projecting through the same camera (one `project()` helper), so labels stay sharp and readable.
@@ -118,15 +120,15 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 
 ## Sound
 
-- **Voice:** Qwen3-TTS 1.7B Base cloning the picked bake-off sample; up to 3 takes per line, the take whose Whisper transcript best matches the script wins; studio chain (as v4), 48 kHz 24-bit. Word timings from Whisper large-v3-turbo word timestamps on CUDA, matched to the script.
+- **Voice:** Microsoft Edge `en-US-AndrewMultilingualNeural` via edge-tts, per-line rate and pitch; studio chain (as v4), 48 kHz 24-bit. Word timings from the voice's own word boundaries, matched to the caption words.
 - **Score:** new synth score (`src/v5/score.ts`): night = low drones, sparse piano-like plucks, ticking; attacks = sub pulses and braams; friend = a held, lonely pad; fix = rising arpeggio and a warm major resolve at the sunrise; end = open chord. Ducks under the voice.
 - **SFX:** synthesized (`src/v5/sound.ts`): broadcast ping, packet ticks, swallow (reverse whoosh), card flip, stamp hits, clock spin, cable unplug, pin drive (metal thunk), glass shatter, radar sweep, heartbeat announce, walls rising.
-- **Mix:** the render's PCM mix goes through a 2-pass ffmpeg `loudnorm` (linear) to -14 LUFS integrated, true peak -1.3 dBTP measured; AAC 320 kbit/s, 48 kHz stereo.
+- **Mix:** the render's PCM mix goes through a 2-pass ffmpeg `loudnorm` (linear) to -14 LUFS integrated, true peak -1.4 dBTP measured; AAC 320 kbit/s, 48 kHz stereo.
 
 ## Output
 
 - `out/incident-v5-redacted.mp4` (public-safe MACs) and `out/incident-v5-full.mp4` (real MACs, `data.local.json`).
-- H.265 via `hevc_nvenc` (`--crf 18`, constant quality), 1080p60, 8-bit yuv420p (NVENC rejects `yuv420p10le` as passed by kinetograph), `hvc1` tag. ~12 Mbit/s, ~308 MB per file. H.265 over H.264: half the size at the same quality for this kind of picture, and it plays in all current browsers, Windows, macOS, iOS and Android.
+- H.265 via `hevc_nvenc` (`--crf 18`, constant quality), 1080p60, 8-bit yuv420p (NVENC rejects `yuv420p10le` as passed by kinetograph), `hvc1` tag. ~15.5 Mbit/s, ~399 MB per file. H.265 over H.264: half the size at the same quality for this kind of picture, and it plays in all current browsers, Windows, macOS, iOS and Android.
 - Local only until the user OKs publishing.
 
 ## Files
@@ -138,7 +140,7 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 | `src/v5/look.tsx` | Sky, haze, vignette, letterbox, label chips, captions (chapter cards and the end card are in `index.tsx`) |
 | `src/v5/sound.ts`, `src/v5/score.ts` | SFX and score |
 | `narration-v5.json` | Script and per-line delivery |
-| `scripts/tts5.py` | Qwen3-TTS voice clone, best of 3 takes by Whisper match, studio chain, Whisper word timings → `public/vo5/` |
+| `scripts/tts5.py` | Edge Andrew Multilingual, studio chain, word-boundary timings → `public/vo5/` |
 | `public/vo5/` | Narration clips and `timing.json` |
 | `scripts/render5.ps1` | Final renders (redacted + full), loudnorm, AAC, hvc1 mux |
 
@@ -156,6 +158,14 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 - [x] Render redacted + full, loudness check, watch-through checks
 - [x] Docs: `video/README.md`, CHANGELOG
 
+Revision 1 (after the user watched the first cut):
+
+- [x] Voice: back to Edge Andrew, `en-US-AndrewMultilingualNeural`, directed per line; script trims
+- [x] World rebuilt: one consistent cable system (no wall clipping), furnished rooms, street, traffic, roof, sky with moon and clouds
+- [x] Type: titles, bubble, counters and the netbug badge in 2D; friend timeline realigned; label chips clamped above captions
+- [x] Slower pacing (longer pauses) under the 3:30 cap
+- [x] Render, checks, docs, CHANGELOG
+
 ## Log
 
 - 19:40 3D test scene renders on the 4060 (~15 ms/frame at 1080p60, hevc_nvenc).
@@ -167,3 +177,4 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 - 21:05 All 30 lines generated: 154 s of speech; every miss is an ASR spelling (micro tick, imposter, 5,000). All word cues resolve.
 - 21:10 Film re-timed on real speech: 12,173 frames (3:22.9). Contact sheets reviewed.
 - 21:21 Rendered redacted and full (~4.3 min each on the 4060); -14.0 LUFS, true peak -1.3 dBTP; redaction checked on a decoded frame.
+- 22:25 Revision 1 done. User feedback on the first cut: narrator too high, friend timeline misaligned, world half-built, cable through a wall, too fast to read, 3D title text looks off; cap under 3:30. Narration regenerated with Edge Andrew Multilingual (30 lines, all words matched, 150.6 s of speech); world, type and pacing reworked; stills and contact sheets reviewed. Rendered redacted and full (~11 min each, heavier world): 12,350 frames (3:25.9), -14.0 LUFS, true peak -1.4 dBTP; redaction checked on a decoded frame.

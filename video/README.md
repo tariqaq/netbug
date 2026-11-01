@@ -55,23 +55,20 @@ Fonts (Inter, JetBrains Mono) are downloaded from Google Fonts on the first rend
 
 ## v5 (3D, 1080p60)
 
-A second film in `src/v5/`, covering every incident (05:34 and 15:28 on 10-28, and the friend's laptop to 11-01), the fix, how netbug works, and prevention. It's told in a native 3D diorama of the hostel that goes from night to dawn, at 1920×1080, 60 fps, 3:23. The plan, storyboard, fact checks and log are in `PLAN-v5.md`.
+A second film in `src/v5/`, covering every incident (05:34 and 15:28 on 10-28, and the friend's laptop to 11-01), the fix, how netbug works, and prevention. It's told in a native 3D diorama of the hostel that goes from night to dawn, at 1920×1080, 60 fps, 3:26. The plan, storyboard, fact checks and log are in `PLAN-v5.md`.
 
 | File | What |
 |---|---|
 | `src/v5/index.tsx` | The film: timeline, camera keys, story state, labels, panels, captions, sound and score cues, end card with a QR code to the latest release |
-| `src/v5/world.tsx` | The diorama: building, rooms, router, switch, laptops, the impostor, cables, packets; `project()` pins 2D labels to 3D points |
-| `src/v5/look.tsx` | Sky (night to dawn), haze, vignette, letterbox, label chips, captions |
+| `src/v5/world.tsx` | The diorama: building, furnished rooms, router, switch, ONT, laptops, the impostor, one cable system from every desk to the ISP mast, street, trees, lamps, traffic, skyline, packets; `project()` pins 2D labels to 3D points |
+| `src/v5/look.tsx` | Sky (night to dawn, moon, clouds), haze, vignette, letterbox, label chips, captions |
 | `src/v5/sound.ts`, `src/v5/score.ts` | Synthesized effects and score (per-scene moods, ducked under the voice) |
 | `src/v5/qr.json` | QR matrix for `https://github.com/tariqaq/netbug/releases/latest` |
-| `narration-v5.json` | Script (`text` for captions, `say` for pronunciation) and the voice settings |
-| `scripts/tts5.py` | Qwen3-TTS (1.7B Base, cloning `public/vo5/reference.wav`) on CUDA, best of 3 takes by Whisper transcript match, studio chain, Whisper word timings → `public/vo5/` |
+| `narration-v5.json` | Script (`text` for captions, `say` for pronunciation), the voice, and per-line `rate`/`pitch` |
+| `scripts/tts5.py` | Microsoft Edge neural voice `en-US-AndrewMultilingualNeural` (edge-tts), studio chain, word timings from the voice's word boundaries → `public/vo5/` |
 
 ```sh
-py -3.11 -m venv .venv-qwen
-.venv-qwen/Scripts/python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
-.venv-qwen/Scripts/python -m pip install qwen-tts transformers soundfile
-.venv-qwen/Scripts/python scripts/tts5.py [line ids...]          # all lines, or only the listed ones (the rest keep their timing)
+.venv/Scripts/python scripts/tts5.py [line ids...]               # same venv as tts.py; all lines, or only the listed ones (the rest keep their timing)
 
 NETBUG_MB=0 npx kinetograph strip src/v5/index.tsx -n 24 -o out/v5.png   # draft contact sheet (no motion blur)
 
@@ -83,10 +80,10 @@ ffmpeg -i out/incident-v5-redacted.mov -af loudnorm=I=-14:TP=-1.5:LRA=11:... -c:
 
 `pwsh -File scripts/render5.ps1` does all of the above for both cuts (the full cut only when `data.local.json` exists).
 
-To regenerate the narration you need the `.venv-qwen` venv and two models in the Hugging Face cache: `Qwen/Qwen3-TTS-12Hz-1.7B-Base` (with its speech tokenizer) and `openai/whisper-large-v3-turbo`. `Qwen3-TTS-12Hz-1.7B-VoiceDesign` is needed only if `public/vo5/reference.wav` is missing. Missing models are downloaded on first use.
+To regenerate the narration you need the `.venv` venv (edge-tts), ffmpeg and internet access. Titles, chapter cards, the speech bubble and the netbug badge are 2D layers over the 3D scene, so type stays crisp.
 
-The `loudnorm` pass is 2-pass and linear: the first pass measures and the second applies. The mix comes out at -14.0 LUFS with a true peak of -1.3 dBTP; without it, true peak reaches 0 dBTP.
+The `loudnorm` pass is 2-pass and linear: the first pass measures and the second applies. The mix comes out at -14.0 LUFS with a true peak of -1.4 dBTP; without it, true peak reaches 0 dBTP.
 
-On the RTX 4060 Laptop GPU a render takes ~4.3 min (~21 ms per frame, motion blur at 4 samples) and the file is ~308 MB (~12 Mbit/s). `NETBUG_MB` sets the motion-blur samples (0 = off). NVENC rejects `--pixel-format yuv420p10le` as kinetograph passes it, so the output is 8-bit. The v5 renders stay in `out/` (gitignored) and aren't committed.
+On the RTX 4060 Laptop GPU a render takes ~11 min (~55 ms per frame, motion blur at 4 samples) and the file is ~399 MB (~15.5 Mbit/s). `NETBUG_MB` sets the motion-blur samples (0 = off). NVENC rejects `--pixel-format yuv420p10le` as kinetograph passes it, so the output is 8-bit. The v5 renders stay in `out/` (gitignored) and aren't committed.
 
 Earlier cuts are tagged in git: `video-v2` (Andrew, no score) and `video-v3` (Christopher, film grain, ~2:04).

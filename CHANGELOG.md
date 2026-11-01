@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 23:04: `HASH` video: v5 revision 2 (camera sightlines, the trap shot, victim labels)
+### 23:04: `3729bfb` video: v5 revision 2 (camera sightlines, the trap shot, victim labels)
 - `video/src/v5/world.tsx`: `sightBlocked()` reports when a close camera can't see its target through a room's open front (walls, pillars, slab lips). `ROOMS.morning` reordered to match `victims1`, so the 05:34 labels name the right rooms ([3,1] is 10.255.23.47).
 - `video/src/v5/index.tsx`:
   - `NETBUG_CAMCHECK=1` prints every frame range where the camera's view is blocked.

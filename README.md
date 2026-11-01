@@ -53,6 +53,8 @@ cd ..
 
 This makes `tools\netbug.exe`, with the dashboard page, font and scripts embedded in it.
 
+Optional: known router MACs for the **Router MAC** dropdown. Put them in `tools\routers.local.txt` (gitignored), one per line as `<gateway ip> <MAC> [label]`, with `#` for comments. Then add `/resource:routers.local.txt,netbug.routers.txt` before `netbug.cs`. The release exe is built with it.
+
 ### 2. Start it at every logon
 
 Double-click `tools\netbug.exe` and accept the admin prompt. When no `netbug` task exists, it registers one for itself and keeps running. An existing `netbug` task is left as it is.
@@ -79,9 +81,10 @@ Go to **http://localhost:8787/** on the laptop. Logs land in `logs\` (gitignored
 
 In the dashboard's **Router protection** panel:
 
-1. Click **Check now** (the connection drops for a few seconds while it tests).
-2. When it names the real router, turn on **Pin it permanently**.
-3. Leave **Keep the router updated** on (it is by default).
+1. Pin the router, either way:
+   - **Shortcut:** if **Router MAC** lists a known router, click **Test and pin**. It pins the MAC only if the test proves it's the real router.
+   - **Otherwise, or if that test fails:** click **Check now** (the connection drops for a few seconds while it tests). When it names the real router, turn on **Pin it permanently**.
+2. Leave **Keep the router updated** on (it is by default).
 
 ### Updating
 
@@ -120,7 +123,7 @@ Send them the [latest release](https://github.com/tariqaq/netbug/releases/latest
 
 1. They double-click it and accept the admin prompt (UAC).
 2. It installs itself and their browser opens `http://localhost:8787/`.
-3. In **Router protection**: **Check now** (or turn on **Auto-detect**), then **Pin it permanently**.
+3. In **Router protection**, pin the router: **Test and pin** on the known router, or **Check now** then **Pin it permanently**. See [step 4](#4-protect-the-laptop).
 
 A lone exe (no `dashboard.html` next to it) installs itself on the first run:
 - copies itself to `C:\ProgramData\netbug\netbug.exe` (only admins can change that folder)
@@ -160,7 +163,8 @@ The status at the top right of the panel:
 
 | Control | What it does |
 |---|---|
-| **Check now** | Finds the real router MAC. Candidates: the ARP entry, any pin, and every MAC that answers for the gateway IP during 10 s of the ARP capture (the laptop asks for the router meanwhile, unless pinned). Each is set briefly as a temporary static ARP entry: it's the real router when internet pings pass **and** a TTL-1 ping comes back "TTL expired" from the gateway IP itself. The entry is then put back. |
+| **Router MAC** + **Test and pin** | The dropdown lists the known routers built into the exe for the current gateway IP, plus **Other MAC…** to type one. **Test and pin** runs the Check now test on that one MAC, without the 10 s listen. It pins the MAC only if it passes; a failed test changes nothing, so use **Check now** then. The button reads **Already pinned** when that MAC is the pin. |
+| **Check now** | Finds the real router MAC. Candidates: the ARP entry, any pin, the known routers for this gateway IP, and every MAC that answers for the gateway IP during 10 s of the ARP capture (the laptop asks for the router meanwhile, unless pinned). Each is set briefly as a temporary static ARP entry: it's the real router when internet pings pass **and** a TTL-1 ping comes back "TTL expired" from the gateway IP itself. The entry is then put back. |
 | **Auto-detect the real router** | Runs a check now, every 30 min, when the gateway changes, and after a spoofing alert (at most every 5 min). It never changes a pin by itself. |
 | **Pin it permanently** | Pins the verified MAC (`netsh … store=persistent`), so Windows ignores fake "I am the router" replies, even after a restart. Turn it off before using the same adapter on another network with the same router address. |
 | **Keep the router updated** (on by default) | The pin only protects the laptop's own table. An attacker can still tell the *router* that the laptop's IP is their MAC. About once a second netbug makes Windows send a fresh ARP request (a broadcast carrying the laptop's real IP and MAC), so the router corrects a fake entry within about a second. The panel shows how many were sent and how many the capture saw on the wire. |
@@ -281,6 +285,7 @@ The page makes no external requests, so it works while the internet is down. It 
 | `tools/dashboard.html` | Dashboard page (with the Router protection panel on the laptop) |
 | `tools/snapshot.ps1` | Incident snapshot, run by netbug |
 | `tools/arpwatch.ps1` | Reads a snapshot's capture file: who claimed the gateway IP or this laptop's IP |
+| `tools/routers.local.txt` | Gitignored: known router MACs built into the exe for the **Router MAC** dropdown |
 | `tools/fonts/` | Inter font for the dashboard (SIL Open Font License, `OFL.txt`) |
 | `tools/redact.ps1` | Builds `REDACTED_<name>.md` from gitignored notes (MACs + terms in `redact.local.txt` → `xxx`); refuses to write if PII remains |
 | `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md` | 🔒 Incident report: the ARP spoofing attacks, evidence, mitigation |

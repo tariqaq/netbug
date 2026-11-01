@@ -5,6 +5,25 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 18:18: `HASH` known router dropdown with Test and pin, stop any netbug* on install (release v1.0.1)
+- Router protection panel: a **Router MAC** dropdown with the known routers for the current gateway IP, plus **Other MAC…** to type one. **Test and pin** (`POST /api/fix/trypin?mac=`):
+  - runs the Check now test on that one MAC, without the 10 s listen
+  - pins it only when it passes
+  - a failed test changes nothing (the pin and the last check's result stay)
+  - The button reads **Already pinned** when that MAC is the pin.
+- Known routers come from the gitignored `tools/routers.local.txt` (`<gateway ip> <MAC> [label]`). It is embedded as `netbug.routers.txt`, so router MACs stay out of git. Check now also tests them.
+- MACs typed on the page are normalised (`:`/`-`/none). Multicast, broadcast and all-zero MACs are refused.
+- Install and uninstall stop every process named `netbug*`, not only `netbug`: a second download is saved as `netbug (1).exe`.
+- Tested with a fake netsh/ping harness (scratch copy of `netbug.cs`; nothing touched the real ARP table):
+  - MAC parsing
+  - known-router loading
+  - pin/no-pin for the real router, a blackhole, a device in the middle, a no-hop router and a random-style MAC
+  - restore of the previous pin or entry
+  - Unpin and re-pin
+  - The page was rendered with the fake state for a screenshot.
+- README: protect-the-laptop steps, the Router protection table, the build step for `routers.local.txt`, repo layout.
+- **Machine:** rebuilt `tools\netbug.exe` (with the known-router list) and restarted the task. No ARP changes.
+
 ### 05:35: `bca06da` self-install, uninstall, netsh delete fix, first GitHub release
 - `netbug.cs` install section: the first elevated start sets up the `netbug` logon task. The settings match the task on this laptop: logon trigger, highest privileges, no time limit, restart 999 x 1 min, on battery, IgnoreNew.
   - **Lone exe:** copies itself to `%ProgramData%\netbug\netbug.exe` and locks that folder (Administrators/SYSTEM full, Users read). It then registers the task, starts it and exits.

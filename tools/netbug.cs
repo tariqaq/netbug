@@ -40,7 +40,8 @@
 //
 // Build (in tools/): csc /target:winexe /optimize /out:netbug.exe /resource:dashboard.html,netbug.dashboard.html
 //   /resource:fonts\inter.woff2,netbug.inter.woff2 /resource:arpwatch.ps1,netbug.arpwatch.ps1
-//   /resource:snapshot.ps1,netbug.snapshot.ps1 netbug.cs
+//   /resource:snapshot.ps1,netbug.snapshot.ps1 [/resource:routers.local.txt,netbug.routers.txt] netbug.cs
+// (routers.local.txt, gitignored: known router MACs offered on the page, see "router check and pin")
 
 using System;
 using System.Collections.Generic;
@@ -379,14 +380,20 @@ class NetBug
         if (!PathEq(TaskCommand(), exe)) throw new Exception("schtasks /Create did not register the task");
     }
 
-    // ends every other netbug except this process and the launcher that started it (it opens the page)
+    // Ends every other netbug except this process and the launcher that started it (it opens the page).
+    // Any process named netbug*: a browser saves a second download as "netbug (1).exe".
     static void StopOthers()
     {
-        int me = Process.GetCurrentProcess().Id, parent = ParentPid();
-        foreach (var p in Process.GetProcessesByName("netbug"))
-            using (p)
-                if (p.Id != me && p.Id != parent) try { p.Kill(); p.WaitForExit(5000); } catch { }
+        KillNetbugs(Process.GetCurrentProcess().Id, ParentPid());
         Run("pktmon.exe", "stop");   // the killed copy's ARP capture would keep running
+    }
+
+    static void KillNetbugs(int keep, int keep2)
+    {
+        foreach (var p in Process.GetProcesses())
+            using (p)
+                if (p.Id != keep && p.Id != keep2 && p.ProcessName.StartsWith("netbug", StringComparison.OrdinalIgnoreCase))
+                    try { p.Kill(); p.WaitForExit(5000); } catch { }
     }
 
     // `keep`: a process to spare (the uninstalling one, which exits right after)
@@ -394,9 +401,7 @@ class NetBug
     {
         if (!portable) Event("netbug uninstalled: logon task removed, router pin removed");
         Run("schtasks.exe", "/Delete /TN " + TaskName + " /F");   // not /End: that would end `keep` when the task runs it
-        foreach (var p in Process.GetProcessesByName("netbug"))
-            using (p)
-                if (p.Id != keep && p.Id != ParentPid()) try { p.Kill(); p.WaitForExit(5000); } catch { }
+        KillNetbugs(keep, ParentPid());
         Run("pktmon.exe", "stop");
         foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
         {
@@ -1488,7 +1493,8 @@ class NetBug
     // ---------------------------------------------------------------- router check and pin
     //
     // Check: finds the real router MAC for the current gateway IP. Candidates are the ARP table entry, a
-    // pinned entry and every MAC that answers for the gateway IP in 10 s of the ARP ring (the laptop asks
+    // pinned entry, the known routers for this gateway IP (see below) and every MAC that answers for the
+    // gateway IP in 10 s of the ARP ring (the laptop asks
     // for the router 3 times meanwhile, unless the entry is pinned, so the real router answers too). Each
     // candidate is then set for a moment as a temporary static ARP entry (active store only) and tested:
     // it is the real router when pings to 1.1.1.1/8.8.8.8 get through it AND a TTL-1 ping comes back
@@ -1497,12 +1503,53 @@ class NetBug
     // it was (pinned again, or deleted and learned again).
     // Pin: the verified MAC becomes a permanent ARP entry (netsh, persistent store), so Windows ignores
     // fake replies. Unpin removes it from both stores.
-    // Control: GET /api/fix (status) and POST /api/fix/{check,pin,unpin,auto,announce,stop}, only from this laptop
+    // Test and pin (trypin?mac=): the same test for one MAC chosen on the page (a known router or typed in),
+    // without the 10 s listen; it is pinned only when it passes. A failed test changes nothing.
+    // Control: GET /api/fix (status) and POST /api/fix/{check,trypin,pin,unpin,auto,announce,uninstall}, only from this laptop
     // (loopback, Host localhost/127.0.0.1, against DNS rebinding) with the per-run token the page was
     // served (X-Netbug-Token: other websites can't read it, and the custom header can't be sent cross-site
     // without a CORS preflight, which netbug never answers).
 
     class Candidate { public string Mac, From = "", Hop = "", Verdict = ""; public bool Works, Random; }
+
+    // Known routers: "<gateway ip> <MAC> [label]" lines, one per line, # for comments, in the optional
+    // embedded resource netbug.routers.txt (built from the gitignored tools\routers.local.txt). The page
+    // offers the ones for the current gateway IP, and Check now tests them too.
+    class KnownRouter { public string Gw, Mac, Label; }
+    static readonly List<KnownRouter> knownRouters = LoadKnownRouters();
+
+    static List<KnownRouter> LoadKnownRouters()
+    {
+        var list = new List<KnownRouter>();
+        try
+        {
+            using (var res = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("netbug.routers.txt"))
+            {
+                if (res == null) return list;
+                using (var r = new StreamReader(res))
+                    for (string line; (line = r.ReadLine()) != null; )
+                    {
+                        line = line.Trim();
+                        if (line == "" || line.StartsWith("#")) continue;
+                        var p = line.Split(new[] { ' ', '\t' }, 3, StringSplitOptions.RemoveEmptyEntries);
+                        IPAddress ip; string mac = p.Length >= 2 ? NormalizeMac(p[1]) : "";
+                        if (mac != "" && IPAddress.TryParse(p[0], out ip) && ip.AddressFamily == AddressFamily.InterNetwork)
+                            list.Add(new KnownRouter { Gw = ip.ToString(), Mac = mac, Label = p.Length > 2 ? p[2].Trim() : "" });
+                    }
+            }
+        }
+        catch { }
+        return list;
+    }
+
+    // "aa:bb:cc:dd:ee:ff", "AA-BB-CC-DD-EE-FF" or "aabbccddeeff" -> "AA-BB-CC-DD-EE-FF"; "" when it isn't a
+    // MAC a router can have (multicast/broadcast bit set, or all zeros)
+    static string NormalizeMac(string s)
+    {
+        s = Regex.Replace((s ?? "").Trim().ToUpperInvariant(), "[:.\\-\\s]", "");
+        if (!Regex.IsMatch(s, "^[0-9A-F]{12}$") || (Convert.ToInt32(s.Substring(0, 2), 16) & 1) != 0 || s == "000000000000") return "";
+        return string.Join("-", Enumerable.Range(0, 6).Select(i => s.Substring(i * 2, 2)));
+    }
 
     static volatile bool fixBusy, autoKick, autoDetect;
     static volatile string fixStep = "", fixJson = "null";
@@ -1534,6 +1581,14 @@ class NetBug
         {
             case "/api/fix/check": if (fixBusy) error = "A check is already running."; else StartDetect("manual"); break;
             case "/api/fix/pin": error = Pin(); break;
+            case "/api/fix/trypin":
+            {
+                string mac = NormalizeMac(ctx.Request.QueryString["mac"]);
+                if (mac == "") error = "That isn't a router MAC address (format: AA-BB-CC-DD-EE-FF).";
+                else if (fixBusy) error = "A check is already running.";
+                else StartDetect("test and pin " + mac, mac);
+                break;
+            }
             case "/api/fix/unpin": error = Unpin(); break;
             case "/api/fix/auto":
                 autoDetect = ctx.Request.QueryString["on"] == "1";
@@ -1568,12 +1623,14 @@ class NetBug
         int idx = IfIndex(ni);
         if (gw != null && idx >= 0) pinned = PersistentPin(idx, gw);
         bool verifiedHere = gw != null && verifiedMac != "" && verifiedGw == gw.ToString() && verifiedIf == idx;
+        string known = gw == null ? "" : string.Join(",", knownRouters.Where(k => k.Gw == gw.ToString())
+            .Select(k => string.Format("{{\"mac\":{0},\"label\":{1}}}", J(k.Mac), J(k.Label))));
         string ann = string.Format("{{\"on\":{0},\"target\":{1},\"sent\":{2},\"seen\":{3},\"seenAt\":{4},\"error\":{5}}}",
             announce ? "true" : "false", J(announceTarget), Thread.VolatileRead(ref announceSent), announceSeen,
             announceSeenAt == DateTime.MinValue ? 0 : Unix(announceSeenAt), J(announceErr));
-        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12}}}",
+        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12},\"known\":[{13}]}}",
             fixBusy ? "true" : "false", J(fixStep), autoDetect ? "true" : "false", portable ? "true" : "false", J(iface), J(gw == null ? "" : gw.ToString()),
-            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann);
+            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann, known);
     }
 
     static int IfIndex(NetworkInterface ni)
@@ -1628,14 +1685,15 @@ class NetBug
         finally { Marshal.FreeHGlobal(reply); IcmpCloseHandle(handle); }
     }
 
-    static void StartDetect(string why)
+    // `only`: test just this MAC (the page's "Test and pin") and pin it when it's the real router
+    static void StartDetect(string why, string only = null)
     {
         lock (fixLock) { if (fixBusy) return; fixBusy = true; }
         lastDetect = DateTime.Now; autoKick = false;
-        Task.Run(() => Detect(why));
+        Task.Run(() => Detect(why, only));
     }
 
-    static void Detect(string why)
+    static void Detect(string why, string only)
     {
         var cands = new List<Candidate>();
         Action<string, string> add = (mac, from) =>
@@ -1657,23 +1715,29 @@ class NetBug
             }
             lastDetectGw = gw.ToString();
             Event(string.Format("router check ({0}) on '{1}', gateway {2}", why, ni.Name, gw));
-            string arpType = ArpEntryType(gw, ni), pinned = PersistentPin(idx, gw);
-            add(Arp(gw, ip), "ARP table (" + (arpType == "" ? "?" : arpType) + ")");
-            add(pinned, "pinned");
+            string pinned = PersistentPin(idx, gw), gwIp = gw.ToString();
+            if (only != null) add(only, "chosen on the page");
+            else
+            {
+                string arpType = ArpEntryType(gw, ni);
+                add(Arp(gw, ip), "ARP table (" + (arpType == "" ? "?" : arpType) + ")");
+                add(pinned, "pinned");
+                foreach (var k in knownRouters.Where(k => k.Gw == gwIp)) add(k.Mac, "known router" + (k.Label == "" ? "" : " (" + k.Label + ")"));
 
-            // the ring captures all the time: ask for the router again so the real one answers too (a pinned
-            // entry is never asked about), then pause the ring once so pktmon hands over what it buffered
-            fixStep = "Listening for who answers as the router (10 s)";
-            var t0 = DateTime.Now.AddSeconds(-1);
-            if (arpType != "static")
-                for (int i = 0; i < 3; i++) { SetActive(idx, gw, ""); Arp(gw, ip); Thread.Sleep(1500); }
-            Thread.Sleep(Math.Max(0, 10000 - (int)(DateTime.Now - t0).TotalMilliseconds));
-            List<ArpFrame> heard;
-            lock (pktmonLock) { RingPause(); RingResume(); }
-            lock (ringLock) heard = ring.Where(f => f.T >= t0).ToList();
-            var claims = new List<Claim>();
-            Analyze(heard, gw, ip, claims, new List<Claim>());
-            foreach (var c in claims) add(c.Mac, string.Format("answered as the router {0}x", c.N));
+                // the ring captures all the time: ask for the router again so the real one answers too (a pinned
+                // entry is never asked about), then pause the ring once so pktmon hands over what it buffered
+                fixStep = "Listening for who answers as the router (10 s)";
+                var t0 = DateTime.Now.AddSeconds(-1);
+                if (arpType != "static")
+                    for (int i = 0; i < 3; i++) { SetActive(idx, gw, ""); Arp(gw, ip); Thread.Sleep(1500); }
+                Thread.Sleep(Math.Max(0, 10000 - (int)(DateTime.Now - t0).TotalMilliseconds));
+                List<ArpFrame> heard;
+                lock (pktmonLock) { RingPause(); RingResume(); }
+                lock (ringLock) heard = ring.Where(f => f.T >= t0).ToList();
+                var claims = new List<Claim>();
+                Analyze(heard, gw, ip, claims, new List<Claim>());
+                foreach (var c in claims) add(c.Mac, string.Format("answered as the router {0}x", c.N));
+            }
 
             var cf = IPAddress.Parse("1.1.1.1"); var g = IPAddress.Parse("8.8.8.8");
             try
@@ -1692,7 +1756,6 @@ class NetBug
             }
             finally { SetActive(idx, gw, pinned); }   // as it was: pinned again, or learned again
 
-            string gwIp = gw.ToString();
             foreach (var c in cands)
                 c.Verdict = !c.Works ? "nothing gets through it: not the router"
                     : c.Hop == gwIp ? "the real router: traffic gets through and it answers as " + gwIp
@@ -1709,15 +1772,29 @@ class NetBug
                 if (works.Count == 1 && !works[0].Random) { real = works; note = "Picked by traffic only: the router doesn't answer the hop test."; }
                 else note = cands.Count == 0 ? "No MAC answered for the router." : "No MAC passed the test. The router may be down; try again later.";
             }
-            lock (fixLock)
+            // a failed single-MAC test leaves an earlier check's result alone
+            if (only == null || real.Count == 1)
+                lock (fixLock)
+                {
+                    verifiedMac = real.Count == 1 ? real[0].Mac : "";
+                    verifiedGw = gwIp; verifiedIf = idx;
+                }
+            bool pinnedNow = false;
+            if (only != null)
             {
-                verifiedMac = real.Count == 1 ? real[0].Mac : "";
-                verifiedGw = gwIp; verifiedIf = idx;
+                if (real.Count == 1)
+                {
+                    string err = PinMac(ni, idx, gw, only, "after testing it from the page");
+                    pinnedNow = err == "";
+                    note = err == "" ? "It's the real router" + (note == "" ? "" : " (" + note.TrimEnd('.') + ")") + ", so it's pinned now." : err;
+                }
+                else note = "Not pinned: " + cands[0].Verdict + ". Nothing was changed. Use Check now to find the real router.";
             }
             fixJson = string.Format("{{\"at\":{0},\"chosen\":{1},\"note\":{2},\"cands\":[{3}]}}", Unix(DateTime.Now), J(verifiedMac), J(note),
                 string.Join(",", cands.Select(c => string.Format("{{\"mac\":{0},\"from\":{1},\"works\":{2},\"hop\":{3},\"random\":{4},\"verdict\":{5}}}",
                     J(c.Mac), J(c.From), c.Works ? "true" : "false", J(c.Hop), c.Random ? "true" : "false", J(c.Verdict)))));
-            Event(string.Format("router check: {0} ({1})", verifiedMac != "" ? "real router is " + verifiedMac : "no MAC picked",
+            if (only != null) Event(string.Format("router test of {0}: {1}; {2}", only, cands[0].Verdict, pinnedNow ? "pinned" : "not pinned"));
+            else Event(string.Format("router check: {0} ({1})", verifiedMac != "" ? "real router is " + verifiedMac : "no MAC picked",
                 string.Join("; ", cands.Select(c => c.Mac + ": " + c.Verdict))));
         }
         catch (Exception ex)
@@ -1740,11 +1817,16 @@ class NetBug
             if (gw == null || verifiedMac == "" || verifiedGw != gw.ToString() || verifiedIf != idx) return "Run a check first: nothing is verified for this network yet.";
             mac = verifiedMac;
         }
+        return PinMac(ni, idx, gw, mac, "from the page");
+    }
+
+    static string PinMac(NetworkInterface ni, int idx, IPAddress gw, string mac, string how)
+    {
         Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1}", idx, gw));
         string output = Netsh(string.Format("interface ipv4 add neighbors interface={0} address={1} neighbor={2} store=persistent", idx, gw, mac));
         lock (pinLock) pinCacheAt = DateTime.MinValue;
         if (PersistentPin(idx, gw) != mac) return "Pinning failed: " + output.Trim();
-        Event(string.Format("gateway {0} pinned to {1} on '{2}' from the page", gw, mac, ni.Name));
+        Event(string.Format("gateway {0} pinned to {1} on '{2}' {3}", gw, mac, ni.Name, how));
         return "";
     }
 

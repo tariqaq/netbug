@@ -115,7 +115,7 @@ input[type="checkbox"] { accent-color: var(--gw); width: 16px; height: 16px; mar
   font: 600 13px/1 var(--sans); padding: 10px 16px; cursor: pointer; display: none;
 }
 #jump.show { display: block; }
-button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px solid var(--gw); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visible { outline: 2px solid var(--gw); outline-offset: 2px; }
 
 .fix { border: 1px solid var(--panel-line); border-radius: 18px; padding: 20px 22px 18px; margin: 0 0 36px; }
 .fix[hidden] { display: none; }
@@ -134,6 +134,14 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
 .sw input:disabled { opacity: .4; cursor: not-allowed; }
 .sw b { font-size: 16px; font-weight: 600; display: block; }
 .sw small { font-size: 13px; display: block; margin-top: 2px; }
+.known { border-top: 1px solid var(--line); padding: 12px 0; }
+.known b { font-size: 16px; font-weight: 600; display: block; }
+.known small { font-size: 13px; display: block; margin-top: 2px; max-width: 90ch; }
+.known em { font-style: normal; font-weight: 600; }
+.known-ctl { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.known select, .known input { background: transparent; color: var(--ink); border: 1px solid #444; border-radius: 10px; font: 500 14px var(--sans); padding: 9px 12px; min-width: 0; max-width: 100%; }
+.known input { font-family: var(--mono); width: 21ch; }
+.known select option { background: #111; color: var(--ink); }
 .cands { margin: 6px 0 0; padding: 0; list-style: none; }
 .cands li { border-top: 1px solid var(--line); padding: 10px 0; display: grid; grid-template-columns: 190px 1fr; gap: 2px 16px; }
 .cands .mac { font: 600 15px var(--mono); }
@@ -150,6 +158,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
 @media (max-width: 600px) {
   .facts { grid-template-columns: repeat(2, 1fr); column-gap: 16px; }
   .cands li { grid-template-columns: 1fr; }
+  .known select, .known input { flex: 1 1 100%; width: auto; }
   .cands .src { grid-column: 1; }
   .fact.wide { grid-column: 1 / -1; }
 }
@@ -191,6 +200,15 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small>Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. It never changes a pin by itself.</small></span></label>
     <label class="sw"><input type="checkbox" id="fx-pin" disabled><span><b>Pin it permanently</b><small id="fx-pin-note">Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop.</small></span></label>
     <label class="sw"><input type="checkbox" id="fx-ann"><span><b>Keep the router updated</b><small id="fx-ann-note">Tells the router this laptop’s real address about once a second.</small></span></label>
+    <div class="known">
+      <b>Router MAC</b>
+      <small>Pick a known router or type a MAC. <em>Test and pin</em> tests it first (if it’s wrong, the connection drops for a few seconds) and pins it only if it’s the real router. If it fails, use <em>Check now</em>.</small>
+      <div class="known-ctl">
+        <select id="fx-known" aria-label="Router MAC"></select>
+        <input id="fx-mac" type="text" placeholder="AA-BB-CC-DD-EE-FF" aria-label="Router MAC to test" spellcheck="false" autocomplete="off" maxlength="17" hidden>
+        <button class="btn ghost" id="fx-try" type="button">Test and pin</button>
+      </div>
+    </div>
     <ul class="cands" id="fx-cands"></ul>
     <div class="fix-actions"><button class="btn" id="fx-check" type="button">Check now</button><button class="btn ghost" id="fx-uninst" type="button" hidden>Uninstall netbug</button></div>
     <div class="fix-err" id="fx-err"></div>
@@ -497,7 +515,7 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
     else if (f.pinned && f.verified && f.pinned !== f.verified) { st = 'Pin differs'; cls = 'bad'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ', but the last check found ' + f.verified + '. If the router was replaced, turn the pin off and on again.'; }
     else if (f.pinned) { st = 'Protected'; cls = 'ok'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ' on ' + f.iface + '. Fake router replies are ignored.'; }
     else if (f.verified) { st = 'Not pinned'; cls = 'warn'; sub = 'The real router ' + f.gw + ' is ' + f.verified + '. Turn on the pin to protect this laptop.'; }
-    else { st = 'Not pinned'; cls = 'warn'; sub = 'Router ' + f.gw + ' on ' + f.iface + ' is currently ' + (f.arpMac || 'unknown') + ' (' + (f.arpType || 'not in the ARP table') + '). Run a check to find the real one.'; }
+    else { st = 'Not pinned'; cls = 'warn'; sub = 'Router ' + f.gw + ' on ' + f.iface + ' is currently ' + (f.arpMac || 'unknown') + ' (' + (f.arpType || 'not in the ARP table') + '). Run a check to find the real one, or test a router MAC below.'; }
     putText($('fx-state'), st); $('fx-state').className = 'fix-state ' + cls;
     putText($('fx-sub'), sub);
     $('fx-auto').checked = f.auto;
@@ -517,13 +535,43 @@ button:focus-visible, input:focus-visible, #log:focus-visible { outline: 2px sol
       (c.random ? '. Random-style address, unusual for a router' : '') + '.</span><span class="src">Seen as: ' + esc(c.from) + '</span></li>').join('') +
       (res.note ? '<li><span></span><span class="why">' + esc(res.note) + '</span></li>' : '') : '');
     $('fx-uninst').hidden = !f.portable;   // a lone exe installed in %ProgramData%; the repo copy uses --uninstall
+    renderKnown();
     putText($('fx-err'), f.error || '');
+  }
+
+  // "Router MAC": the known routers for this gateway (built into netbug) plus "Other MAC…" with a text box.
+  // The options are rebuilt only when the list changes, so a choice survives the 2 s polls.
+  let knownKey = null;
+  function chosenMac() {
+    const sel = $('fx-known');
+    if (sel.value !== 'other') return sel.value;
+    const h = $('fx-mac').value.trim().replace(/[-:.\s]/g, '').toUpperCase();
+    return /^[0-9A-F]{12}$/.test(h) ? h.match(/../g).join('-') : '';
+  }
+  function renderKnown() {
+    const f = fix, sel = $('fx-known'), list = f.known || [];
+    const key = f.gw + '|' + list.map(k => k.mac + ' ' + k.label).join('|');
+    if (key !== knownKey) {
+      knownKey = key;
+      const keep = sel.value;
+      sel.innerHTML = list.map(k => '<option value="' + esc(k.mac) + '">' + esc(k.mac) + (k.label ? ' (' + esc(k.label) + ')' : '') + '</option>').join('') +
+        '<option value="other">' + (list.length ? 'Other MAC…' : 'Type a MAC…') + '</option>';
+      if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+    }
+    $('fx-mac').hidden = sel.value !== 'other';
+    const mac = chosenMac(), already = !!mac && f.pinned === mac;
+    $('fx-try').disabled = f.busy || !f.gw || !mac || already;
+    putText($('fx-try'), already ? 'Already pinned' : 'Test and pin');
   }
   if (fixOn) {
     $('fx-check').onclick = () => fixCall('/check', 'POST');
     $('fx-auto').onchange = e => fixCall('/auto?on=' + (e.target.checked ? 1 : 0), 'POST');
     $('fx-pin').onchange = e => fixCall(e.target.checked ? '/pin' : '/unpin', 'POST');
     $('fx-ann').onchange = e => fixCall('/announce?on=' + (e.target.checked ? 1 : 0), 'POST');
+    $('fx-known').onchange = () => { if (fix) renderKnown(); if ($('fx-known').value === 'other') $('fx-mac').focus(); };
+    $('fx-mac').oninput = () => { if (fix) renderKnown(); };
+    $('fx-mac').onkeydown = e => { if (e.key === 'Enter' && !$('fx-try').disabled) $('fx-try').click(); };
+    $('fx-try').onclick = () => { const mac = chosenMac(); if (mac) fixCall('/trypin?mac=' + encodeURIComponent(mac), 'POST'); };
     // removes the logon task, the router pin and netbug's folder (logs included)
     $('fx-uninst').onclick = () => {
       if (!uninstArmed) { uninstArmed = true; putText($('fx-uninst'), 'Click again to uninstall'); setTimeout(() => { uninstArmed = false; putText($('fx-uninst'), 'Uninstall netbug'); }, 4000); return; }

@@ -8,3 +8,4 @@ video/node_modules/
 video/out/
 video/.venv/
 video/data.local.json
+tools/routers.local.txt

@@ -5,6 +5,16 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 21:21: `HASH` video: v5, a 3D film of every incident (1080p60, 3:23)
+- New film in `video/src/v5/` (`world.tsx`, `look.tsx`, `index.tsx`, `sound.ts`, `score.ts`, `qr.json`): a night-to-dawn 3D diorama of the hostel covering 05:34, 15:28, the friend's laptop, the fix (watch, Test and pin, announce) and prevention, with an end card and a QR code to the latest release. Plan, storyboard, fact checks and log in `video/PLAN-v5.md`.
+- Narration: `video/scripts/tts5.py` + `video/narration-v5.json`. Qwen3-TTS 1.7B clones the picked bake-off voice (`public/vo5/reference.wav`) on CUDA; for each line, the best of up to 3 takes by Whisper large-v3-turbo transcript match; studio chain; Whisper word timings into `public/vo5/timing.json`. 154 s of speech, all word cues resolve.
+- Rendered locally, not committed or published: `video/out/incident-v5-redacted.mp4` and `incident-v5-full.mp4`.
+  - HEVC (`hevc_nvenc`, CRF 18, hvc1), 12,173 frames at 60 fps.
+  - Audio normalized by a 2-pass `loudnorm` to -14.0 LUFS, true peak -1.3 dBTP; AAC 320k, 48 kHz.
+  - About 4.3 min per render on the RTX 4060; ~308 MB each.
+  - Redaction checked on a decoded frame.
+- `video/README.md`: v5 section (files, build, render). `.gitignore`: `video/.venv-qwen/`, `video/scripts/__pycache__/`.
+- **Machine:** `video/.venv-qwen` (Python 3.11, torch 2.11 cu128, qwen-tts 0.1.1) plus the Qwen3-TTS and Whisper models in the Hugging Face cache.
 ### 19:03: `6519af9` video: kinetograph 0.2.0 -> 0.2.5
 - `video/package.json` and the lockfile: kinetograph 0.2.5, the latest release (`main` is ahead but unreleased).
 - Checked:

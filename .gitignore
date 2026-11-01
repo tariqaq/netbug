@@ -7,6 +7,8 @@ RCC_REPORT.md
 video/node_modules/
 video/out/
 video/.venv/
+video/.venv-qwen/
 video/data.local.json
 tools/routers.local.txt
 anotherdeviceexample.zip
+video/scripts/__pycache__/

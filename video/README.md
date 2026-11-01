@@ -17,6 +17,7 @@ Built with [kinetograph](https://github.com/0xS4N4TG/kinetograph) 0.2.5 (TypeScr
 | `data.example.json` | Values shown on screen, redacted (the default props) |
 | `data.local.json` | The same with real MACs: **gitignored**, used for the full local render that goes to the RCC |
 | `tasks.md` | Build tracker for the v3 and v4 cuts: plan, decisions, progress log |
+| `src/v5/`, `PLAN-v5.md` | The v5 film (3D, 60 fps): see **v5** below |
 
 ## How it stays in sync
 
@@ -51,5 +52,37 @@ npx kinetograph render src/index.tsx -o out/incident-v4-full.mp4 --encoder h264_
 On an RTX 4060 Laptop GPU, a full render takes about a minute (~14 ms per frame, motion blur and the synthesized audio included) with little CPU. At 3 Mbit/s the file is ~55 MB. The bitrate cap matters: the slow push-in changes every pixel every frame, and a 12 Mbit/s cap with film grain made a 190 MB file (GitHub's limit is 100 MB).
 
 Fonts (Inter, JetBrains Mono) are downloaded from Google Fonts on the first render and cached by kinetograph.
+
+## v5 (3D, 1080p60)
+
+A second film in `src/v5/`, covering every incident (05:34 and 15:28 on 10-28, and the friend's laptop to 11-01), the fix, how netbug works, and prevention. It's told in a native 3D diorama of the hostel that goes from night to dawn, at 1920×1080, 60 fps, 3:23. The plan, storyboard, fact checks and log are in `PLAN-v5.md`.
+
+| File | What |
+|---|---|
+| `src/v5/index.tsx` | The film: timeline, camera keys, story state, labels, panels, captions, sound and score cues, end card with a QR code to the latest release |
+| `src/v5/world.tsx` | The diorama: building, rooms, router, switch, laptops, the impostor, cables, packets; `project()` pins 2D labels to 3D points |
+| `src/v5/look.tsx` | Sky (night to dawn), haze, vignette, letterbox, label chips, captions |
+| `src/v5/sound.ts`, `src/v5/score.ts` | Synthesized effects and score (per-scene moods, ducked under the voice) |
+| `src/v5/qr.json` | QR matrix for `https://github.com/tariqaq/netbug/releases/latest` |
+| `narration-v5.json` | Script (`text` for captions, `say` for pronunciation) and the voice settings |
+| `scripts/tts5.py` | Qwen3-TTS (1.7B Base, cloning `public/vo5/reference.wav`) on CUDA, best of 3 takes by Whisper transcript match, studio chain, Whisper word timings → `public/vo5/` |
+
+```sh
+py -3.11 -m venv .venv-qwen
+.venv-qwen/Scripts/python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+.venv-qwen/Scripts/python -m pip install qwen-tts transformers soundfile
+.venv-qwen/Scripts/python scripts/tts5.py [line ids...]          # all lines, or only the listed ones (the rest keep their timing)
+
+NETBUG_MB=0 npx kinetograph strip src/v5/index.tsx -n 24 -o out/v5.png   # draft contact sheet (no motion blur)
+
+export KINETOGRAPH_FFMPEG="C:\path\to\ffmpeg.exe"                  # one with hevc_nvenc
+npx kinetograph render src/v5/index.tsx -o out/incident-v5-redacted.mov --codec h265 --encoder hevc_nvenc --crf 18 --audio-codec pcm --concurrency 2
+# add --props "$(tr -d '\n' < data.local.json)" for the full cut, then normalize and mux:
+ffmpeg -i out/incident-v5-redacted.mov -af loudnorm=I=-14:TP=-1.5:LRA=11:... -c:v copy -tag:v hvc1 -c:a aac -b:a 320k -ar 48000 -movflags +faststart out/incident-v5-redacted.mp4
+```
+
+The `loudnorm` pass is 2-pass and linear: the first pass measures and the second applies. The mix comes out at -14.0 LUFS with a true peak of -1.3 dBTP; without it, true peak reaches 0 dBTP.
+
+On the RTX 4060 Laptop GPU a render takes ~4.3 min (~21 ms per frame, motion blur at 4 samples) and the file is ~308 MB (~12 Mbit/s). `NETBUG_MB` sets the motion-blur samples (0 = off). NVENC rejects `--pixel-format yuv420p10le` as kinetograph passes it, so the output is 8-bit. The v5 renders stay in `out/` (gitignored) and aren't committed.
 
 Earlier cuts are tagged in git: `video-v2` (Andrew, no score) and `video-v3` (Christopher, film grain, ~2:04).

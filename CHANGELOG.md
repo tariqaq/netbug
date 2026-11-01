@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 19:03: `HASH` video: kinetograph 0.2.0 -> 0.2.5
+### 19:03: `6519af9` video: kinetograph 0.2.0 -> 0.2.5
 - `video/package.json` and the lockfile: kinetograph 0.2.5, the latest release (`main` is ahead but unreleased).
 - Checked:
   - `check` reports no type errors.

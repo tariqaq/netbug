@@ -140,6 +140,7 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 | `narration-v5.json` | Script and per-line delivery |
 | `scripts/tts5.py` | Qwen3-TTS voice clone, best of 3 takes by Whisper match, studio chain, Whisper word timings → `public/vo5/` |
 | `public/vo5/` | Narration clips and `timing.json` |
+| `scripts/render5.ps1` | Final renders (redacted + full), loudnorm, AAC, hvc1 mux |
 
 ## Progress
 

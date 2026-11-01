@@ -5,6 +5,14 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 21:30: `HASH` video: `scripts/render5.ps1`; disk cleanup
+- `video/scripts/render5.ps1`: the final v5 renders in one command (redacted, plus the full cut when `data.local.json` exists): NVENC HEVC, 2-pass loudnorm, AAC 320k, hvc1 mux. `video/README.md` and `PLAN-v5.md` name it and list what narration regeneration needs.
+- **Machine:** freed 13.9 GB on C: (95.1 GB free after):
+  - removed the Hugging Face models `Qwen3-TTS-12Hz-1.7B-CustomVoice` and `-VoiceDesign` (bake-off only)
+  - purged the pip and uv caches
+  - removed the stalled `pip-unpack` torch download in `%TEMP%`
+  - removed draft stills, raw takes, bake-off samples and solo stems from `video/out/`
+- Kept: `.venv-qwen`, Qwen3-TTS Base, Whisper large-v3-turbo, `node_modules`, and every `incident-v*.mp4` render.
 ### 21:21: `82b0a35` video: v5, a 3D film of every incident (1080p60, 3:23)
 - New film in `video/src/v5/` (`world.tsx`, `look.tsx`, `index.tsx`, `sound.ts`, `score.ts`, `qr.json`): a night-to-dawn 3D diorama of the hostel covering 05:34, 15:28, the friend's laptop, the fix (watch, Test and pin, announce) and prevention, with an end card and a QR code to the latest release. Plan, storyboard, fact checks and log in `video/PLAN-v5.md`.
 - Narration: `video/scripts/tts5.py` + `video/narration-v5.json`. Qwen3-TTS 1.7B clones the picked bake-off voice (`public/vo5/reference.wav`) on CUDA; for each line, the best of up to 3 takes by Whisper large-v3-turbo transcript match; studio chain; Whisper word timings into `public/vo5/timing.json`. 154 s of speech, all word cues resolve.

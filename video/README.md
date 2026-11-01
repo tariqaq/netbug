@@ -81,6 +81,10 @@ npx kinetograph render src/v5/index.tsx -o out/incident-v5-redacted.mov --codec 
 ffmpeg -i out/incident-v5-redacted.mov -af loudnorm=I=-14:TP=-1.5:LRA=11:... -c:v copy -tag:v hvc1 -c:a aac -b:a 320k -ar 48000 -movflags +faststart out/incident-v5-redacted.mp4
 ```
 
+`pwsh -File scripts/render5.ps1` does all of the above for both cuts (the full cut only when `data.local.json` exists).
+
+To regenerate the narration you need the `.venv-qwen` venv and two models in the Hugging Face cache: `Qwen/Qwen3-TTS-12Hz-1.7B-Base` (with its speech tokenizer) and `openai/whisper-large-v3-turbo`. `Qwen3-TTS-12Hz-1.7B-VoiceDesign` is needed only if `public/vo5/reference.wav` is missing. Missing models are downloaded on first use.
+
 The `loudnorm` pass is 2-pass and linear: the first pass measures and the second applies. The mix comes out at -14.0 LUFS with a true peak of -1.3 dBTP; without it, true peak reaches 0 dBTP.
 
 On the RTX 4060 Laptop GPU a render takes ~4.3 min (~21 ms per frame, motion blur at 4 samples) and the file is ~308 MB (~12 Mbit/s). `NETBUG_MB` sets the motion-blur samples (0 = off). NVENC rejects `--pixel-format yuv420p10le` as kinetograph passes it, so the output is 8-bit. The v5 renders stay in `out/` (gitignored) and aren't committed.

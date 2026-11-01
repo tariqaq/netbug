@@ -5,6 +5,22 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 18:48: `HASH` friend's laptop analysis; trusted-MAC, mid-check and adapter-switch fixes (release v1.0.2)
+- Analyzed a friend's netbug export (10-28 22:55 to 11-01 18:40, same hostel LAN). It shows the **same attacker** (`10.255.18.145`, randomized MAC) blackholing that laptop on every wired session, for 4 days:
+  - outages of 94 s, 232 s, 525 s and 37 min
+  - a victim lookup by the attacker's own IP at 18:28:52
+  - 8 fake gateway replies in the capture
+- After the v1.0.1 install, the MAC announce and **Test and pin** of the known router ended it: 9 min with zero failures.
+- Written up in the incident report §12 and the RCC report ("Another resident"). `REDACTED_*` regenerated.
+- The export also showed the pre-v1.0.0 netsh bug in action: each router check left the last tested MAC (usually the attacker's) as a static entry, which locked the laptop onto it.
+- `netbug.cs` fixes:
+  - **Trusted gateway MAC:** a pin or a router check that proves the real router now replaces it. Before, the first MAC seen stayed trusted, which was the attacker on a laptop already under attack, so the real router got flagged. The ARP entry type is now judged before a MAC change, so a new pin is trusted first.
+  - **Router check:** throws its result away (nothing picked or pinned) when the gateway or adapter changes during it.
+  - **Adapter switch:** the gateway MAC and ARP type are read at once (they showed the previous adapter's for up to 10 s), and the packet counters restart (they went negative).
+- Harness: 6 new fake-network tests (trust after a proven check; network change mid-test). All 34 pass.
+- `.gitignore`: `anotherdeviceexample.zip` (the export, kept locally).
+- **Machine:** rebuilt `tools\netbug.exe` and restarted the task. No ARP changes.
+
 ### 18:19: `ddef4b3` stale-doc sweep
 - README status table: **Not pinned** now also points to testing a router MAC, matching `dashboard.html`.
 - `netbug.cs` header: the router check summary mentions testing one known or typed MAC. Comment-only, so the v1.0.1 exe is unchanged.

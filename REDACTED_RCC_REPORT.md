@@ -16,7 +16,7 @@ At 05:34:03 a device on the hostel LAN began sending ARP replies saying **"10.25
 |---|---|
 | **MAC address** | **`xx-xx-xx-xx-xx-xx`** (randomized / locally administered: typical of a phone or laptop with MAC randomization, or a spoofing tool) |
 | **IP address** | **`10.255.18.145`** (the same MAC, seen in my laptop's ARP table) |
-| **Seen active** | **twice on 2026-10-28:** 05:34:03 – 05:36:35 and 15:28:44–54 – 15:31:31 MYT. Both times I left the LAN by unplugging, so it may have run longer. |
+| **Seen active** | **2026-10-28 to at least 2026-11-01 18:31 MYT, on two residents' laptops.** On mine: 05:34:03 – 05:36:35 and 15:28:44–54 – 15:31:31 on 10-28 (both times I unplugged, so it may have run longer). On another resident's: every wired session from 10-28 22:55 to 11-01 18:31 (see below). |
 | **Behaviour** | sends unicast ARP replies claiming the gateway IP `10.255.31.254`; forwards nothing (blackholes victims) |
 
 ## Evidence (logs available on request)
@@ -44,6 +44,13 @@ The same device (`xx-xx-xx-xx-xx-xx`, `10.255.18.145`) did it again at **15:28**
 - 42 packets went to it and **none came back**, and it sent 3 more fake "I am 10.255.31.254" replies.
 - This time **four** other devices lost the router at the same time: `10.255.16.66`, `10.255.20.57`, `10.255.23.47`, `10.255.23.235`.
 - It was also caught **looking up a victim** before attacking (`who-has 10.255.23.47 tell 10.255.18.145`). `10.255.23.47` was hit in the morning too. This is deliberate, repeated cutting of other residents, not a faulty device.
+
+## Another resident, 2026-10-28 to 2026-11-01 (same device)
+
+A second resident's laptop (`10.255.16.59`) ran the same monitor for four days. The same device (`xx-xx-xx-xx-xx-xx`, `10.255.18.145`) cut it off **every time it joined the wired LAN**: 10-28 22:55 and 23:10, 10-29 01:32, and 11-01 07:06, 17:45 and 18:28. The longest outage lasted **37 minutes** (11-01 17:45–18:23).
+- Its packet capture on 11-01 shows `xx-xx-xx-xx-xx-xx` sending **8 fake "10.255.31.254 is-at xx-xx-xx-xx-xx-xx" replies** between 18:28 and 18:31.
+- It also shows the device **looking up the victim** by its own IP (`who-has 10.255.16.59 tell 10.255.18.145`, 18:28:52).
+- That laptop is now protected the same way as mine (gateway MAC pinned, router reminded of its real MAC every second). The attacker is still active as of **2026-11-01 18:31**.
 
 ## How to find it on the MikroTik
 

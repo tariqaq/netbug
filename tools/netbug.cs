@@ -120,8 +120,9 @@ class NetBug
     // a loud alert when the gateway MAC changes while the gateway IP stays the same, and the
     // continuous ARP capture (see "ARP watch"), which reports anyone else claiming the gateway IP or
     // this laptop's IP.
-    // The trusted MAC is the first one seen for a gateway IP (or the pinned one). It is not replaced
-    // by a changed MAC, so a poisoned ARP cache can't make the impostor "trusted".
+    // The trusted MAC is the first one seen for a gateway IP, replaced by a pin or by a MAC a router check
+    // proved (the first one seen can be an impostor already answering at start). It is not replaced by a
+    // changed MAC, so a poisoned ARP cache can't make the impostor "trusted".
     static string gwArp = "", lastGwArp = "", trustedGwMac = "", trustedGwIp = "";
     static volatile string gwAlert = "";
     static DateTime gwAlertAt = DateTime.MinValue;
@@ -507,10 +508,16 @@ class NetBug
 
                 if (tick % 2 == 0 || dnsMs < 0) dnsMs = gw != null ? DnsProbe(gw) : -1;   // a failed probe is re-checked the next second
                 if (tcpMs < 0 && tick % 10 != 0) tcpMs = TcpProbe();   // re-check a failed probe every second
+                // a new interface: its gateway entry is read now, and its packet counters start fresh
+                bool ifChanged = ifaceName != lastIface;
+                if (ifChanged) lastTx = -1;
                 if (tick % 10 == 0)
                 {
                     tcpMs = TcpProbe();
                     UdpUsage(out udpTotal, out udpTop);
+                }
+                if (tick % 10 == 0 || ifChanged)
+                {
                     gwMac = gw != null && ip != null ? Arp(gw, ip) : "";
                     gwArp = gw != null && ni != null ? ArpEntryType(gw, ni) : "";
                 }
@@ -554,13 +561,21 @@ class NetBug
                 string failStr = string.Join("|", fails);
 
                 // ---- transitions ----
-                if (ifaceName != lastIface) { Event(string.Format("active interface: '{0}' -> '{1}' ip={2} gw={3}", lastIface, ifaceName, ip, gw)); lastIface = ifaceName; lastTx = -1; }
+                if (ifChanged) { Event(string.Format("active interface: '{0}' -> '{1}' ip={2} gw={3}", lastIface, ifaceName, ip, gw)); lastIface = ifaceName; }
                 if (ethLink != lastEthLink) { Event(string.Format("USB ethernet link: {0} -> {1}", lastEthLink == "" ? "?" : lastEthLink, ethLink)); lastEthLink = ethLink; }
+                // the entry type first: a new pin makes its MAC the trusted one before the MAC change is judged
+                if (gwArp != "" && gwArp != lastGwArp && !fixBusy)
+                {
+                    Event(string.Format("gateway ARP entry for {0}: {1} -> {2}{3}", gw, lastGwArp == "" ? "?" : lastGwArp, gwArp,
+                        gwArp == "static" ? " (pinned to " + gwMac + ", spoofed ARP replies are ignored)" : ""));
+                    if (gwArp == "static" && gwMac.Length == 17 && gw != null) TrustGateway(gw.ToString(), gwMac);   // the pin is the truth
+                    lastGwArp = gwArp;
+                }
                 if (gwMac != "" && gwMac != lastGwMac && !fixBusy)   // a router check swaps the entry on purpose
                 {
                     // same gateway IP, a real MAC other than the trusted one: someone else is answering for the router
                     string gwIp = gw == null ? "" : gw.ToString();
-                    if (gwMac.Length == 17 && gwIp != trustedGwIp) { trustedGwMac = gwMac; trustedGwIp = gwIp; }
+                    if (gwMac.Length == 17 && gwIp != trustedGwIp) TrustGateway(gwIp, gwMac);
                     if (gwMac.Length == 17 && gwIp == trustedGwIp && gwMac != trustedGwMac)
                     {
                         SetGwAlert(string.Format("gateway {0} changed MAC {1} -> {2} at {3:HH:mm:ss}", gwIp, trustedGwMac, gwMac, DateTime.Now));
@@ -570,13 +585,6 @@ class NetBug
                     }
                     else Event(string.Format("gateway MAC: {0} -> {1}", lastGwMac == "" ? "?" : lastGwMac, gwMac));
                     lastGwMac = gwMac;
-                }
-                if (gwArp != "" && gwArp != lastGwArp && !fixBusy)
-                {
-                    Event(string.Format("gateway ARP entry for {0}: {1} -> {2}{3}", gw, lastGwArp == "" ? "?" : lastGwArp, gwArp,
-                        gwArp == "static" ? " (pinned to " + gwMac + ", spoofed ARP replies are ignored)" : ""));
-                    if (gwArp == "static" && gwMac.Length == 17 && gw != null) { trustedGwMac = gwMac; trustedGwIp = gw.ToString(); }   // the pin is the truth
-                    lastGwArp = gwArp;
                 }
                 if (pubIp != "" && pubIp != lastPubIp) { Event(string.Format("public IP: {0} -> {1}", lastPubIp == "" ? "?" : lastPubIp, pubIp)); lastPubIp = pubIp; }
                 if (udpTotal >= UdpWarnThreshold && !udpWarned) { Event(string.Format("UDP endpoints high: {0} (top: {1})", udpTotal, udpTop)); udpWarned = true; Snapshot("udp_high"); }
@@ -1756,6 +1764,15 @@ class NetBug
             }
             finally { SetActive(idx, gw, pinned); }   // as it was: pinned again, or learned again
 
+            // the laptop moved to another network or adapter meanwhile: the results say nothing about it
+            if (curGw == null || curGw.ToString() != gwIp || IfIndex(curNi) != idx)
+            {
+                fixJson = string.Format("{{\"at\":{0},\"note\":{1},\"cands\":[]}}", Unix(DateTime.Now),
+                    J("The network changed during the check, so nothing was picked" + (only != null ? " or pinned" : "") + ". Run it again."));
+                Event(string.Format("router check ({0}) dropped: the network changed during it", why));
+                return;
+            }
+
             foreach (var c in cands)
                 c.Verdict = !c.Works ? "nothing gets through it: not the router"
                     : c.Hop == gwIp ? "the real router: traffic gets through and it answers as " + gwIp
@@ -1779,6 +1796,9 @@ class NetBug
                     verifiedMac = real.Count == 1 ? real[0].Mac : "";
                     verifiedGw = gwIp; verifiedIf = idx;
                 }
+            // a proven router replaces the trusted MAC, which is otherwise the first one seen (and that can be
+            // an impostor already answering when netbug starts)
+            if (real.Count == 1) TrustGateway(gwIp, real[0].Mac);
             bool pinnedNow = false;
             if (only != null)
             {
@@ -1826,9 +1846,17 @@ class NetBug
         string output = Netsh(string.Format("interface ipv4 add neighbors interface={0} address={1} neighbor={2} store=persistent", idx, gw, mac));
         lock (pinLock) pinCacheAt = DateTime.MinValue;
         if (PersistentPin(idx, gw) != mac) return "Pinning failed: " + output.Trim();
+        TrustGateway(gw.ToString(), mac);
         Event(string.Format("gateway {0} pinned to {1} on '{2}' {3}", gw, mac, ni.Name, how));
         return "";
     }
+
+    // the MAC that gateway MAC changes and the ARP watch are judged against
+    static void TrustGateway(string gwIp, string mac)
+    {
+        lock (trustLock) { trustedGwMac = mac; trustedGwIp = gwIp; }
+    }
+    static readonly object trustLock = new object();
 
     static string Unpin()
     {

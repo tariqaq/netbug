@@ -308,7 +308,7 @@ The pin had been removed at 15:12 so that the next drop would hit the laptop unp
 ARP watch compared the capture against the gateway MAC **currently in Windows' ARP cache**. During an attack that *is* the impostor's MAC, so the impostor's replies counted as "real" and nothing was reported. Fixed:
 - netbug now keeps a **trusted** gateway MAC: the first MAC seen for a gateway IP, or the pinned one. A changed MAC never replaces it.
 - `GATEWAY MAC CHANGED` and ARP watch both compare against the trusted MAC.
-- Limit: if netbug starts *during* an attack, the first MAC it sees is the impostor's. Restart it once the network is healthy.
+- Limit: if netbug starts *during* an attack, the first MAC it sees is the impostor's. Since 2026-11-01 a pin, or a router check that proves the real router, replaces the trusted MAC (see §12), so this no longer needs a restart.
 
 ### Pin
 The user agreed to re-pin after this confirmation. The first attempt was blocked by Claude Code's permission safeguard (the approval wasn't explicit enough for a persistent system change). After an explicit "yes, re-pin the gateway MAC" it was **applied at 15:37:57**:
@@ -330,3 +330,47 @@ netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx 
    - DHCP snooping plus ARP inspection on managed switches, if they support it.
    - **client isolation** on APs and switch ports, so residents can't send frames to each other at all
 3. Watch for repeat offenders (the same MAC or IP claiming `10.255.31.254`).
+
+## 12. Second victim: a friend's laptop on the same LAN (2026-10-28 to 2026-11-01)
+
+A friend in the same hostel ran netbug (the lone exe, then the v1.0.1 install) from 2026-10-28 22:55 to 2026-11-01 18:40 and exported the whole `C:\ProgramData\netbug` folder: `events.log`, 3 CSVs, 16 snapshots and the ARP ring. Their laptop: `10.255.16.59`, MAC `xx-xx-xx-xx-xx-xx`, wired adapter "Ethernet", plus Wi-Fi to phone hotspots (`192.168.50.1` on 10-28, `10.250.41.209` on 11-01).
+
+### Verdict
+The **same attacker** (`xx-xx-xx-xx-xx-xx` / `10.255.18.145`) cut this laptop off **every time it joined the wired LAN**: on 10-28 at 22:55 and 23:10, on 10-29 at 01:32, and on 11-01 at 07:06, 17:45 and 18:28. Each time, the laptop's first view of the gateway was already `xx-xx-xx-xx-xx-xx`, and nothing got through. Since the first sighting on the user's laptop (10-28 05:34), the attacker has been active for **4 days**.
+
+### Evidence
+- **ARP cache** in every Ethernet snapshot: `10.255.31.254 → xx-xx-xx-xx-xx-xx` (Probe or Reachable), and `10.255.18.145` on the same MAC.
+- **Capture** (`2026-11-01_18-31-13_gw_mac.ring.txt`):
+  - `xx-xx-xx-xx-xx-xx > xx-xx-xx-xx-xx-xx … Reply 10.255.31.254 is-at xx-xx-xx-xx-xx-xx`, 8 times between 18:28 and 18:31
+  - the real `xx-xx-xx-xx-xx-xx` answered 7 times in the same window
+  - `xx-xx-xx-xx-xx-xx > xx-xx-xx-xx-xx-xx … Request who-has 10.255.16.59 tell 10.255.18.145` at 18:28:52: the attacker looked the victim up by its own IP, the same victim lookup as at 15:28 on 10-28.
+- **Router checks:** 32 checks between 10-28 and 11-01 18:29 found that "nothing gets through" `xx-xx-xx-xx-xx-xx`. They usually found the same for the real `xx-xx-xx-xx-xx-xx`, because the attacker had also poisoned the router's entry for the laptop, so replies went to the attacker. The exception is 10-29 01:43, when the real router passed.
+- **Outage time on Ethernet:**
+  - 94 s and 232 s on 10-28
+  - 525 s on 11-01 07:06
+  - **2,228 s (37 min)** on 11-01 17:45–18:23
+  - Each ended only when the laptop fell back to the hotspot.
+
+### How it was fixed
+1. At 18:27:44 the friend installed v1.0.1. That build sends the MAC announce (about 1/s), which tells the router the laptop's real MAC again.
+2. At 18:30:14 the laptop came back on Ethernet. The router entry was still poisoned (`xx-xx-xx-xx-xx-xx` in the cache).
+3. At 18:31:04 **Test and pin** tested the known hostel router `xx-xx-xx-xx-xx-xx`. It passed ("traffic gets through and it answers as 10.255.31.254") and was pinned at 18:31:06. About 50 s of announce on Ethernet had passed, so the router's side was evidently fixed too.
+4. From 18:31:10 to 18:40:13 (147 samples): the gateway was `static xx-xx-xx-xx-xx-xx` and gateway ping was 0 ms, with **zero** gateway, Google, DNS or TCP failures. The only misses were 1.1.1.1 pings, the usual Cloudflare ICMP rate limiting.
+
+### netbug bugs this exposed
+1. **A router check pinned the attacker** (fixed in v1.0.0, before this export was made).
+   - Every `netsh … delete neighbors` call used `interface=`, which that command rejects. So the check's "put the entry back" step never removed its temporary static entry.
+   - The last MAC tested, usually the attacker's, stayed in the ARP table as a static entry. The log shows it as "pinned to xx-xx-xx-xx-xx-xx" at 10-28 22:57:03, 10-29 01:33:47, 11-01 07:08:00, 17:46:43 and 18:21:25.
+   - That locked the laptop onto the attacker until the adapter reset, which made those outages longer (the 37 min one included).
+   - The same happened with the hotspot routers on Wi-Fi.
+2. **Trusted MAC = the impostor** (fixed 2026-11-01 18:48).
+   - netbug trusted the first gateway MAC it saw, and on this laptop that was the attacker.
+   - After the pin, it flagged the *real* router: "GATEWAY MAC CHANGED … xx-xx-xx-xx-xx-xx -> xx-xx-xx-xx-xx-xx (trusted xx-xx-xx-xx-xx-xx)", and "ARP SPOOFING DETECTED: gateway claimed by xx-xx-xx-xx-xx-xx".
+   - It also judged the MAC change before the new pin was read.
+   - Now a pin or a passed router check replaces the trusted MAC, and the pin is read first. In this sequence, the switch to `xx-xx-xx-xx-xx-xx` is then a normal change, and the attacker's 8 replies are reported as the spoofing.
+3. **A check outlived a network change** (fixed 2026-11-01 18:48).
+   - At 18:30:07 an auto check started on the hotspot and finished on Ethernet, testing the hotspot's MAC against the hostel gateway.
+   - A check now throws its result away when the gateway or adapter changes while it runs.
+4. **Stale gateway after an adapter switch** (fixed 2026-11-01 18:48).
+   - For up to 10 s after switching adapters, netbug showed the previous adapter's gateway MAC and ARP type, for example "gateway is pinned to xx-xx-xx-xx-xx-xx" on Ethernet. The packet counters also went negative (`tx/rx 7901/-450`).
+   - Both are now read fresh on the switch.

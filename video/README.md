@@ -2,7 +2,7 @@
 
 A narrated explainer (1920×1080, 30 fps, 2:22) of the two ARP-spoofing attacks on 2026-10-28 (05:34 and 15:28) and the gateway-pin fix, for residents and the hostel RCC. It is cut as a restrained true-crime documentary: cold open, chapter cards, a synthesized score and layered sound design (v3), with slower pacing and a studio-processed narrator (v4).
 
-Rendered with [kinetograph](https://github.com/0xS4N4TG/kinetograph) 0.2.0 (TypeScript/React video engine, GPU renderer).
+Built with [kinetograph](https://github.com/0xS4N4TG/kinetograph) 0.2.5 (TypeScript/React video engine, GPU renderer). The committed MP4 was rendered with 0.2.0. A 0.2.5 render matches it: bit-identical audio, and frames at SSIM 0.99997 (no visible change).
 
 | File | What |
 |---|---|

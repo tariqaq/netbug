@@ -5,6 +5,20 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
+### 19:03: `HASH` video: kinetograph 0.2.0 -> 0.2.5
+- `video/package.json` and the lockfile: kinetograph 0.2.5, the latest release (`main` is ahead but unreleased).
+- Checked:
+  - `check` reports no type errors.
+  - `lint` gives 0 errors and the same 13 off-canvas warnings as before.
+  - The GPU render (h264_nvenc, 3 Mbit/s) took 92 s.
+- Compared with the committed 0.2.0 render:
+  - same length (4251 frames, 141.7 s)
+  - **bit-identical audio** (same MD5, -14.8 LUFS, peak -0.9 dBFS)
+  - frames at SSIM 0.99997 / PSNR 70 dB (worst frame 55.7 dB), so no visible change
+- The committed `incident-v4-redacted.mp4` stays as it is (no need for another 55 MB in git history).
+- `video/README.md` names 0.2.5 and the comparison.
+- **Machine:** `npm install kinetograph@0.2.5` in `video/` (local only). The test render is in `video/out/` (gitignored).
+
 ### 18:48: `4ee190b` friend's laptop analysis; trusted-MAC, mid-check and adapter-switch fixes (release v1.0.2)
 - Analyzed a friend's netbug export (10-28 22:55 to 11-01 18:40, same hostel LAN). It shows the **same attacker** (`10.255.18.145`, randomized MAC) blackholing that laptop on every wired session, for 4 days:
   - outages of 94 s, 232 s, 525 s and 37 min

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 22:25: `HASH` video: v5 revision 1 (Andrew voice, rebuilt world, 2D type, slower pacing)
+### 22:25: `e1dea99` video: v5 revision 1 (Andrew voice, rebuilt world, 2D type, slower pacing)
 - Narration: `video/scripts/tts5.py` now uses Microsoft Edge `en-US-AndrewMultilingualNeural` through edge-tts (the `.venv` from v4), with per-line `rate`/`pitch` in `video/narration-v5.json`, the v4 studio chain and word timings from the voice's word boundaries. Script trimmed (how1, a2_1, f1, fix1, sym1, a1_end). 30 lines, every word matched, 150.6 s of speech. `public/vo5/reference.wav` removed (Qwen clone source, no longer used).
 - `video/src/v5/world.tsx` rebuilt:
   - the block stands on a slab of city cut like a cake, with the basement in cross-section

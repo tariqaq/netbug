@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 21:30: `HASH` video: `scripts/render5.ps1`; disk cleanup
+### 21:30: `5293326` video: `scripts/render5.ps1`; disk cleanup
 - `video/scripts/render5.ps1`: the final v5 renders in one command (redacted, plus the full cut when `data.local.json` exists): NVENC HEVC, 2-pass loudnorm, AAC 320k, hvc1 mux. `video/README.md` and `PLAN-v5.md` name it and list what narration regeneration needs.
 - **Machine:** freed 13.9 GB on C: (95.1 GB free after):
   - removed the Hugging Face models `Qwen3-TTS-12Hz-1.7B-CustomVoice` and `-VoiceDesign` (bake-off only)

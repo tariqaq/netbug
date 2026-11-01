@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 18:19: `HASH` stale-doc sweep
+### 18:19: `ddef4b3` stale-doc sweep
 - README status table: **Not pinned** now also points to testing a router MAC, matching `dashboard.html`.
 - `netbug.cs` header: the router check summary mentions testing one known or typed MAC. Comment-only, so the v1.0.1 exe is unchanged.
 

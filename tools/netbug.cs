@@ -28,8 +28,8 @@
 // A dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served on port 8787,
 // read-only, on all interfaces (localhost only for a lone exe, see below).
 // Router check and pin (the dashboard's "Router protection" panel, for the person at this laptop
-// only): finds the real router MAC by testing every MAC that claims the gateway IP, and can pin it
-// as a permanent ARP entry. See the "router check and pin" section.
+// only): finds the real router MAC by testing every MAC that claims the gateway IP (or tests one known
+// or typed MAC), and can pin it as a permanent ARP entry. See the "router check and pin" section.
 //
 // Started without admin rights (a double-click), netbug asks for UAC, starts an elevated copy and
 // opens the dashboard in the default browser. The first elevated start sets up the "netbug" logon task

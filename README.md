@@ -156,7 +156,7 @@ The status at the top right of the panel:
 | Status | Meaning |
 |---|---|
 | **Protected** (green) | The gateway is pinned to a MAC. Fake router replies are ignored. |
-| **Not pinned** (orange) | No pin. If a check has found the real router, the line under it names that router's MAC. If not, it shows the current ARP entry and asks you to run a check. |
+| **Not pinned** (orange) | No pin. If a check has found the real router, the line under it names that router's MAC. If not, it shows the current ARP entry and asks you to run a check or test a router MAC. |
 | **Pin differs** (red) | The pinned MAC isn't the one the last check found. If the router was replaced, turn the pin off and on again. |
 | **Checking…** (orange) | A check is running. The connection drops for a few seconds per tested MAC. |
 | **No network** (orange) | No adapter with a gateway. |

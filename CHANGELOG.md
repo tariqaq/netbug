@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-01
 
-### 21:21: `HASH` video: v5, a 3D film of every incident (1080p60, 3:23)
+### 21:21: `82b0a35` video: v5, a 3D film of every incident (1080p60, 3:23)
 - New film in `video/src/v5/` (`world.tsx`, `look.tsx`, `index.tsx`, `sound.ts`, `score.ts`, `qr.json`): a night-to-dawn 3D diorama of the hostel covering 05:34, 15:28, the friend's laptop, the fix (watch, Test and pin, announce) and prevention, with an end card and a QR code to the latest release. Plan, storyboard, fact checks and log in `video/PLAN-v5.md`.
 - Narration: `video/scripts/tts5.py` + `video/narration-v5.json`. Qwen3-TTS 1.7B clones the picked bake-off voice (`public/vo5/reference.wav`) on CUDA; for each line, the best of up to 3 takes by Whisper large-v3-turbo transcript match; studio chain; Whisper word timings into `public/vo5/timing.json`. 154 s of speech, all word cues resolve.
 - Rendered locally, not committed or published: `video/out/incident-v5-redacted.mp4` and `incident-v5-full.mp4`.

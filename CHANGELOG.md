@@ -3,6 +3,13 @@
 All times are the user's system time: Kuala Lumpur, MYT (UTC+08:00). Newest first.
 Entries cover repo changes (with commit hash) and changes made to the machine itself.
 
+## 2026-11-03
+
+### 07:21: `1d888b0` friend's laptop, second export: clean after the fix
+- Analyzed the friend's second netbug export (11-01 18:40 to 11-03 02:00, v1.0.2). Gateway pinned to the real router in all 15,540 Ethernet samples. No ARP spoofing alerts after 11-01 18:31:16 and no sign of the attacker. No outage matches the ARP-spoofing signature: the 10 h gap on 11-02 is the laptop asleep, and the rest are short blips (NAT port change, own heavy traffic, evening upstream latency).
+- Incident report §12 (and its REDACTED copy): new "After the fix" section, date range to 11-03.
+- `.gitignore`: `samefrnd_netbug-logs-*.zip` (the raw export holds PII).
+
 ## 2026-11-01
 
 ### 23:04: `3729bfb` video: v5 revision 2 (camera sightlines, the trap shot, victim labels)

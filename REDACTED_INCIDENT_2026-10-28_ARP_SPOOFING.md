@@ -331,7 +331,7 @@ netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx 
    - **client isolation** on APs and switch ports, so residents can't send frames to each other at all
 3. Watch for repeat offenders (the same MAC or IP claiming `10.255.31.254`).
 
-## 12. Second victim: a friend's laptop on the same LAN (2026-10-28 to 2026-11-01)
+## 12. Second victim: a friend's laptop on the same LAN (2026-10-28 to 2026-11-03)
 
 A friend in the same hostel ran netbug (the lone exe, then the v1.0.1 install) from 2026-10-28 22:55 to 2026-11-01 18:40 and exported the whole `C:\ProgramData\netbug` folder: `events.log`, 3 CSVs, 16 snapshots and the ARP ring. Their laptop: `10.255.16.59`, MAC `xx-xx-xx-xx-xx-xx`, wired adapter "Ethernet", plus Wi-Fi to phone hotspots (`192.168.50.1` on 10-28, `10.250.41.209` on 11-01).
 
@@ -356,6 +356,16 @@ The **same attacker** (`xx-xx-xx-xx-xx-xx` / `10.255.18.145`) cut this laptop of
 2. At 18:30:14 the laptop came back on Ethernet. The router entry was still poisoned (`xx-xx-xx-xx-xx-xx` in the cache).
 3. At 18:31:04 **Test and pin** tested the known hostel router `xx-xx-xx-xx-xx-xx`. It passed ("traffic gets through and it answers as 10.255.31.254") and was pinned at 18:31:06. About 50 s of announce on Ethernet had passed, so the router's side was evidently fixed too.
 4. From 18:31:10 to 18:40:13 (147 samples): the gateway was `static xx-xx-xx-xx-xx-xx` and gateway ping was 0 ms, with **zero** gateway, Google, DNS or TCP failures. The only misses were 1.1.1.1 pings, the usual Cloudflare ICMP rate limiting.
+
+### After the fix (2026-11-01 18:40 to 2026-11-03 02:00)
+A second export from the same laptop (v1.0.2 from 11-01 18:54) covers the next ~31 h awake on Ethernet. **Clean:**
+- The pin held: `gw_arp=static`, `xx-xx-xx-xx-xx-xx`, in all 15,540 Ethernet samples.
+- No `ARP SPOOFING DETECTED` or `GATEWAY MAC CHANGED` after 11-01 18:31:16. The ring is judged every 5 min, so nothing claimed the gateway's IP or the laptop's IP where this laptop could see it. No new snapshot mentions `xx-xx-xx-xx-xx-xx` or `10.255.18.145`.
+- No outage matches the ARP-spoofing signature:
+  - 11-02 09:27–19:26 (35,946 s): the laptop was asleep (no samples, no hourly health lines, counters reset). The snapshot on wake shows the gateway still pinned and every probe OK.
+  - 11-02 01:47:40 (2 s): UDP only, a router NAT port change, right after netbug was restarted three times.
+  - Single-second gateway ping misses (11-02 01:12, 01:32, 03:16, 03:20) during the laptop's own heavy traffic (~27k tx / 93k rx packets/s), and higher Cloudflare latency (80–135 ms) on the evening of 11-02 with the gateway at 0 ms.
+- A fake claim sent only to the router never reaches this laptop, so the capture can't rule one out. But the laptop never lost its connection, so the pin plus the MAC announce kept it working.
 
 ### netbug bugs this exposed
 1. **A router check pinned the attacker** (fixed in v1.0.0, before this export was made).

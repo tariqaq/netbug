@@ -45,7 +45,7 @@ In PowerShell, from the repo folder:
 
 ```powershell
 cd tools
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize /out:netbug.exe `
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize /out:netbug.exe /r:System.IO.Compression.dll `
   /resource:dashboard.html,netbug.dashboard.html /resource:fonts\inter.woff2,netbug.inter.woff2 `
   /resource:arpwatch.ps1,netbug.arpwatch.ps1 /resource:snapshot.ps1,netbug.snapshot.ps1 netbug.cs
 cd ..
@@ -88,7 +88,7 @@ In the dashboard's **Router protection** panel:
 
 ### Updating
 
-The running exe can't be overwritten, so in an admin PowerShell:
+The repo copy doesn't update itself. It checks GitHub every 6 hours and, when a newer release is out, says so on the page and in `events.log`. The running exe can't be overwritten, so after `git pull`, in an admin PowerShell:
 
 ```powershell
 Stop-ScheduledTask netbug; Get-Process netbug -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -130,16 +130,19 @@ A lone exe (no `dashboard.html` next to it) installs itself on the first run:
 - registers the `netbug` logon task with the same settings as on this laptop, and starts it
 - puts its logs in `C:\ProgramData\netbug\logs`
 
-It then runs like the repo copy, with two differences:
+It then runs like the repo copy, with three differences:
 - The page is served on localhost only (other devices on the LAN can't see it).
 - The panel has an **Uninstall netbug** button (click twice).
+- It **updates itself**: 2 minutes after it starts and then every 6 hours, it asks GitHub for the [latest release](https://github.com/tariqaq/netbug/releases/latest). When the release is newer than the running version (v1.0.4 onward), it installs it by itself, waiting until no router check is running. **Install update now** in **Logs and updates** does the same at once. netbug restarts for a few seconds and the page reloads.
+
+How an update installs: the release's `netbug.exe` is downloaded to `C:\ProgramData\netbug\netbug.new.exe`. It must be a build named netbug, of at least the release's version, or it's thrown away. It then installs itself like a newer build run by hand (below), and the old copy exits.
 
 Double-click again:
 
 | What they run | What happens |
 |---|---|
 | The same build again | Only opens the page. |
-| A newer build | Replaces the installed copy, restarts it, opens the page. This is how to update. |
+| A newer build | Replaces the installed copy, restarts it, opens the page. Before v1.0.4 this was the only way to update. |
 
 To uninstall, use the button, or run `netbug.exe --uninstall`. Either way it removes the task, the router pin and `C:\ProgramData\netbug`, logs included.
 
@@ -198,6 +201,7 @@ If the gateway stops answering while pinned (for example the router was replaced
 | ~1 s | MAC announce (see Router protection) | Not a check: keeps the router's entry for this laptop correct |
 | 15 s | HEAD on one long-lived TLS connection | Connections silently killed (FIN / RST / timeout) |
 | 5 min | Public IP | ISP / PPPoE reconnects |
+| 6 h (first 2 min after start) | Latest GitHub release | A newer netbug (a lone exe installs it, see [Sending netbug to a friend](#-sending-netbug-to-a-friend)) |
 | 1 h | Own RAM / handles / threads | Leaks (restarts itself past limits) |
 
 🚨 **Outage** = no interface, or both internet pings, DNS, TCP or UDP failing **2 seconds in a row**. Gateway-only ping loss doesn't count (the router rate-limits ICMP).
@@ -258,10 +262,19 @@ Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` for a lone 
 - A lost Cloudflare ping is hidden while Google still answers: Cloudflare drops some pings on its own (rate limiting), so the readout keeps the last value and the line doesn't break. The CSV still logs it as `-1`.
 - Latest readings: interface, IPs, gateway MAC with pin status and the last ARP watch result, NAT mapping, packets, UDP ports
 - `events.log` live (alerts red, lag orange, hourly health lines cyan and hideable)
+- **Logs and updates** (on the laptop only):
+  - the running version and the last update check
+  - **Check for updates**, and **Install update now** when a newer release is out (lone exe only)
+  - **Export all logs**: the browser downloads `netbug-full-logs-<date>_<time>.zip`, with everything up to the second you press it:
+    - every file in `logs\` (`events.log`, every CSV, `netbug.settings`, every snapshot and its capture, the ARP ring files)
+    - `arp-ring-memory.txt`: the ARP frames from the last 15 min netbug holds in memory, read up to that moment
+    - `state.json`: the latest sample and the Router protection status
+    - `EXPORT_MANIFEST.txt`: the cutoff time, version, and every file with its size
+  - Nothing is redacted: the zip has MACs, IPs and network names.
 
-The page makes no external requests, so it works while the internet is down. It polls only while visible (`/api/state` 1 s, `/api/events` 2 s, `/api/fix` 2 s on the laptop).
+The page makes no external requests, so it works while the internet is down. It polls only while visible (`/api/state` 1 s, `/api/events` 2 s, `/api/fix` 2 s on the laptop). It reloads itself when netbug's version changes (after an update).
 
-> ⚠️ Anyone on the LAN can see the page, including your public IP, the gateway MAC and process names. The Router protection controls are localhost-only.
+> ⚠️ Anyone on the LAN can see the page, including your public IP, the gateway MAC and process names. The Router protection, update and export controls are localhost-only.
 
 ---
 

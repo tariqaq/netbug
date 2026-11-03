@@ -37,8 +37,12 @@
 // download) installs itself to %ProgramData%\netbug, runs from there, unpacks its page, font and
 // scripts from its own resources and serves the dashboard on localhost only.
 // netbug.exe --uninstall removes the task and the router pin (and %ProgramData%\netbug for a lone exe).
+// Export and updates (the page's "Logs and updates" panel, this laptop only): one zip of everything in
+// logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 6 h (and on
+// the page's button) netbug asks GitHub for the latest release; a lone exe installs a newer one by itself,
+// a repo copy only reports it. See the "export and updates" section.
 //
-// Build (in tools/): csc /target:winexe /optimize /out:netbug.exe /resource:dashboard.html,netbug.dashboard.html
+// Build (in tools/): csc /target:winexe /optimize /out:netbug.exe /r:System.IO.Compression.dll /resource:dashboard.html,netbug.dashboard.html
 //   /resource:fonts\inter.woff2,netbug.inter.woff2 /resource:arpwatch.ps1,netbug.arpwatch.ps1
 //   /resource:snapshot.ps1,netbug.snapshot.ps1 [/resource:routers.local.txt,netbug.routers.txt] netbug.cs
 // (routers.local.txt, gitignored: known router MACs offered on the page, see "router check and pin")
@@ -57,9 +61,17 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO.Compression;
+
+[assembly: System.Reflection.AssemblyTitle("netbug")]
+[assembly: System.Reflection.AssemblyVersion(NetBug.Version)]
+[assembly: System.Reflection.AssemblyFileVersion(NetBug.Version)]
 
 class NetBug
 {
+    // the release version: an update is a GitHub release with a higher tag (see "export and updates")
+    public const string Version = "1.0.4";
+
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
 
@@ -209,6 +221,8 @@ class NetBug
             new Thread(DashboardLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(AnnounceLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(RingLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+            new Thread(UpdateLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+            if (portable) Task.Run(() => { Thread.Sleep(30000); DeleteUpdateFiles(); });   // left by the update that started this copy
             if (openPage) Task.Run(() => { for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500); OpenPage(); });
             Run();
         }
@@ -1438,9 +1452,10 @@ class NetBug
     // Dashboard, read-only for anyone on the LAN. GET: "/" serves tools/dashboard.html (read
     // from disk on each request), /fonts/inter.woff2 the page font (cached by the browser for a
     // year), /api/state the latest sample + chart history (?since=<unix s>
-    // returns only newer samples), /api/events new events.log lines (?from=<byte offset>, or the
-    // last 64 KB when omitted). /api/fix* is the router check and pin (see FixApi). One request at a
-    // time on its own thread; the page polls only while it is visible. The "+" prefix (all
+    // returns only newer samples) + netbug's version, /api/events new events.log lines (?from=<byte offset>, or the
+    // last 64 KB when omitted). /api/fix* is the router check and pin plus the update check/install (see
+    // FixApi). One request at a time on this thread, except POST /api/export (see "export and updates"),
+    // which streams on its own; the page polls only while it is visible. The "+" prefix (all
     // interfaces) needs admin, which netbug always has; a lone (portable) netbug listens on localhost only.
     static void DashboardLoop()
     {
@@ -1462,6 +1477,17 @@ class NetBug
             HttpListenerContext ctx;
             try { ctx = listener.GetContext(); }
             catch { Thread.Sleep(1000); continue; }
+            if (ctx.Request.Url.AbsolutePath == "/api/export")   // can take a while: on its own thread, the page keeps polling
+            {
+                var c = ctx;
+                Task.Run(() =>
+                {
+                    try { Export(c); }
+                    catch (Exception ex) { Event("log export failed: " + ex.GetType().Name + ": " + ex.Message); }
+                    finally { try { c.Response.Close(); } catch { } }
+                });
+                continue;
+            }
             try { Serve(ctx); }
             catch { }
             finally { try { ctx.Response.Close(); } catch { } }
@@ -1504,8 +1530,8 @@ class NetBug
                 using (var p = Process.GetCurrentProcess()) dashMemMb = p.PrivateMemorySize64 / 1048576.0;
                 dashMemAt = DateTime.Now;
             }
-            body = string.Format("{{\"now\":{0},\"started\":{1},\"memMb\":{2:F1},\"port\":{3},\"sample\":{4},\"hist\":[{5}]}}",
-                Unix(DateTime.Now), Unix(started), dashMemMb, DashPort, sampleJson, string.Join(",", rows));
+            body = string.Format("{{\"now\":{0},\"started\":{1},\"memMb\":{2:F1},\"port\":{3},\"version\":{4},\"sample\":{5},\"hist\":[{6}]}}",
+                Unix(DateTime.Now), Unix(started), dashMemMb, DashPort, J(Version), sampleJson, string.Join(",", rows));
         }
         else if (path == "/api/events")
         {
@@ -1519,6 +1545,222 @@ class NetBug
         ctx.Response.AddHeader("Cache-Control", "no-store");
         ctx.Response.ContentLength64 = bytes.Length;
         ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+    }
+
+    // ---------------------------------------------------------------- export and updates
+    //
+    // Export: POST /api/export with the page's token as a form field (token=...; a form can't send the
+    // X-Netbug-Token header, and other websites can't read the token), from this laptop only. It first
+    // stops the ARP ring's capture file and reads it into memory, so the zip has ARP up to that moment, then
+    // streams one zip: every file in logs/ (events.log, the CSVs, netbug.settings, snapshots, ring files)
+    // under netbug-logs/, the in-memory ARP ring (arp-ring-memory.txt, the last 15 min), the latest sample
+    // and Router protection status (state.json) and EXPORT_MANIFEST.txt. Nothing is redacted. Files are
+    // read while netbug keeps writing them (shared read). One export at a time.
+    // Updates: 2 min after start and then every 6 h, and on the page's "Check for updates", netbug reads
+    // the latest GitHub release of Repo. A higher tag than Version with a netbug.exe asset is an update.
+    // A lone exe installs it by itself (once no router check runs) or on "Install update now": the exe is
+    // downloaded to %ProgramData%\netbug\netbug.new.exe, must be an assembly named netbug of at least that
+    // version, and is started; it installs itself like any newer build (see "install"), and this process
+    // exits. A repo copy (tools\netbug.exe) only reports the update: it is updated with git pull and a build.
+
+    const string Repo = "tariqaq/netbug";
+    static readonly object updLock = new object();
+    static volatile bool updBusy, updChecking;
+    static volatile string updLatest = "", updUrl = "", updError = "", updStep = "";
+    static DateTime updCheckedAt = DateTime.MinValue;
+    static int exporting;
+
+    static void UpdateLoop()
+    {
+        Thread.Sleep(TimeSpan.FromMinutes(2));
+        string told = "";
+        while (true)
+        {
+            updChecking = true;
+            try { CheckUpdate(); } finally { updChecking = false; }
+            if (UpdateAvailable())
+            {
+                if (portable)
+                {
+                    while (fixBusy) Thread.Sleep(5000);   // never in the middle of a router check
+                    InstallUpdate("automatic");
+                }
+                else if (told != updLatest)
+                {
+                    told = updLatest;
+                    Event("netbug " + updLatest + " is out (this is " + Version + "). This copy runs from its repo: git pull and rebuild to update.");
+                }
+            }
+            Thread.Sleep(TimeSpan.FromHours(6));
+        }
+    }
+
+    static bool UpdateAvailable()
+    {
+        System.Version v;
+        return updUrl != "" && System.Version.TryParse(updLatest, out v) && v > System.Version.Parse(Version);
+    }
+
+    static void CheckUpdate()
+    {
+        try
+        {
+            var req = (HttpWebRequest)WebRequest.Create("https://api.github.com/repos/" + Repo + "/releases/latest");
+            req.UserAgent = "netbug/" + Version; req.Accept = "application/vnd.github+json";
+            req.Timeout = 15000; req.ReadWriteTimeout = 15000;
+            string json;
+            using (var resp = req.GetResponse())
+            using (var r = new StreamReader(resp.GetResponseStream())) json = r.ReadToEnd();
+            var tag = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9]+(?:\\.[0-9]+){1,3})\"");
+            if (!tag.Success) throw new Exception("GitHub's reply has no release version");
+            var url = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"(https://github\\.com/" + Regex.Escape(Repo) + "/releases/download/[^\"/]+/netbug\\.exe)\"");
+            updUrl = url.Success ? url.Groups[1].Value : "";
+            updLatest = tag.Groups[1].Value;
+            updError = updUrl == "" ? "release " + updLatest + " has no netbug.exe" : "";
+        }
+        catch (Exception ex) { updError = "update check failed: " + ex.Message; }
+        updCheckedAt = DateTime.Now;
+    }
+
+    // Starts installing the update found by the last check; returns an error for the page, "" when started.
+    static string InstallUpdate(string why)
+    {
+        if (!portable) return "This netbug runs from its repo: update it with git pull and a rebuild.";
+        string tag, url;
+        lock (updLock)
+        {
+            if (updBusy) return "An update is already running.";
+            if (!UpdateAvailable()) return "There is no newer release.";
+            updBusy = true; tag = updLatest; url = updUrl; updError = "";
+        }
+        Task.Run(() =>
+        {
+            string part = Path.Combine(baseDir, "netbug.new.exe.part"), exe = Path.Combine(baseDir, "netbug.new.exe");
+            try
+            {
+                updStep = "Downloading " + tag;
+                Event("updating netbug " + Version + " -> " + tag + " (" + why + "): downloading " + url);
+                var req = (HttpWebRequest)WebRequest.Create(url);
+                req.UserAgent = "netbug/" + Version; req.Timeout = 60000; req.ReadWriteTimeout = 60000;
+                using (var resp = req.GetResponse())
+                using (var s = resp.GetResponseStream())
+                using (var f = File.Create(part)) s.CopyTo(f);
+                System.Reflection.AssemblyName an;
+                try { an = System.Reflection.AssemblyName.GetAssemblyName(part); }
+                catch { throw new Exception("the download isn't a netbug build"); }
+                if (an.Name != "netbug" || an.Version < System.Version.Parse(tag))
+                    throw new Exception("the download is " + an.Name + " " + an.Version + ", not netbug " + tag);
+                if (File.Exists(exe)) File.Delete(exe);
+                File.Move(part, exe);
+                updStep = "Installing " + tag;
+                Event("installing netbug " + an.Version + ": this copy exits, the new one replaces it and starts");
+                if (Monitor.TryEnter(pktmonLock, 10000)) RingPause();   // the new copy stops pktmon anyway
+                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = baseDir });
+                Environment.Exit(0);
+            }
+            catch (Exception ex)
+            {
+                updError = "update failed: " + ex.Message;
+                Event("update failed: " + ex.Message);
+                try { File.Delete(part); } catch { }
+                updStep = ""; updBusy = false;
+            }
+        });
+        return "";
+    }
+
+    static void DeleteUpdateFiles()
+    {
+        foreach (var f in new[] { "netbug.new.exe", "netbug.new.exe.part" })
+        {
+            string p = Path.Combine(baseDir, f);
+            if (!PathEq(p, SelfPath())) try { File.Delete(p); } catch { }
+        }
+    }
+
+    static void Export(HttpListenerContext ctx)
+    {
+        string form = "";
+        if (ctx.Request.HttpMethod == "POST")
+            using (var r = new StreamReader(ctx.Request.InputStream)) form = r.ReadToEnd();
+        var tok = Regex.Match(form, "(?:^|&)token=([0-9a-f]{32})(?:&|$)");
+        if (!LocalHost(ctx) || ctx.Request.HttpMethod != "POST" || !tok.Success || tok.Groups[1].Value != token) { ctx.Response.StatusCode = 403; return; }
+        if (Interlocked.Exchange(ref exporting, 1) == 1) { ctx.Response.StatusCode = 409; return; }
+        try
+        {
+            DateTime cut = DateTime.Now;
+            if (Monitor.TryEnter(pktmonLock, 15000))
+                try { RingPause(); } finally { RingResume(); Monitor.Exit(pktmonLock); }
+            List<ArpFrame> frames;
+            lock (ringLock) frames = ring.ToList();
+
+            ctx.Response.ContentType = "application/zip";
+            ctx.Response.AddHeader("Content-Disposition", "attachment; filename=\"netbug-full-logs-" + cut.ToString("yyyy-MM-dd_HH-mm-ss") + ".zip\"");
+            ctx.Response.AddHeader("Cache-Control", "no-store");
+            ctx.Response.SendChunked = true;
+            var list = new StringBuilder();
+            int files = 0; long bytes = 0;
+            using (var zip = new ZipArchive(new CountingStream(ctx.Response.OutputStream), ZipArchiveMode.Create, true))
+            {
+                foreach (var f in Directory.GetFiles(logDir, "*", SearchOption.AllDirectories).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                {
+                    string rel = f.Substring(logDir.Length).TrimStart('\\');
+                    try
+                    {
+                        using (var src = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                        {
+                            var e = zip.CreateEntry("netbug-logs/" + rel.Replace('\\', '/'), CompressionLevel.Optimal);
+                            e.LastWriteTime = File.GetLastWriteTime(f);
+                            long n = 0;
+                            using (var dst = e.Open())
+                            {
+                                var buf = new byte[81920];
+                                for (int k; (k = src.Read(buf, 0, buf.Length)) > 0; n += k) dst.Write(buf, 0, k);
+                            }
+                            list.AppendFormat("{0}\t{1}\r\n", rel, n);
+                            files++; bytes += n;
+                        }
+                    }
+                    catch (Exception ex) { if (ex is IOException || ex is UnauthorizedAccessException) list.AppendFormat("{0}\tskipped: {1}\r\n", rel, ex.Message); else throw; }
+                }
+                var ringText = new StringBuilder();
+                foreach (var fr in frames) ringText.Append(fr.T.ToString("yyyy-MM-dd HH:mm:ss.fff")).Append("  ").Append(fr.Line).Append("\r\n");
+                ZipText(zip, "netbug-logs/arp-ring-memory.txt", ringText.ToString());
+                ZipText(zip, "netbug-logs/state.json", "{\"version\":" + J(Version) + ",\"sample\":" + sampleJson + ",\"routerProtection\":" + FixStatus("") + "}");
+                ZipText(zip, "netbug-logs/EXPORT_MANIFEST.txt",
+                    "netbug " + Version + " full export. Nothing is redacted: it has MAC addresses, IPs and network names.\r\n" +
+                    "Export cutoff (local): " + cut.ToString("yyyy-MM-dd HH:mm:ss.fff zzz") + "\r\n" +
+                    "Source: " + logDir + "\r\n" +
+                    "Also: arp-ring-memory.txt (ARP frames netbug held in memory, " + frames.Count + " frames), state.json (latest sample and Router protection status)\r\n" +
+                    "Files (" + files + ", " + bytes.ToString("N0") + " bytes as read):\r\n" + list);
+            }
+            Event(string.Format("logs exported to the browser: {0} files, {1:N1} MB before compression", files, bytes / 1048576.0));
+        }
+        finally { Interlocked.Exchange(ref exporting, 0); }
+    }
+
+    // .NET Framework's ZipArchive reads Position while writing, which the HTTP response stream can't
+    // answer: this forward-only wrapper counts the bytes written instead.
+    class CountingStream : Stream
+    {
+        readonly Stream inner; long pos;
+        public CountingStream(Stream s) { inner = s; }
+        public override bool CanRead { get { return false; } }
+        public override bool CanSeek { get { return false; } }
+        public override bool CanWrite { get { return true; } }
+        public override long Length { get { return pos; } }
+        public override long Position { get { return pos; } set { throw new NotSupportedException(); } }
+        public override void Write(byte[] b, int o, int n) { inner.Write(b, o, n); pos += n; }
+        public override void Flush() { inner.Flush(); }
+        public override int Read(byte[] b, int o, int n) { throw new NotSupportedException(); }
+        public override long Seek(long o, SeekOrigin so) { throw new NotSupportedException(); }
+        public override void SetLength(long v) { throw new NotSupportedException(); }
+    }
+
+    static void ZipText(ZipArchive zip, string name, string text)
+    {
+        var e = zip.CreateEntry(name, CompressionLevel.Optimal);
+        using (var w = new StreamWriter(e.Open(), new UTF8Encoding(false))) w.Write(text);
     }
 
     // ---------------------------------------------------------------- router check and pin
@@ -1536,7 +1778,8 @@ class NetBug
     // fake replies. Unpin removes it from both stores.
     // Test and pin (trypin?mac=): the same test for one MAC chosen on the page (a known router or typed in),
     // without the 10 s listen; it is pinned only when it passes. A failed test changes nothing.
-    // Control: GET /api/fix (status) and POST /api/fix/{check,trypin,pin,unpin,auto,announce,uninstall}, only from this laptop
+    // Control: GET /api/fix (status, with the version and update state) and POST
+    // /api/fix/{check,trypin,pin,unpin,auto,announce,update/check,update/install,uninstall}, only from this laptop
     // (loopback, Host localhost/127.0.0.1, against DNS rebinding) with the per-run token the page was
     // served (X-Netbug-Token: other websites can't read it, and the custom header can't be sent cross-site
     // without a CORS preflight, which netbug never answers).
@@ -1632,6 +1875,11 @@ class NetBug
                 SaveSettings();
                 Event("MAC announce (keep the router updated) " + (announce ? "on" : "off"));
                 break;
+            case "/api/fix/update/check":
+                if (updBusy || updChecking) error = "An update check or install is already running.";
+                else { updChecking = true; Task.Run(() => { try { CheckUpdate(); } finally { updChecking = false; } }); }
+                break;
+            case "/api/fix/update/install": error = InstallUpdate("from the page"); break;
             case "/api/fix/uninstall":
                 if (!portable) { error = "This netbug runs from its repo; run netbug.exe --uninstall instead."; break; }
                 Task.Run(() =>
@@ -1659,9 +1907,12 @@ class NetBug
         string ann = string.Format("{{\"on\":{0},\"target\":{1},\"sent\":{2},\"seen\":{3},\"seenAt\":{4},\"error\":{5}}}",
             announce ? "true" : "false", J(announceTarget), Thread.VolatileRead(ref announceSent), announceSeen,
             announceSeenAt == DateTime.MinValue ? 0 : Unix(announceSeenAt), J(announceErr));
-        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12},\"known\":[{13}]}}",
+        string upd = string.Format("{{\"latest\":{0},\"available\":{1},\"checkedAt\":{2},\"checking\":{3},\"busy\":{4},\"step\":{5},\"error\":{6}}}",
+            J(updLatest), UpdateAvailable() ? "true" : "false", updCheckedAt == DateTime.MinValue ? 0 : Unix(updCheckedAt),
+            updChecking ? "true" : "false", updBusy ? "true" : "false", J(updStep), J(updError));
+        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12},\"known\":[{13}],\"version\":{14},\"update\":{15},\"exporting\":{16}}}",
             fixBusy ? "true" : "false", J(fixStep), autoDetect ? "true" : "false", portable ? "true" : "false", J(iface), J(gw == null ? "" : gw.ToString()),
-            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann, known);
+            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann, known, J(Version), upd, exporting == 1 ? "true" : "false");
     }
 
     static int IfIndex(NetworkInterface ni)

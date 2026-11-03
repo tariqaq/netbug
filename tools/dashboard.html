@@ -11,7 +11,9 @@
      internet is down: Apple devices use their own SF Pro, everything else gets Inter from
      /fonts/inter.woff2. Polls /api/state every 1 s and /api/events every 2 s, only while visible.
      On the laptop itself netbug fills in the token above, which shows the Router protection panel
-     (polls /api/fix every 2 s and sends its actions with the token); everyone else sees no controls. -->
+     (polls /api/fix every 2 s and sends its actions with the token) and the Logs and updates panel
+     (update check/install, and the full log export as a form post to /api/export); everyone else
+     sees no controls. The page reloads itself when /api/state reports a new netbug version. -->
 <style>
 @font-face {
   font-family: "Inter";
@@ -214,6 +216,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     <div class="fix-err" id="fx-err"></div>
   </section>
 
+  <section class="fix" id="tools" hidden aria-live="polite">
+    <div class="fix-head"><h2>Logs and updates:</h2><span class="fix-state" id="up-state"></span></div>
+    <p class="fix-sub" id="up-sub"></p>
+    <div class="fix-actions">
+      <button class="btn" id="up-install" type="button" hidden>Install update now</button>
+      <button class="btn ghost" id="up-check" type="button">Check for updates</button>
+      <button class="btn ghost" id="ex-btn" type="button">Export all logs</button>
+    </div>
+    <p class="fix-sub" id="ex-note">One zip of everything netbug has recorded, up to the second you press it. Nothing is redacted: it includes MAC addresses, IPs and network names, so only send it to someone you trust.</p>
+    <div class="fix-err" id="up-err"></div>
+  </section>
+  <iframe name="netbug-dl" id="dl" hidden title="download"></iframe>
+
   <div class="trace">
     <canvas id="chart" aria-label="Gateway, Cloudflare and UDP round-trip times over the last 5 minutes"></canvas>
   </div>
@@ -251,7 +266,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   const putText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  let since = 0, offset = -1, lastOk = 0, state = null;
+  let since = 0, offset = -1, lastOk = 0, state = null, version0 = '';
   const hist = new Map();          // unix s -> [t, gw, cf, g, udp, dns, tcp, fail]
   let lastProblem = null;          // latest finished outage/lag from events.log
 
@@ -479,6 +494,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       const r = await fetch('/api/state?since=' + since, { cache: 'no-store' });
       state = await r.json();
       lastOk = Date.now() / 1000;
+      // a new netbug version (after an update) has a new control token: load its page
+      if (!version0) version0 = state.version; else if (state.version && state.version !== version0) location.reload();
       for (const h of state.hist) { hist.set(h[0], h); since = Math.max(since, h[0]); }
       for (const t of hist.keys()) if (t < state.now - SPAN) hist.delete(t); else break;
       renderState();
@@ -537,6 +554,34 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('fx-uninst').hidden = !f.portable;   // a lone exe installed in %ProgramData%; the repo copy uses --uninstall
     renderKnown();
     putText($('fx-err'), f.error || '');
+    renderTools();
+  }
+
+  // "Logs and updates": version, the 6-hourly GitHub release check, install, and the full log export
+  let exportUntil = 0;
+  function renderTools() {
+    const f = fix, u = f.update || {};
+    $('tools').hidden = false;
+    let st, cls;
+    if (u.busy) { st = u.step || 'Updating…'; cls = 'warn'; }
+    else if (u.checking) { st = 'Checking…'; cls = ''; }
+    else if (u.available) { st = 'Update available: ' + u.latest; cls = 'warn'; }
+    else if (u.checkedAt && !u.error) { st = 'Up to date'; cls = 'ok'; }
+    else { st = u.checkedAt ? 'Couldn’t check' : 'Not checked yet'; cls = u.checkedAt ? 'bad' : ''; }
+    putText($('up-state'), st); $('up-state').className = 'fix-state ' + cls;
+    const when = u.checkedAt ? ' Last checked ' + ago(u.checkedAt * 1000) + '.' : '';
+    putText($('up-sub'), 'This is netbug ' + f.version + '. It checks GitHub for a new release every 6 hours' +
+      (f.portable ? ' and installs it by itself (netbug restarts for a few seconds; the page reloads).' : '. This copy runs from its repo, so it only reports a new release: update it with git pull and a rebuild.') + when +
+      (u.busy ? ' Don’t close netbug.' : ''));
+    const inst = $('up-install');
+    inst.hidden = !(u.available && f.portable);
+    inst.disabled = u.busy;
+    putText(inst, 'Install ' + (u.latest || 'update') + ' now');
+    $('up-check').disabled = u.busy || u.checking;
+    const busyEx = f.exporting || Date.now() < exportUntil;
+    $('ex-btn').disabled = busyEx;
+    putText($('ex-btn'), busyEx ? 'Preparing the zip…' : 'Export all logs');
+    putText($('up-err'), u.error || '');
   }
 
   // "Router MAC": the known routers for this gateway (built into netbug) plus "Other MAC…" with a text box.
@@ -576,6 +621,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('fx-uninst').onclick = () => {
       if (!uninstArmed) { uninstArmed = true; putText($('fx-uninst'), 'Click again to uninstall'); setTimeout(() => { uninstArmed = false; putText($('fx-uninst'), 'Uninstall netbug'); }, 4000); return; }
       fixCall('/uninstall', 'POST');
+    };
+    $('up-check').onclick = () => fixCall('/update/check', 'POST');
+    $('up-install').onclick = () => fixCall('/update/install', 'POST');
+    // a form post into a hidden frame: the browser saves the zip as it streams (no copy in page memory),
+    // and the token goes in the body, not the URL
+    $('ex-btn').onclick = () => {
+      const form = document.createElement('form');
+      form.method = 'POST'; form.action = '/api/export'; form.target = 'netbug-dl';
+      const t = document.createElement('input');
+      t.type = 'hidden'; t.name = 'token'; t.value = token;
+      form.appendChild(t); document.body.appendChild(form); form.submit(); form.remove();
+      exportUntil = Date.now() + 4000;   // until the next status poll shows the export running
+      if (fix) renderTools();
     };
   }
 

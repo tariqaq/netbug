@@ -5,6 +5,18 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 07:46: log export and self-update (v1.0.4)
+- `tools/netbug.cs`:
+  - `Version` constant (1.0.4), also set as the assembly version.
+  - **Export:** `POST /api/export` (the page token in the form body, localhost only, one at a time) streams a zip of every file in `logs/`, the in-memory ARP ring (read up to that moment), `state.json` and `EXPORT_MANIFEST.txt`, nothing redacted. A `CountingStream` wrapper lets .NET Framework's `ZipArchive` write to the response stream. Logged as `logs exported to the browser: …` or `log export failed: …`.
+  - **Updates:** `UpdateLoop` checks `api.github.com/repos/tariqaq/netbug/releases/latest` 2 min after start and then every 6 h, and on `POST /api/fix/update/check`. A lone exe installs a newer release by itself (after any running router check), or at once on `POST /api/fix/update/install`: it downloads `netbug.exe` to `%ProgramData%\netbug\netbug.new.exe`, accepts it only as assembly `netbug` of at least the release's version, starts it (it installs itself as a newer build) and exits. The new copy deletes the leftover files after 30 s. A repo copy only logs that a release is out.
+  - `/api/state` and `/api/fix` report the version, `/api/fix` the update and export state.
+  - Build needs `/r:System.IO.Compression.dll`.
+- `tools/dashboard.html`: **Logs and updates** panel (laptop only): version, update status, **Check for updates**, **Install update now**, **Export all logs** (a form post into a hidden frame, so the browser streams the download). The page reloads when the version changes.
+- `README.md`: build command, Updating, self-update for a lone exe, the checks table, the dashboard panel.
+- Tested on this laptop (repo copy): export gave a valid zip of 197 files (64.7 MB before compression) with ARP up to the cutoff; a wrong token gets 403; the update check found 1.0.3, not newer. The self-install path wasn't run: it needs a lone exe and a release newer than 1.0.4.
+- **Machine:** this laptop's netbug rebuilt and restarted on this build.
+
 ### 07:35: release v1.0.3
 - GitHub release `v1.0.3` (tag on `c7fc2ee`) with `netbug.exe` built from `99e7c5b`: the UDP probe reset.
 - **Machine:** this laptop's netbug rebuilt and restarted on the new build at 07:34:43 (pinned, UDP probe answering).

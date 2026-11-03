@@ -5,6 +5,11 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 07:54: self-update swaps the exe in place; the page reloads after any restart
+- `tools/netbug.cs` `InstallUpdate`: the downloaded `netbug.new.exe` must be assembly `netbug` of at least the release's version. The running exe is renamed to `netbug.old.exe`, the new file takes its name and starts like a health restart, and the old process exits. Before, the new file was started to install itself, and its `schtasks /End` could end it along with the old task process.
+- `tools/dashboard.html`: the page reloads when `/api/state` shows a new start time, or when its token is refused (403). Before, a tab opened before a netbug restart kept the old token: **Export all logs** got a silent 403 and stayed on "Preparing the zip…".
+- `README.md`: how an update installs.
+
 ### 07:46: `e7b1a75` log export and self-update (v1.0.4)
 - `tools/netbug.cs`:
   - `Version` constant (1.0.4), also set as the assembly version.

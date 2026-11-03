@@ -40,7 +40,7 @@
 // Export and updates (the page's "Logs and updates" panel, this laptop only): one zip of everything in
 // logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 6 h (and on
 // the page's button) netbug asks GitHub for the latest release; a lone exe installs a newer one by itself,
-// a repo copy only reports it. See the "export and updates" section.
+// a repo copy only reports it. See "export and updates".
 //
 // Build (in tools/): csc /target:winexe /optimize /out:netbug.exe /r:System.IO.Compression.dll /resource:dashboard.html,netbug.dashboard.html
 //   /resource:fonts\inter.woff2,netbug.inter.woff2 /resource:arpwatch.ps1,netbug.arpwatch.ps1
@@ -222,7 +222,7 @@ class NetBug
             new Thread(AnnounceLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(RingLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
             new Thread(UpdateLoop) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
-            if (portable) Task.Run(() => { Thread.Sleep(30000); DeleteUpdateFiles(); });   // left by the update that started this copy
+            if (portable) Task.Run(() => { Thread.Sleep(30000); DeleteUpdateFiles(); });   // left by a failed update
             if (openPage) Task.Run(() => { for (int i = 0; i < 60 && !PageUp(); i++) Thread.Sleep(500); OpenPage(); });
             Run();
         }
@@ -1558,10 +1558,10 @@ class NetBug
     // read while netbug keeps writing them (shared read). One export at a time.
     // Updates: 2 min after start and then every 6 h, and on the page's "Check for updates", netbug reads
     // the latest GitHub release of Repo. A higher tag than Version with a netbug.exe asset is an update.
-    // A lone exe installs it by itself (once no router check runs) or on "Install update now": the exe is
-    // downloaded to %ProgramData%\netbug\netbug.new.exe, must be an assembly named netbug of at least that
-    // version, and is started; it installs itself like any newer build (see "install"), and this process
-    // exits. A repo copy (tools\netbug.exe) only reports the update: it is updated with git pull and a build.
+    // A lone exe (the release exe, installed in %ProgramData%\netbug) installs it by itself (once no router
+    // check runs) or on "Install update now" (see InstallUpdate). A repo copy (tools\netbug.exe, a developer
+    // build) only reports it: its page and scripts are read from tools\, so it's updated with git pull and
+    // a build.
 
     const string Repo = "tariqaq/netbug";
     static readonly object updLock = new object();
@@ -1611,11 +1611,11 @@ class NetBug
             string json;
             using (var resp = req.GetResponse())
             using (var r = new StreamReader(resp.GetResponseStream())) json = r.ReadToEnd();
-            var tag = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9]+(?:\\.[0-9]+){1,3})\"");
+            var tag = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"(v?([0-9]+(?:\\.[0-9]+){1,3}))\"");
             if (!tag.Success) throw new Exception("GitHub's reply has no release version");
             var url = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"(https://github\\.com/" + Regex.Escape(Repo) + "/releases/download/[^\"/]+/netbug\\.exe)\"");
             updUrl = url.Success ? url.Groups[1].Value : "";
-            updLatest = tag.Groups[1].Value;
+            updLatest = tag.Groups[2].Value;
             updError = updUrl == "" ? "release " + updLatest + " has no netbug.exe" : "";
         }
         catch (Exception ex) { updError = "update check failed: " + ex.Message; }
@@ -1623,9 +1623,14 @@ class NetBug
     }
 
     // Starts installing the update found by the last check; returns an error for the page, "" when started.
+    // Lone exe only. The release's netbug.exe is downloaded next to the running exe as netbug.new.exe and
+    // must be an assembly named netbug of at least the release's version. The running exe is renamed to
+    // netbug.old.exe (Windows allows renaming a running exe; the old build stays as a fallback),
+    // netbug.new.exe takes its name and is started the way a health restart is, and this process exits.
+    // The task's command doesn't change; the new copy unpacks its page and scripts when it takes over.
     static string InstallUpdate(string why)
     {
-        if (!portable) return "This netbug runs from its repo: update it with git pull and a rebuild.";
+        if (!portable) return "This netbug runs from its repo (a developer build): update it with git pull and a rebuild.";
         string tag, url;
         lock (updLock)
         {
@@ -1635,34 +1640,40 @@ class NetBug
         }
         Task.Run(() =>
         {
-            string part = Path.Combine(baseDir, "netbug.new.exe.part"), exe = Path.Combine(baseDir, "netbug.new.exe");
+            string self = SelfPath(), dir = Path.GetDirectoryName(self);
+            string part = Path.Combine(dir, "netbug.new.exe.part"), exe = Path.Combine(dir, "netbug.new.exe"), old = Path.Combine(dir, "netbug.old.exe");
             try
             {
-                updStep = "Downloading " + tag;
                 Event("updating netbug " + Version + " -> " + tag + " (" + why + "): downloading " + url);
+                if (File.Exists(exe)) File.Delete(exe);
+                updStep = "Downloading " + tag;
                 var req = (HttpWebRequest)WebRequest.Create(url);
                 req.UserAgent = "netbug/" + Version; req.Timeout = 60000; req.ReadWriteTimeout = 60000;
                 using (var resp = req.GetResponse())
                 using (var s = resp.GetResponseStream())
                 using (var f = File.Create(part)) s.CopyTo(f);
-                System.Reflection.AssemblyName an;
-                try { an = System.Reflection.AssemblyName.GetAssemblyName(part); }
-                catch { throw new Exception("the download isn't a netbug build"); }
-                if (an.Name != "netbug" || an.Version < System.Version.Parse(tag))
-                    throw new Exception("the download is " + an.Name + " " + an.Version + ", not netbug " + tag);
-                if (File.Exists(exe)) File.Delete(exe);
                 File.Move(part, exe);
+                System.Reflection.AssemblyName an;
+                try { an = System.Reflection.AssemblyName.GetAssemblyName(exe); }
+                catch { throw new Exception("the new file isn't a netbug build"); }
+                if (an.Name != "netbug" || an.Version < System.Version.Parse(tag))
+                    throw new Exception("the new file is " + an.Name + " " + an.Version + ", not netbug " + tag);
+
                 updStep = "Installing " + tag;
-                Event("installing netbug " + an.Version + ": this copy exits, the new one replaces it and starts");
-                if (Monitor.TryEnter(pktmonLock, 10000)) RingPause();   // the new copy stops pktmon anyway
-                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = baseDir });
+                if (File.Exists(old)) File.Delete(old);
+                File.Move(self, old);
+                try { File.Move(exe, self); }
+                catch { File.Move(old, self); throw; }
+                Event("installing netbug " + an.Version + ": " + self + " replaced (the previous build is " + old + "), restarting");
+                if (Monitor.TryEnter(pktmonLock, 10000)) RingPause();
+                Process.Start(new ProcessStartInfo(self) { UseShellExecute = false, WorkingDirectory = dir });   // takes the mutex once this exits, like a health restart
                 Environment.Exit(0);
             }
             catch (Exception ex)
             {
                 updError = "update failed: " + ex.Message;
                 Event("update failed: " + ex.Message);
-                try { File.Delete(part); } catch { }
+                foreach (var f in new[] { part, exe }) try { File.Delete(f); } catch { }
                 updStep = ""; updBusy = false;
             }
         });
@@ -1671,9 +1682,10 @@ class NetBug
 
     static void DeleteUpdateFiles()
     {
+        string dir = Path.GetDirectoryName(SelfPath());
         foreach (var f in new[] { "netbug.new.exe", "netbug.new.exe.part" })
         {
-            string p = Path.Combine(baseDir, f);
+            string p = Path.Combine(dir, f);
             if (!PathEq(p, SelfPath())) try { File.Delete(p); } catch { }
         }
     }

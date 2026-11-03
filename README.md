@@ -135,7 +135,12 @@ It then runs like the repo copy, with three differences:
 - The panel has an **Uninstall netbug** button (click twice).
 - It **updates itself**: 2 minutes after it starts and then every 6 hours, it asks GitHub for the [latest release](https://github.com/tariqaq/netbug/releases/latest). When the release is newer than the running version (v1.0.4 onward), it installs it by itself, waiting until no router check is running. **Install update now** in **Logs and updates** does the same at once. netbug restarts for a few seconds and the page reloads.
 
-How an update installs: the release's `netbug.exe` is downloaded to `C:\ProgramData\netbug\netbug.new.exe`. It must be a build named netbug, of at least the release's version, or it's thrown away. It then installs itself like a newer build run by hand (below), and the old copy exits.
+How an update installs:
+1. The release's `netbug.exe` is downloaded to `C:\ProgramData\netbug\netbug.new.exe`. It must be a build named netbug, of at least the release's version, or it's thrown away.
+2. The running `netbug.exe` is renamed to `netbug.old.exe` (kept as a fallback), and the new file takes its name.
+3. The new copy starts, unpacks its page and scripts, and takes over, and the old process exits.
+
+The logon task and the logs stay as they are. If the dashboard ever shows a stale page, reload it: the page reloads itself after any netbug restart.
 
 Double-click again:
 

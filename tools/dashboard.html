@@ -13,7 +13,8 @@
      On the laptop itself netbug fills in the token above, which shows the Router protection panel
      (polls /api/fix every 2 s and sends its actions with the token) and the Logs and updates panel
      (update check/install, and the full log export as a form post to /api/export); everyone else
-     sees no controls. The page reloads itself when /api/state reports a new netbug version. -->
+     sees no controls. The page reloads itself when netbug has restarted (a new start time in
+     /api/state, or its token refused), so the controls always carry the running netbug's token. -->
 <style>
 @font-face {
   font-family: "Inter";
@@ -266,7 +267,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   const putText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  let since = 0, offset = -1, lastOk = 0, state = null, version0 = '';
+  let since = 0, offset = -1, lastOk = 0, state = null, started0 = 0;
   const hist = new Map();          // unix s -> [t, gw, cf, g, udp, dns, tcp, fail]
   let lastProblem = null;          // latest finished outage/lag from events.log
 
@@ -494,8 +495,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       const r = await fetch('/api/state?since=' + since, { cache: 'no-store' });
       state = await r.json();
       lastOk = Date.now() / 1000;
-      // a new netbug version (after an update) has a new control token: load its page
-      if (!version0) version0 = state.version; else if (state.version && state.version !== version0) location.reload();
+      // a restarted netbug (an update, a crash, a rebuild) has a new control token: load its page
+      if (!started0) started0 = state.started; else if (state.started !== started0) location.reload();
       for (const h of state.hist) { hist.set(h[0], h); since = Math.max(since, h[0]); }
       for (const t of hist.keys()) if (t < state.now - SPAN) hist.delete(t); else break;
       renderState();
@@ -521,6 +522,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     try {
       const r = await fetch('/api/fix' + path, { method: method || 'GET', cache: 'no-store', headers: { 'X-Netbug-Token': token } });
       if (r.ok) { fix = await r.json(); renderFix(); }
+      else if (r.status === 403) location.reload();   // the token is from a netbug that has restarted since
     } catch (e) { }
   }
   function renderFix() {
@@ -571,7 +573,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     putText($('up-state'), st); $('up-state').className = 'fix-state ' + cls;
     const when = u.checkedAt ? ' Last checked ' + ago(u.checkedAt * 1000) + '.' : '';
     putText($('up-sub'), 'This is netbug ' + f.version + '. It checks GitHub for a new release every 6 hours' +
-      (f.portable ? ' and installs it by itself (netbug restarts for a few seconds; the page reloads).' : '. This copy runs from its repo, so it only reports a new release: update it with git pull and a rebuild.') + when +
+      (f.portable ? ' and installs it by itself (netbug restarts for a few seconds; the page reloads).' : '. This copy runs from its repo (a developer build), so it only reports a new release: update it with git pull and a rebuild.') + when +
       (u.busy ? ' Don’t close netbug.' : ''));
     const inst = $('up-install');
     inst.hidden = !(u.available && f.portable);

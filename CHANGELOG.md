@@ -5,6 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 07:32: UDP probe opens a new socket after 3 failures in a row
+- `tools/netbug.cs` `StunLoop`/`StunProbe`: after 3 failed STUN probes in a row, the socket is closed and reopened (new local port, so a new NAT mapping), and the STUN servers are resolved again (the cached address is kept if that lookup fails). This happens once per failure streak, so a real UDP outage still shows. Events: `UDP probe failed 3 times in a row: opening a new socket…` and `UDP probe works again on the new socket`. Before, a dead mapping for the one long-lived socket failed the probe until netbug restarted: the friend's laptop showed UDP down for 2 h+ on 11-04 while its other UDP apps worked.
+- `README.md`: the STUN row in the checks table.
+
 ### 07:22: `de49855` log exports moved to `exports/`
 - `.gitignore`: `exports/` replaces the per-file zip entries.
 - **Machine:** the friend's three exports moved from the repo root to `exports/friend/` and renamed by export time (`2026-11-01_18-40_friend-netbug-logs.zip`, `2026-11-03_02-00_friend-netbug-logs.zip`, `2026-11-04_07-11_friend-netbug-full-logs.zip`). A full export of this laptop's `logs/` saved as `exports/mine/2026-11-04_07-20_my-netbug-full-logs.zip`.

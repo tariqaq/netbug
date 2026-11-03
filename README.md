@@ -191,7 +191,7 @@ If the gateway stops answering while pinned (for example the router was replaced
 | 1 s | Ping gateway, `1.1.1.1`, `8.8.8.8`; tx/rx packet counters | LAN lag, internet loss, one-way traffic |
 | On Windows network events, 1 s while failing, else 10 s | Active interface, dongle link state | Cable/link drops, hotspot switch |
 | 2 s (1 s after a failure) | DNS query to the router | Resolver stalls ("sites load forever") |
-| 2 s | STUN on one long-lived UDP socket | UDP loss, **NAT mapping changes** (what kills voice/game sessions) |
+| 2 s | STUN on one long-lived UDP socket (Cloudflare, then Google); after 3 failures in a row it opens a new socket once and resolves the servers again | UDP loss, **NAT mapping changes** (what kills voice/game sessions) |
 | 10 s (1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
 | 10 s | UDP ports per process; gateway MAC and ARP entry type (static = pinned) | Port leaks, **gateway MAC change** (alert + snapshot), pin removed |
 | Always (read every 60 s, judged every 5 min and at each snapshot) | ARP-only `pktmon` capture, last 15 min kept in memory | **Any other device claiming the gateway IP or this laptop's IP** = `ARP SPOOFING DETECTED` |

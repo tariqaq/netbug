@@ -145,6 +145,7 @@ class NetBug
     static readonly string[] StunServers = { "stun.cloudflare.com:3478", "stun.l.google.com:19302" };
     static UdpClient stunSock;
     static readonly Dictionary<string, IPAddress> stunIps = new Dictionary<string, IPAddress>();
+    static bool stunReresolve;   // StunLoop thread only: resolve the STUN servers again on the next probe
     static volatile int udpMs = 0;
     static volatile string udpMap = "";
     static string lastUdpMap = "";
@@ -1342,15 +1343,33 @@ class NetBug
     }
 
     // Runs on its own thread so a dead UDP path (up to 2 x 1.5 s timeouts) never slows the 1 s main loop.
+    // After StunResetAfter failed probes in a row it opens a new socket (a new local port, so a new NAT
+    // mapping) and resolves the servers again, so one dead mapping can't fail the probe until a restart.
+    // It does that once per failure streak: a real UDP outage still shows as failing.
+    const int StunResetAfter = 3;
     static void StunLoop()
     {
+        int failRun = 0;
+        bool resetDone = false;
         while (true)
         {
             var sw = Stopwatch.StartNew();
             string m;
             int ms = StunProbe(out m);
             udpMs = ms;
-            if (ms >= 0) udpMap = m;
+            if (ms >= 0)
+            {
+                if (resetDone) Event("UDP probe works again on the new socket");
+                udpMap = m;
+                failRun = 0; resetDone = false;
+            }
+            else if (++failRun >= StunResetAfter && !resetDone)
+            {
+                Event(string.Format("UDP probe failed {0} times in a row: opening a new socket and resolving the STUN servers again", failRun));
+                if (stunSock != null) { stunSock.Close(); stunSock = null; }
+                stunReresolve = true;
+                resetDone = true;
+            }
             int sleep = 2000 - (int)sw.ElapsedMilliseconds;
             if (sleep > 0) Thread.Sleep(sleep);
         }
@@ -1360,6 +1379,8 @@ class NetBug
     static int StunProbe(out string mapped)
     {
         mapped = "";
+        bool reresolve = stunReresolve;
+        stunReresolve = false;
         foreach (var server in StunServers)
         {
             try
@@ -1367,11 +1388,13 @@ class NetBug
                 if (stunSock == null) { stunSock = new UdpClient(0); stunSock.Client.ReceiveTimeout = 1500; }
                 var parts = server.Split(':');
                 IPAddress ip;
-                // resolve once and cache, so a DNS outage isn't mistaken for a UDP path outage
-                if (!stunIps.TryGetValue(server, out ip))
+                // resolve once and cache, so a DNS outage isn't mistaken for a UDP path outage; after a
+                // socket reset, resolve again but keep the cached address if that lookup fails
+                bool cached = stunIps.TryGetValue(server, out ip);
+                if (!cached || reresolve)
                 {
-                    ip = Dns.GetHostAddresses(parts[0]).First(a => a.AddressFamily == AddressFamily.InterNetwork);
-                    stunIps[server] = ip;
+                    try { ip = Dns.GetHostAddresses(parts[0]).First(a => a.AddressFamily == AddressFamily.InterNetwork); stunIps[server] = ip; }
+                    catch { if (!cached) throw; }
                 }
                 var tid = new byte[12]; rng.NextBytes(tid);
                 var req = new byte[] { 0, 1, 0, 0, 0x21, 0x12, 0xA4, 0x42 }.Concat(tid).ToArray();

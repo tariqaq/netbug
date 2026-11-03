@@ -5,6 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 07:56: release v1.0.4; this laptop now runs the release exe
+- GitHub release `v1.0.4` (tag on `772df36`) with `netbug.exe` built from it: log export, self-update, the in-place exe swap.
+- **Machine:** this laptop switched from the repo copy (`tools\netbug.exe`) to the v1.0.4 release exe, the same install as the friend's. The download is byte-identical to the build. Its logs (`logs\`) were copied to `C:\ProgramData\netbug\logs` first, so the history continues there. The logon task `netbug` now runs `C:\ProgramData\netbug\netbug.exe`; its dashboard is localhost-only. The gateway pin and settings are unchanged. `logs\` in the repo is left as it was at 07:55.
+
 ### 07:54: `772df36` self-update swaps the exe in place; the page reloads after any restart
 - `tools/netbug.cs` `InstallUpdate`: the downloaded `netbug.new.exe` must be assembly `netbug` of at least the release's version. The running exe is renamed to `netbug.old.exe`, the new file takes its name and starts like a health restart, and the old process exits. Before, the new file was started to install itself, and its `schtasks /End` could end it along with the old task process.
 - `tools/dashboard.html`: the page reloads when `/api/state` shows a new start time, or when its token is refused (403). Before, a tab opened before a netbug restart kept the old token: **Export all logs** got a silent 403 and stayed on "Preparing the zip…".

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
-### 07:22: log exports moved to `exports/`
+### 07:22: `de49855` log exports moved to `exports/`
 - `.gitignore`: `exports/` replaces the per-file zip entries.
 - **Machine:** the friend's three exports moved from the repo root to `exports/friend/` and renamed by export time (`2026-11-01_18-40_friend-netbug-logs.zip`, `2026-11-03_02-00_friend-netbug-logs.zip`, `2026-11-04_07-11_friend-netbug-full-logs.zip`). A full export of this laptop's `logs/` saved as `exports/mine/2026-11-04_07-20_my-netbug-full-logs.zip`.
 - Analyzed the friend's 11-04 export against this laptop's logs (same hostel LAN, same public IP). The friend's "UDP down" from 11-04 05:08:57 to the export (2 h+) affects only netbug's own STUN probe. This laptop's STUN probe had zero failures in the same window, and the friend's ping, DNS and TCP stayed fine, as did other UDP apps. Both laptops stayed pinned with no ARP spoofing alerts.

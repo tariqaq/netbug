@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
-### 07:46: log export and self-update (v1.0.4)
+### 07:46: `e7b1a75` log export and self-update (v1.0.4)
 - `tools/netbug.cs`:
   - `Version` constant (1.0.4), also set as the assembly version.
   - **Export:** `POST /api/export` (the page token in the form body, localhost only, one at a time) streams a zip of every file in `logs/`, the in-memory ARP ring (read up to that moment), `state.json` and `EXPORT_MANIFEST.txt`, nothing redacted. A `CountingStream` wrapper lets .NET Framework's `ZipArchive` write to the response stream. Logged as `logs exported to the browser: …` or `log export failed: …`.

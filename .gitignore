@@ -10,6 +10,5 @@ video/.venv/
 video/.venv-qwen/
 video/data.local.json
 tools/routers.local.txt
-anotherdeviceexample.zip
 video/scripts/__pycache__/
-samefrnd_netbug-logs-*.zip
+exports/

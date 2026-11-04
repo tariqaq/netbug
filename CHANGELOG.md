@@ -5,6 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 08:06: release v1.0.5; this laptop updated itself to it
+- GitHub release `v1.0.5` (tag on `acd0263`).
+- **Machine:** this laptop's netbug (release exe) updated itself 1.0.4 -> 1.0.5 through **Install update now** in 3 s: download, swap to `netbug.old.exe`, restart. The installed exe is byte-identical to the release. Checked after: the gateway is still pinned; the page from the LAN address has no token and `/api/export` and `/api/fix` return 403 there; the CSV has the new columns (the earlier part of today is in `netbug-2026-11-04-old-080614.csv`).
+
 ### 08:05: `acd0263` v1.0.5: dashboard on every interface, uninstall keeps logs, UTC offset on every timestamp
 - `tools/netbug.cs`:
   - The dashboard listens on all interfaces (`http://+:8787/`, Tailscale included) for the release exe too. Other devices get the page read-only: no control token, so no Router protection, update or export controls, and those APIs refuse them.

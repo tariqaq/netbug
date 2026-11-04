@@ -28,7 +28,7 @@ if ($capture) {
 }
 
 & {
-    "==== snapshot $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  admin=$isAdmin ===="
+    "==== snapshot $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')  admin=$isAdmin ===="
 
     "`n--- adapters ---"
     Get-NetAdapter | Where-Object Status -ne 'Not Present' |
@@ -94,7 +94,7 @@ if ($capture) {
         if ($left -gt 0) { Start-Sleep -Seconds ([Math]::Ceiling($left)) }
         pktmon stop | Out-Null
         pktmon filter remove | Out-Null
-        "`n--- packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon), $($capStart.ToString('HH:mm:ss'))-$((Get-Date).ToString('HH:mm:ss')) ---"
+        "`n--- packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon), $($capStart.ToString('yyyy-MM-dd HH:mm:ss zzz'))-$((Get-Date).ToString('HH:mm:ss')) ---"
         $pkt = [IO.Path]::ChangeExtension($Out, '.pkt.txt')
         pktmon etl2txt $etl --out $pkt | Out-Null
         "saved: $etl"

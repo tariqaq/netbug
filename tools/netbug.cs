@@ -36,7 +36,8 @@
 // (see the "install" section). A lone netbug.exe (no dashboard.html next to it, e.g. a GitHub release
 // download) installs itself to %ProgramData%\netbug, runs from there, unpacks its page, font and
 // scripts from its own resources and serves the dashboard on localhost only.
-// netbug.exe --uninstall removes the task and the router pin (and %ProgramData%\netbug for a lone exe).
+// netbug.exe --uninstall removes the task and the router pin (and, for a lone exe, its program files in
+// %ProgramData%\netbug). The logs always stay.
 // Export and updates (the page's "Logs and updates" panel, this laptop only): one zip of everything in
 // logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 6 h (and on
 // the page's button) netbug asks GitHub for the latest release; a lone exe installs a newer one by itself,
@@ -70,7 +71,7 @@ using System.IO.Compression;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.4";
+    public const string Version = "1.0.5";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -172,7 +173,7 @@ class NetBug
     static DateTime dashMemAt = DateTime.MinValue;
 
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
-    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail";
+    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset";
 
     static void Main(string[] args)
     {
@@ -187,8 +188,8 @@ class NetBug
         if (uninstall)
         {
             Uninstall(Process.GetCurrentProcess().Id);
-            MessageBox(IntPtr.Zero, "netbug is removed: its scheduled task, the router pin and " +
-                (portable ? baseDir : "nothing else (logs stay in " + logDir + ")") + ".", "netbug", 0x40);
+            MessageBox(IntPtr.Zero, "netbug is removed: its scheduled task, the router pin" + (portable ? " and its program files" : "") +
+                ". The logs stay in " + logDir + ".", "netbug", 0x40);
             return;
         }
         // opened by hand as admin (UAC off, or "Run as administrator"): show the page too. Not when
@@ -305,7 +306,8 @@ class NetBug
     // - repo copy (tools\netbug.exe): registers the task for this exe only when no "netbug" task exists,
     //   and keeps running.
     // --uninstall (or the page's Uninstall button, lone exe only) removes the task, the router pin and,
-    // for a lone exe, %ProgramData%\netbug.
+    // for a lone exe, everything in %ProgramData%\netbug except logs\ (the exe, the unpacked page and
+    // scripts). The logs always stay; a later install appends to them.
 
     const string TaskName = "netbug";
 
@@ -415,7 +417,7 @@ class NetBug
     // `keep`: a process to spare (the uninstalling one, which exits right after)
     static void Uninstall(int keep)
     {
-        if (!portable) Event("netbug uninstalled: logon task removed, router pin removed");
+        Event("netbug uninstalled: logon task removed, router pin removed" + (portable ? ", program files removed (logs kept)" : ""));
         Run("schtasks.exe", "/Delete /TN " + TaskName + " /F");   // not /End: that would end `keep` when the task runs it
         KillNetbugs(keep, ParentPid());
         Run("pktmon.exe", "stop");
@@ -430,15 +432,34 @@ class NetBug
                     lock (pinLock) pinCacheAt = DateTime.MinValue;
                 }
         }
-        if (portable) RemoveDir(baseDir);
+        if (portable) RemoveProgram();
     }
 
-    // Deletes a lone exe's folder. A file still in use (the installed exe, when the page's Uninstall runs
-    // it) is moved to the temp folder and deleted at the next restart, so the folder goes now and a later
-    // reinstall isn't deleted with it. A helper process can't do this: it would die with the task's process.
+    // A lone exe's folder without its logs: every file and folder in %ProgramData%\netbug except logs\.
+    static void RemoveProgram()
+    {
+        Directory.SetCurrentDirectory(Path.GetTempPath());   // the task starts netbug with baseDir as its working folder
+        foreach (var d in Directory.GetDirectories(baseDir))
+            if (!PathEq(Path.GetFileName(d), "logs")) RemoveDir(d);
+        foreach (var f in Directory.GetFiles(baseDir)) DeleteOrLater(f);
+    }
+
+    // Deletes a file; one still in use (the running exe) is moved to the temp folder and deleted at the next restart.
+    static void DeleteOrLater(string f)
+    {
+        for (int i = 0; i < 10; i++)   // a just-killed copy may still hold it for a moment
+            try { File.Delete(f); return; } catch { Thread.Sleep(300); }
+        string tmp = Path.Combine(Path.GetTempPath(), "netbug-removed-" + Guid.NewGuid().ToString("N") + Path.GetExtension(f));
+        try { File.Move(f, tmp); } catch { tmp = f; }
+        MoveFileEx(tmp, null, 4);   // 4 = MOVEFILE_DELAY_UNTIL_REBOOT
+    }
+
+    // Deletes a folder of a lone exe's program files (tools\). A file still in use is moved to the temp
+    // folder and deleted at the next restart, so the folder goes now and a later reinstall isn't deleted
+    // with it. A helper process can't do this: it would die with the task's process.
     static void RemoveDir(string dir)
     {
-        Directory.SetCurrentDirectory(Path.GetTempPath());   // the task starts netbug with `dir` as its working folder
+        Directory.SetCurrentDirectory(Path.GetTempPath());
         for (int i = 0; i < 10; i++)   // a just-killed copy may still hold files for a moment
             try { Directory.Delete(dir, true); return; } catch { Thread.Sleep(500); }
         foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
@@ -665,7 +686,8 @@ class NetBug
                     Row(string.Join(",", new string[] {
                         DateTime.Now.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac, gwArp,
                         gwMs.ToString(), cfMs.ToString(), gMs.ToString(), dnsMs.ToString(), tcpMs.ToString(),
-                        udpMs.ToString(), udpMap, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr }));
+                        udpMs.ToString(), udpMap, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr,
+                        DateTime.Now.ToString("yyyy-MM-dd"), DateTime.Now.ToString("zzz") }));
                     lastRow = DateTime.Now;
                 }
 
@@ -1273,7 +1295,7 @@ class NetBug
                         List<ArpFrame> all;
                         lock (ringLock) all = ring.ToList();
                         var about = Analyze(all, gw, me, new List<Claim>(), new List<Claim>());
-                        File.WriteAllLines(Path.ChangeExtension(outFile, ".ring.txt"), about.Select(f => f.T.ToString("HH:mm:ss.fff") + "  " + f.Line));
+                        File.WriteAllLines(Path.ChangeExtension(outFile, ".ring.txt"), about.Select(f => StampMs(f.T) + "  " + f.Line));
                         ReportClaims(RingTake(), gw, me, expect, "the ARP capture before the " + reason + " snapshot");
                     }
                 }
@@ -1456,20 +1478,17 @@ class NetBug
     // last 64 KB when omitted). /api/fix* is the router check and pin plus the update check/install (see
     // FixApi). One request at a time on this thread, except POST /api/export (see "export and updates"),
     // which streams on its own; the page polls only while it is visible. The "+" prefix (all
-    // interfaces) needs admin, which netbug always has; a lone (portable) netbug listens on localhost only.
+    // interfaces, Tailscale included) needs admin, which netbug always has. Other devices see the page read-only:
+    // only a request from this laptop gets the control token (see LocalHost), so they get no Router protection,
+    // update or export controls, and those APIs refuse them.
     static void DashboardLoop()
     {
         var listener = new HttpListener();
         try
         {
-            if (portable)
-            {
-                listener.Prefixes.Add("http://localhost:" + DashPort + "/");
-                listener.Prefixes.Add("http://127.0.0.1:" + DashPort + "/");
-            }
-            else listener.Prefixes.Add("http://+:" + DashPort + "/");
+            listener.Prefixes.Add("http://+:" + DashPort + "/");
             listener.Start();
-            Event("dashboard listening on port " + DashPort + (portable ? " (this laptop only)" : ""));
+            Event("dashboard listening on port " + DashPort + " (all interfaces; controls only on this laptop)");
         }
         catch (Exception ex) { Event("dashboard failed to start: " + ex.Message); return; }
         while (listener.IsListening)
@@ -1736,12 +1755,12 @@ class NetBug
                     catch (Exception ex) { if (ex is IOException || ex is UnauthorizedAccessException) list.AppendFormat("{0}\tskipped: {1}\r\n", rel, ex.Message); else throw; }
                 }
                 var ringText = new StringBuilder();
-                foreach (var fr in frames) ringText.Append(fr.T.ToString("yyyy-MM-dd HH:mm:ss.fff")).Append("  ").Append(fr.Line).Append("\r\n");
+                foreach (var fr in frames) ringText.Append(StampMs(fr.T)).Append("  ").Append(fr.Line).Append("\r\n");
                 ZipText(zip, "netbug-logs/arp-ring-memory.txt", ringText.ToString());
                 ZipText(zip, "netbug-logs/state.json", "{\"version\":" + J(Version) + ",\"sample\":" + sampleJson + ",\"routerProtection\":" + FixStatus("") + "}");
                 ZipText(zip, "netbug-logs/EXPORT_MANIFEST.txt",
                     "netbug " + Version + " full export. Nothing is redacted: it has MAC addresses, IPs and network names.\r\n" +
-                    "Export cutoff (local): " + cut.ToString("yyyy-MM-dd HH:mm:ss.fff zzz") + "\r\n" +
+                    "Export cutoff (local): " + StampMs(cut) + "\r\n" +
                     "Source: " + logDir + "\r\n" +
                     "Also: arp-ring-memory.txt (ARP frames netbug held in memory, " + frames.Count + " frames), state.json (latest sample and Router protection status)\r\n" +
                     "Files (" + files + ", " + bytes.ToString("N0") + " bytes as read):\r\n" + list);
@@ -2204,10 +2223,15 @@ class NetBug
     static string Csv(string s) { return (s ?? "").Replace(",", ";"); }
     static void Row(string line) { File.AppendAllText(CsvPath(), line + "\r\n"); }
 
+    // every log timestamp carries the date and the UTC offset in force then ("2026-11-04 08:01:02 +08:00"),
+    // so a timeline across days, laptops and time zones lines up
+    static string Stamp(DateTime t) { return t.ToString("yyyy-MM-dd HH:mm:ss zzz"); }
+    static string StampMs(DateTime t) { return t.ToString("yyyy-MM-dd HH:mm:ss.fff zzz"); }
+
     static readonly object eventLock = new object();
     static void Event(string msg)
     {
         lock (eventLock)   // called from the main loop and the persistent TCP thread
-            File.AppendAllText(Path.Combine(logDir, "events.log"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg + "\r\n");
+            File.AppendAllText(Path.Combine(logDir, "events.log"), Stamp(DateTime.Now) + "  " + msg + "\r\n");
     }
 }

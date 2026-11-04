@@ -130,8 +130,7 @@ A lone exe (no `dashboard.html` next to it) installs itself on the first run:
 - registers the `netbug` logon task with the same settings as on this laptop, and starts it
 - puts its logs in `C:\ProgramData\netbug\logs`
 
-It then runs like the repo copy, with three differences:
-- The page is served on localhost only (other devices on the LAN can't see it).
+It then runs like the repo copy, with two differences:
 - The panel has an **Uninstall netbug** button (click twice).
 - It **updates itself**: 2 minutes after it starts and then every 6 hours, it asks GitHub for the [latest release](https://github.com/tariqaq/netbug/releases/latest). When the release is newer than the running version (v1.0.4 onward), it installs it by itself, waiting until no router check is running. **Install update now** in **Logs and updates** does the same at once. netbug restarts for a few seconds and the page reloads.
 
@@ -149,7 +148,7 @@ Double-click again:
 | The same build again | Only opens the page. |
 | A newer build | Replaces the installed copy, restarts it, opens the page. Before v1.0.4 this was the only way to update. |
 
-To uninstall, use the button, or run `netbug.exe --uninstall`. Either way it removes the task, the router pin and `C:\ProgramData\netbug`, logs included.
+To uninstall, use the button, or run `netbug.exe --uninstall`. Either way it removes the task, the router pin and netbug's program files in `C:\ProgramData\netbug` (the exe, the page and scripts). The logs in `C:\ProgramData\netbug\logs` stay; installing again appends to them.
 
 > ⚠️ The exe isn't code-signed: SmartScreen may say "Windows protected your PC" (More info → Run anyway), and some antivirus tools may flag a program that asks for admin and runs `netsh` and `pktmon`.
 
@@ -254,6 +253,13 @@ Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` for a lone 
 | `snapshots\` | Per incident: adapters, NCSI, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, system events, a `pktmon` capture taken while the probes run, who claimed the gateway or this laptop in it, and `<name>.ring.txt` (the ARP about the gateway or this laptop from the 15 min before) |
 | `netbug.settings` | The Auto-detect and Keep-the-router-updated switches |
 
+🕐 Every timestamp carries the date and the UTC offset in force at the time, so timelines line up across days and laptops:
+- `events.log` lines start `2026-11-04 08:01:02 +08:00`
+- CSV rows end with `date,utc_offset` (`2026-11-04,+08:00`); the `time` column stays `HH:mm:ss`
+- `<snapshot>.ring.txt` lines and the snapshot header carry the date and the offset too
+
+Lines and rows from before v1.0.5 have no offset (they were all written in MYT, UTC+08:00). A CSV of the day the columns changed is kept as `netbug-<date>-old-<HHmmss>.csv`.
+
 🧹 Files older than **30 days** are deleted, and `logs\` is capped at **500 MB** (oldest snapshots first, then oldest CSVs).
 
 ---
@@ -279,7 +285,7 @@ Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` for a lone 
 
 The page makes no external requests, so it works while the internet is down. It polls only while visible (`/api/state` 1 s, `/api/events` 2 s, `/api/fix` 2 s on the laptop). It reloads itself when netbug's version changes (after an update).
 
-> ⚠️ Anyone on the LAN can see the page, including your public IP, the gateway MAC and process names. The Router protection, update and export controls are localhost-only.
+> ⚠️ Anyone on the LAN (and on your Tailscale network) can see the page, including your public IP, the gateway MAC and process names. This applies to the release exe too. The Router protection, update and export controls are localhost-only: other devices get the page without them, and those APIs refuse them. Windows Firewall decides who can reach port 8787: with the firewall on for the network's profile (usually Public for a hostel LAN), other devices can't open the page until an inbound rule allows it.
 
 ---
 

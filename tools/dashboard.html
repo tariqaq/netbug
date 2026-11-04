@@ -451,7 +451,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   function addLines(lines) {
     const frag = document.createDocumentFragment();
     for (const raw of lines) {
-      const day = raw.slice(0, 10), time = raw.slice(11, 19), msg = raw.slice(21);
+      // "2026-11-04 08:01:02 +08:00  msg" (older lines have no UTC offset: "2026-11-04 08:01:02  msg")
+      const tz = /^.{19} [+-]\d\d:\d\d  /.test(raw);
+      const day = raw.slice(0, 10), time = raw.slice(11, 19), msg = raw.slice(tz ? 28 : 21);
       if (day !== lastDay) {
         lastDay = day;
         const d = document.createElement('div');
@@ -619,7 +621,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('fx-mac').oninput = () => { if (fix) renderKnown(); };
     $('fx-mac').onkeydown = e => { if (e.key === 'Enter' && !$('fx-try').disabled) $('fx-try').click(); };
     $('fx-try').onclick = () => { const mac = chosenMac(); if (mac) fixCall('/trypin?mac=' + encodeURIComponent(mac), 'POST'); };
-    // removes the logon task, the router pin and netbug's folder (logs included)
+    // removes the logon task, the router pin and netbug's program files; the logs stay
     $('fx-uninst').onclick = () => {
       if (!uninstArmed) { uninstArmed = true; putText($('fx-uninst'), 'Click again to uninstall'); setTimeout(() => { uninstArmed = false; putText($('fx-uninst'), 'Uninstall netbug'); }, 4000); return; }
       fixCall('/uninstall', 'POST');

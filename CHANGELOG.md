@@ -5,6 +5,16 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 08:05: v1.0.5: dashboard on every interface, uninstall keeps logs, UTC offset on every timestamp
+- `tools/netbug.cs`:
+  - The dashboard listens on all interfaces (`http://+:8787/`, Tailscale included) for the release exe too. Other devices get the page read-only: no control token, so no Router protection, update or export controls, and those APIs refuse them.
+  - Uninstall (button or `--uninstall`) on a lone exe removes the task, the router pin and the program files in `%ProgramData%\netbug` (`RemoveProgram`), and keeps `logs\`. It's logged in `events.log` for both kinds of copy.
+  - Timestamps: `events.log` lines are `yyyy-MM-dd HH:mm:ss zzz` (`Stamp`); CSV rows gain `date,utc_offset` at the end (today's CSV with the old header is kept as `-old-<HHmmss>`); `.ring.txt`, `arp-ring-memory.txt` and the export manifest use `yyyy-MM-dd HH:mm:ss.fff zzz` (`StampMs`).
+  - `Version` 1.0.5.
+- `tools/snapshot.ps1`: the snapshot header and capture line carry the date and UTC offset.
+- `tools/dashboard.html`: reads event lines with or without the offset.
+- `README.md`: the release exe's differences, uninstall, timestamps, the LAN and firewall note.
+
 ### 07:56: release v1.0.4; this laptop now runs the release exe
 - GitHub release `v1.0.4` (tag on `772df36`) with `netbug.exe` built from it: log export, self-update, the in-place exe swap.
 - **Machine:** this laptop switched from the repo copy (`tools\netbug.exe`) to the v1.0.4 release exe, the same install as the friend's. The download is byte-identical to the build. Its logs (`logs\`) were copied to `C:\ProgramData\netbug\logs` first, so the history continues there. The logon task `netbug` now runs `C:\ProgramData\netbug\netbug.exe`; its dashboard is localhost-only. The gateway pin and settings are unchanged. `logs\` in the repo is left as it was at 07:55.

@@ -148,8 +148,8 @@ End card: the diorama in morning light, dimmed; `github.com/tariqaq/netbug` and 
 
 - [x] Engine check: 3D, 60 fps, `hevc_nvenc` (19:40)
 - [x] Questions answered (19:45)
-- [x] TTS installs: Qwen venv (`.venv-qwen`, torch 2.11 cu128). Chatterbox dropped after the pick (its torch download stalled; venv removed).
-- [x] Voice bake-off → user picked **03 Qwen host** (20:20)
+- [x] TTS installs: Qwen venv (`.venv-qwen`, torch 2.11 cu128) for the first cut; removed 11-01 23:04 after revision 1 moved to Edge in the v4 `.venv`. Chatterbox dropped after the pick (its torch download stalled; venv removed).
+- [x] Voice bake-off → user picked **03 Qwen host** (20:20) for the first cut; revision 1 replaced it with **Edge `en-US-AndrewMultilingualNeural`** (22:25)
 - [x] Final script + TTS + alignment → `public/vo5/timing.json`
 - [x] World build: building, rooms, router, laptop, impostor, cables, packets
 - [x] Shots per act (stills reviewed per act)
@@ -177,9 +177,9 @@ Revision 2 (camera and readability):
 
 - 19:40 3D test scene renders on the 4060 (~15 ms/frame at 1080p60, hevc_nvenc).
 - 19:45 User answers recorded above.
+- 20:00 Film skeleton renders end to end on placeholder timing (`src/v5/`).
 - 20:05 Bake-off: Edge Andrew (v4), Edge Andrew Multilingual, Qwen baritone/host/alto/Ryan; Whisper check: all say the script word for word.
 - 20:20 User picked 03 Qwen host. Narration generation started (`scripts/tts5.py`, 3 takes max per line, Whisper picks the best).
-- 20:00 Film skeleton renders end to end on placeholder timing (`src/v5/`).
 - 20:25 BSOD (vgk.sys, Riot Vanguard, while VALORANT ran) stopped TTS after 2 lines; files checked intact, TTS resumed.
 - 21:05 All 30 lines generated: 154 s of speech; every miss is an ASR spelling (micro tick, imposter, 5,000). All word cues resolve.
 - 21:10 Film re-timed on real speech: 12,173 frames (3:22.9). Contact sheets reviewed.

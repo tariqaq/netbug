@@ -5,6 +5,7 @@
 # `pitch` for tone. The raw voice (24 kHz, 48 kbit/s) then goes through STUDIO, an ffmpeg chain that makes it sound like
 # a close studio mic: rumble cut, warmth, less mud, presence, de-essing, gentle compression, restored highs, a peak
 # limiter, 48 kHz. Nothing in it delays the audio by more than 1 ms, so the word timings stay valid.
+# Needs: edge-tts and ffmpeg on PATH (or the FFMPEG env var).
 # Run: .venv/Scripts/python scripts/tts.py
 
 import asyncio, json, os, re, subprocess, shutil
@@ -12,6 +13,7 @@ import edge_tts
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "public", "vo")
+FFMPEG = os.environ.get("FFMPEG") or shutil.which("ffmpeg") or r"C:\Program Files\FFmpeg\bin\ffmpeg.exe"
 
 
 STUDIO = ",".join([
@@ -30,7 +32,7 @@ STUDIO = ",".join([
 
 
 def studio(raw, out):
-    subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-y", "-i", raw, "-af", STUDIO, "-ar", "48000",
+    subprocess.run([FFMPEG, "-v", "error", "-y", "-i", raw, "-af", STUDIO, "-ar", "48000",
                     "-c:a", "libmp3lame", "-b:a", "192k", out], check=True)
 
 

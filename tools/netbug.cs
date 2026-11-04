@@ -4,7 +4,9 @@
 // interface on Windows network events (every second while failing, else every 10 s), DNS via the
 // gateway every 2 s (a failed query is retried the next second), a TCP connect +
 // UDP port usage + gateway MAC every 10 s (a failed TCP connect is retried every
-// second), and the public IP every 5 min.
+// second), and the public IP every 5 min. These schedules run by the clock, so a slow probe doesn't
+// stretch them. A gap of more than 30 s between loop rounds (the laptop slept) ends a running outage at
+// the last sample and is logged as a gap, not counted as an outage.
 // Background threads keep one long-lived TLS connection (HEAD every 15 s) and one
 // long-lived UDP socket doing STUN every 2 s (UDP RTT + NAT mapping).
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
@@ -23,7 +25,8 @@
 // MAC announce: about once a second this laptop sends an ARP request (sender = its own IP and MAC),
 // so a router told a fake MAC for this laptop learns the real one again within a second. See the
 // "MAC announce" section.
-// logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
+// logs/ is kept under 30 days and 500 MB (netbug.settings and the live ARP capture files are left out).
+// An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
 // A dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served on port 8787 on all
 // interfaces (Tailscale included), read-only for other devices: its controls work only from this laptop.
@@ -124,6 +127,7 @@ class NetBug
     static bool inOutage;
     static DateTime outageStart, fastUntil, lastSnapshot = DateTime.MinValue;
     static string outageWhat = "";
+    static string wiredId = "";   // the wired adapter last used, whose link state is logged
     static string lastIface = "", lastEthLink = "", lastGwMac = "", lastPubIp = "", pubIp = "";
     static int udpTotal = -1;
     static string udpTop = "";
@@ -150,6 +154,7 @@ class NetBug
     static string lastTcpReason = "";
     static int tcpRepeats;
     static IPAddress tcpProbeIp;
+    static DateTime tcpProbeLookedUp = DateTime.MinValue;
     static long lastTx = -1, lastRx = -1;
     static string currentDay = "";
 
@@ -514,18 +519,27 @@ class NetBug
     {
         NetworkChange.NetworkAddressChanged += (s, e) => ifDirty = true;
         NetworkChange.NetworkAvailabilityChanged += (s, e) => ifDirty = true;
-        long tick = 0;
-        DateTime lastRow = DateTime.MinValue;
+        DateTime lastRow = DateTime.MinValue, lastLoop = DateTime.MinValue;
+        // schedules by the clock (UTC, so no jump at a time change), not by loop rounds: a round takes
+        // longer than 1 s while probes time out
+        DateTime t0 = DateTime.UtcNow;
+        DateTime nextTen = t0, nextDns = t0, nextArpWatch = t0.AddSeconds(150), nextPubIp = t0.AddSeconds(5),
+            nextSizeCap = t0.AddSeconds(7), nextHealth = t0.AddSeconds(9);
+        int healthRuns = 0;
         while (true)
         {
             var loopStart = DateTime.Now;
+            var nowUtc = DateTime.UtcNow;
             try
             {
-                RotateIfNewDay();
+                if (lastLoop != DateTime.MinValue && (loopStart - lastLoop).TotalSeconds > LoopGapSecs) LoopGap(lastLoop, loopStart);
+                lastLoop = loopStart;
+                RotateIfNewDay(loopStart);
+                bool tenS = Due(ref nextTen, 10, nowUtc);
 
                 // the interface scan costs ~7 ms of CPU: redo it when Windows reports an address or
                 // availability change, while anything is failing, and every 10 s as a backstop
-                if (ifDirty || failStreak > 0 || tick % 10 == 0)
+                if (ifDirty || failStreak > 0 || tenS)
                 {
                     ifDirty = false;
                     scanNi = PickInterface(out scanIp, out scanGw, out scanName, out scanLink);
@@ -542,37 +556,38 @@ class NetBug
                 Task.WaitAll(pGw, pCf, pG);
                 long gwMs = pGw.Result, cfMs = pCf.Result, gMs = pG.Result;
 
-                if (tick % 2 == 0 || dnsMs < 0) dnsMs = gw != null ? DnsProbe(gw) : -1;   // a failed probe is re-checked the next second
-                if (tcpMs < 0 && tick % 10 != 0) tcpMs = TcpProbe();   // re-check a failed probe every second
+                if (Due(ref nextDns, 2, nowUtc) || dnsMs < 0) dnsMs = gw != null ? DnsProbe(gw) : -1;   // a failed probe is re-checked the next second
                 // a new interface: its gateway entry is read now, and its packet counters start fresh
                 bool ifChanged = ifaceName != lastIface;
                 if (ifChanged) lastTx = -1;
-                if (tick % 10 == 0)
+                if (tenS)
                 {
                     tcpMs = TcpProbe();
                     UdpUsage(out udpTotal, out udpTop);
                 }
-                if (tick % 10 == 0 || ifChanged)
+                else if (tcpMs < 0) tcpMs = TcpProbe();   // re-check a failed probe every second
+                if (tenS || ifChanged)
                 {
                     gwMac = gw != null && ip != null ? Arp(gw, ip) : "";
                     gwArp = gw != null && ni != null ? ArpEntryType(gw, ni) : "";
                 }
-                if (tick % 300 == 150 && gw != null && ip != null) ArpWatchStart(gw, ip, trustedGwIp == gw.ToString() ? trustedGwMac : "");
-                if (autoDetect && gw != null && tick >= 20 && !fixBusy)
+                if (Due(ref nextArpWatch, 300, nowUtc) && gw != null && ip != null) ArpWatchStart(gw, ip, trustedGwIp == gw.ToString() ? trustedGwMac : "");
+                if (autoDetect && gw != null && (nowUtc - t0).TotalSeconds >= 20 && !fixBusy)
                 {
                     double since = (DateTime.Now - lastDetect).TotalSeconds;
                     if (gw.ToString() != lastDetectGw || since >= 1800 || (autoKick && since >= 300)) StartDetect("auto");
                 }
-                if (tick % 300 == 5) RefreshPublicIp();
-                if (tick % 600 == 7) EnforceSizeCap();
-                if (tick % 600 == 9) Health(tick % 3600 == 9);
+                if (Due(ref nextPubIp, 300, nowUtc)) RefreshPublicIp();
+                if (Due(ref nextSizeCap, 600, nowUtc)) EnforceSizeCap();
+                if (Due(ref nextHealth, 600, nowUtc)) Health(healthRuns++ % 6 == 0);   // checked every 10 min, logged hourly
 
                 long txDelta = 0, rxDelta = 0;
                 if (ni != null)
                 {
                     var st = ni.GetIPv4Statistics();
                     long tx = st.UnicastPacketsSent, rx = st.UnicastPacketsReceived;
-                    if (lastTx >= 0) { txDelta = tx - lastTx; rxDelta = rx - lastRx; }
+                    // counters going backwards were reset (sleep, adapter reset): this second starts them fresh
+                    if (lastTx >= 0 && tx >= lastTx && rx >= lastRx) { txDelta = tx - lastTx; rxDelta = rx - lastRx; }
                     lastTx = tx; lastRx = rx;
                 }
 
@@ -598,7 +613,7 @@ class NetBug
 
                 // ---- transitions ----
                 if (ifChanged) { Event(string.Format("active interface: '{0}' -> '{1}' ip={2} gw={3}", lastIface, ifaceName, ip, gw)); lastIface = ifaceName; }
-                if (ethLink != lastEthLink) { Event(string.Format("USB ethernet link: {0} -> {1}", lastEthLink == "" ? "?" : lastEthLink, ethLink)); lastEthLink = ethLink; }
+                if (ethLink != lastEthLink) { Event(string.Format("wired link: {0} -> {1}", lastEthLink == "" ? "?" : lastEthLink, ethLink)); lastEthLink = ethLink; }
                 // the entry type first: a new pin makes its MAC the trusted one before the MAC change is judged
                 if (gwArp != "" && gwArp != lastGwArp && !fixBusy)
                 {
@@ -683,12 +698,14 @@ class NetBug
                 bool fast = DateTime.Now < fastUntil;
                 if (fast || (DateTime.Now - lastRow).TotalSeconds >= 5)
                 {
+                    var rowAt = DateTime.Now;   // one clock reading for the row, and the file is that day's
+                    RotateIfNewDay(rowAt);
                     Row(string.Join(",", new string[] {
-                        DateTime.Now.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac, gwArp,
+                        rowAt.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac, gwArp,
                         gwMs.ToString(), cfMs.ToString(), gMs.ToString(), dnsMs.ToString(), tcpMs.ToString(),
                         udpMs.ToString(), udpMap, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr,
-                        DateTime.Now.ToString("yyyy-MM-dd"), DateTime.Now.ToString("zzz") }));
-                    lastRow = DateTime.Now;
+                        rowAt.ToString("yyyy-MM-dd"), rowAt.ToString("zzz") }));
+                    lastRow = rowAt;
                 }
 
                 // ---- dashboard ----
@@ -710,21 +727,46 @@ class NetBug
                 Event("netbug error: " + ex.GetType().Name + ": " + ex.Message);
             }
 
-            tick++;
             int sleep = 1000 - (int)(DateTime.Now - loopStart).TotalMilliseconds;
             if (sleep > 0) Thread.Sleep(sleep);
         }
     }
 
-    // Prefer a wired interface with a default gateway, else any up interface with one.
+    // True once `next` has passed, then moves it on by `secs` (after a long gap, to `secs` from now, so
+    // missed rounds don't all run at once).
+    static bool Due(ref DateTime next, double secs, DateTime nowUtc)
+    {
+        if (nowUtc < next) return false;
+        next = next.AddSeconds(secs);
+        if (next <= nowUtc) next = nowUtc.AddSeconds(secs);
+        return true;
+    }
+
+    // A round normally starts every second. More than this between two means the laptop slept (or
+    // netbug was suspended): nothing was measured, so it isn't an outage or lag.
+    const int LoopGapSecs = 30;
+    static void LoopGap(DateTime from, DateTime to)
+    {
+        if (inOutage)
+        {
+            inOutage = false;
+            Event(string.Format("OUTAGE END after {0:N0} s (at {1:HH:mm:ss}, the last sample before the gap)", (from - outageStart).TotalSeconds, from));
+        }
+        inLag = false; failStreak = 0; lastTx = -1; ifDirty = true;
+        Event(string.Format("no samples for {0:N0} s ({1} to {2}): the laptop was asleep or netbug was paused",
+            (to - from).TotalSeconds, Stamp(from), Stamp(to)));
+    }
+
+    // Prefer a wired interface with a default gateway, else any up interface with one. The link state
+    // reported is that of the wired adapter last used (by adapter ID, so a pulled cable shows "down"), or
+    // "absent" when there is none.
     static NetworkInterface PickInterface(out IPAddress ip, out IPAddress gw, out string name, out string ethLink)
     {
         ip = null; gw = null; name = ""; ethLink = "absent";
         NetworkInterface best = null; int bestScore = -1;
         foreach (var n in NetworkInterface.GetAllNetworkInterfaces())
         {
-            if (n.Description.IndexOf("Realtek USB", StringComparison.OrdinalIgnoreCase) >= 0)
-                ethLink = n.OperationalStatus == OperationalStatus.Up ? "up" : "down";
+            if (n.Id == wiredId) ethLink = n.OperationalStatus == OperationalStatus.Up ? "up" : "down";
             if (n.OperationalStatus != OperationalStatus.Up) continue;
             if (n.NetworkInterfaceType == NetworkInterfaceType.Loopback || n.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
             var props = n.GetIPProperties();
@@ -739,6 +781,7 @@ class NetBug
                 name = n.Name;
             }
         }
+        if (best != null && bestScore == 2 && best.Id != wiredId) { wiredId = best.Id; ethLink = "up"; }
         return best;
     }
 
@@ -780,12 +823,25 @@ class NetBug
         catch { return -1; }
     }
 
+    // TCP connect to TcpProbeHost:443. The address is looked up at most every 10 min, and a failed
+    // lookup keeps the last address, so a DNS outage doesn't also show up as a TCP failure.
     static int TcpProbe()
     {
+        if (tcpProbeIp == null || (DateTime.UtcNow - tcpProbeLookedUp).TotalMinutes >= 10)
+        {
+            try
+            {
+                tcpProbeIp = Dns.GetHostAddresses(TcpProbeHost).First(a => a.AddressFamily == AddressFamily.InterNetwork);
+                tcpProbeLookedUp = DateTime.UtcNow;
+            }
+            catch
+            {
+                if (tcpProbeIp == null) return -1;
+                tcpProbeLookedUp = DateTime.UtcNow;
+            }
+        }
         try
         {
-            if (tcpProbeIp == null)
-                tcpProbeIp = Dns.GetHostAddresses(TcpProbeHost).First(a => a.AddressFamily == AddressFamily.InterNetwork);
             var sw = Stopwatch.StartNew();
             using (var c = new TcpClient())
             {
@@ -793,7 +849,7 @@ class NetBug
                 return ok ? (int)sw.ElapsedMilliseconds : -1;
             }
         }
-        catch { tcpProbeIp = null; return -1; }
+        catch { return -1; }
     }
 
     // Keeps one long-lived TLS connection open and sends a HEAD request on it every 15 s,
@@ -1317,32 +1373,40 @@ class NetBug
         });
     }
 
-    static void RotateIfNewDay()
+    // Starts the CSV of `now`'s day, and once a day deletes files older than RetentionDays (not
+    // netbug.settings, which is rewritten only when a switch changes, or the live ARP capture files).
+    static void RotateIfNewDay(DateTime now)
     {
-        string day = DateTime.Now.ToString("yyyy-MM-dd");
+        string day = now.ToString("yyyy-MM-dd");
         if (day == currentDay) return;
         currentDay = day;
         string csv = CsvPath();
         if (File.Exists(csv) && File.ReadLines(csv).FirstOrDefault() != CsvHeader)
         {
             // columns changed (new netbug version): keep the old file under another name
-            string old = Path.Combine(logDir, "netbug-" + currentDay + "-old-" + DateTime.Now.ToString("HHmmss") + ".csv");
+            string old = Path.Combine(logDir, "netbug-" + currentDay + "-old-" + now.ToString("HHmmss") + ".csv");
             File.Move(csv, old);
         }
         if (!File.Exists(csv))
             File.WriteAllText(csv, CsvHeader + "\r\n");
         foreach (var f in Directory.GetFiles(logDir).Concat(Directory.GetFiles(snapDir)))
-            if (File.GetLastWriteTime(f) < DateTime.Now.AddDays(-RetentionDays)) { try { File.Delete(f); } catch { } }
+        {
+            if (Path.GetFileName(f) == "netbug.settings" || IsRingFile(f)) continue;
+            if (File.GetLastWriteTime(f) < now.AddDays(-RetentionDays)) { try { File.Delete(f); } catch { } }
+        }
         EnforceSizeCap();
     }
 
+    static bool IsRingFile(string path) { return Path.GetFileName(path).StartsWith("arpring-", StringComparison.OrdinalIgnoreCase); }
+
     // Keeps logs/ under LogCapBytes: deletes the oldest snapshot files first, then the oldest
-    // CSVs (never today's CSV or events.log).
+    // CSVs (never today's CSV or events.log). The live ARP capture files (arpring-*.etl, a few hundred MB
+    // that pktmon reuses) aren't counted: they aren't kept history, and counting them would delete snapshots.
     static void EnforceSizeCap()
     {
         try
         {
-            var all = new DirectoryInfo(logDir).GetFiles("*", SearchOption.AllDirectories);
+            var all = new DirectoryInfo(logDir).GetFiles("*", SearchOption.AllDirectories).Where(f => !IsRingFile(f.FullName)).ToArray();
             long total = all.Sum(f => f.Length);
             if (total <= LogCapBytes) return;
             var victims = all.Where(f => f.DirectoryName == snapDir).OrderBy(f => f.LastWriteTime)
@@ -1520,7 +1584,7 @@ class NetBug
         else if (ctx.Request.HttpMethod != "GET") { ctx.Response.StatusCode = 405; body = "{}"; }
         else if (path == "/")
         {
-            // only the person at this laptop gets the control token (and so the Router protection panel)
+            // only the person at this laptop gets the control token (and so the Router protection and Logs and updates controls)
             body = File.ReadAllText(Path.Combine(baseDir, "tools", "dashboard.html")).Replace("__NETBUG_TOKEN__", LocalHost(ctx) ? token : "");
             type = "text/html; charset=utf-8";
         }
@@ -2231,7 +2295,7 @@ class NetBug
     static readonly object eventLock = new object();
     static void Event(string msg)
     {
-        lock (eventLock)   // called from the main loop and the persistent TCP thread
+        lock (eventLock)   // called from every thread
             File.AppendAllText(Path.Combine(logDir, "events.log"), Stamp(DateTime.Now) + "  " + msg + "\r\n");
     }
 }

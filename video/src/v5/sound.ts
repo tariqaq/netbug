@@ -5,7 +5,7 @@
 //   master -> compressor -> destination. The reverb is a convolver with a generated impulse response.
 // The narration clips (<Audio>) go straight to the destination, past this bus.
 //
-// `cue(frame, kind)` places one effect; `music(frame, ...)` places one stretch of score (src/score.ts). Every noise
+// `cue(frame, kind)` places one effect; `music(frame, ...)` places one stretch of score (score.ts). Every noise
 // source is seeded, so a render always sounds the same.
 
 import { onFrame } from '@kinetographdev/audio';

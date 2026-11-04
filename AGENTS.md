@@ -21,6 +21,8 @@
 
 ## LOG ANALYSIS (every time the user asks to analyze logs)
 
+Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). The repo's `logs\` stops at 11-04 07:55.
+
 1. **Check the gateway ARP pin.** It was re-applied on 2026-10-28 15:37 after the 15:28 attack confirmed the cause (incident report §11). Expect `gw_arp=static` on hostel Ethernet.
    - If it's `dynamic` or missing (for example the dongle was renamed), **tell the user first** and give the re-pin command (incident report §8).
    - Apply nothing without the user's explicit OK.

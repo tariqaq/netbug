@@ -3,7 +3,6 @@
 # netbug.cs, Analyze.) pktmon captures at the NIC driver, so it also sees spoofed replies that Windows
 # ignores because the gateway's ARP entry is pinned.
 #   -Etl <file>   the capture; deleted afterwards unless -NoDelete
-#   -Keep <file>  also save every ARP frame that mentions the gateway or this laptop's IP, with its time
 # Output, one line each:
 #   frames <n>                         ARP frames in the capture
 #   gw <mac> <n> <first> <last>        a MAC that claimed the gateway IP -Gw: an ARP reply
@@ -15,7 +14,6 @@ param(
     [Parameter(Mandatory)][string]$Etl,
     [string]$Gw,
     [string]$Me,
-    [string]$Keep,
     [switch]$NoDelete
 )
 
@@ -30,9 +28,9 @@ function Read-Capture([string]$file) {
     foreach ($kv in @(@('gw', $Gw), @('me', $Me))) {
         if (-not $kv[1]) { continue }
         $ip = [regex]::Escape($kv[1])
-        $rules += , @($kv[0], [regex]"Reply $ip is-at $mac", [regex]"^\s*$mac > .*Request who-has \S+ (?:\(\S+\) )?tell $ip,", [regex]"(?<![\d.])$ip(?![\d.])")
+        $rules += , @($kv[0], [regex]"Reply $ip is-at $mac", [regex]"^\s*$mac > .*Request who-has \S+ (?:\(\S+\) )?tell $ip,")
     }
-    $claims = @{}; $kept = [Collections.Generic.List[string]]::new()
+    $claims = @{}
     $frames = 0; $prev = ''; $time = ''; $sec = 0.0; $prevSec = -1.0
     foreach ($line in [IO.File]::ReadLines($txt)) {
         # header lines ("[cpu]...::2026-11-01 02:35:31.450248500 [Microsoft-Windows-PktMon] ...") carry the time
@@ -49,7 +47,6 @@ function Read-Capture([string]$file) {
         $prev = $line; $prevSec = $sec
         if ($line -notmatch 'ARP') { continue }
         $frames++
-        $mentioned = $false
         foreach ($r in $rules) {
             $m = $r[1].Match($line); if (-not $m.Success) { $m = $r[2].Match($line) }
             if ($m.Success) {
@@ -57,13 +54,10 @@ function Read-Capture([string]$file) {
                 $t = $time.Substring(0, [Math]::Min(8, $time.Length))
                 if ($claims.ContainsKey($k)) { $claims[$k][0]++; $claims[$k][2] = $t } else { $claims[$k] = @(1, $t, $t) }
             }
-            if ($r[3].IsMatch($line)) { $mentioned = $true }
         }
-        if ($Keep -and $mentioned) { $kept.Add($time + '  ' + $line.Trim()) }
     }
     Remove-Item $txt -Force
     if (-not $NoDelete) { Remove-Item $file -Force }
-    if ($Keep) { [IO.File]::WriteAllLines($Keep, $kept) }
     "frames $frames"
     foreach ($k in $claims.Keys) { '{0} {1} {2} {3}' -f $k, $claims[$k][0], $claims[$k][1], $claims[$k][2] }
 }

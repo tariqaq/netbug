@@ -5,11 +5,30 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 20:26: audit fixes (code bugs, stale docs, video)
+- `tools/netbug.cs`:
+  - Retention no longer deletes `netbug.settings` (it's rewritten only when a switch changes, so it aged out after 30 days and reset the switches) or the live ARP capture files.
+  - The 500 MB cap no longer counts `arpring-*.etl` (a few hundred MB that pktmon reuses), which made it delete snapshots early.
+  - Packet counters that go backwards (sleep, adapter reset) start fresh instead of logging a negative delta.
+  - More than 30 s between loop rounds (the laptop slept) ends a running outage at the last sample and logs `no samples for N s (… to …)` instead of counting the sleep as an outage.
+  - The 10 s, 2 s, 5 min, 10 min and hourly schedules run by the clock (`Due`), not by loop rounds, so slow probes don't stretch them.
+  - The TCP probe looks up `github.com` at most every 10 min and keeps the last address when the lookup fails, so a DNS outage no longer also shows as a TCP failure.
+  - A CSV row reads the clock once and goes to that day's file (a row just after midnight could land in the previous day's).
+  - The link state is the wired adapter last used (by adapter ID), not a hardcoded "Realtek USB" match. The event is `wired link: … -> …`; the dashboard label is **Wired link**.
+  - Comments: `Event()` callers, the `/` token comment, the header (schedules, sleep gaps, retention).
+- `tools/snapshot.ps1`: system-event and capture-end times carry the date and UTC offset; the capture section prints its ARP frame count.
+- `tools/arpwatch.ps1`: the unused `-Keep` option removed.
+- `README.md`: a different (also older) build replaces the installed copy, matching the code; the wired link, clock schedules and sleep gaps; retention and cap exclusions; update and export in the flow diagram; the v5 video; Tailscale in the footprint.
+- Incident report, scan report, RCC report (and their `REDACTED_*` copies): the pin re-applied at 15:37 where the docs stopped at the 15:12 removal; §10 before §11; one 05:34 victim among the 15:28 four, not two; the "drops while pinned?" question answered (11-01 02:34–02:38); the attacker seen again on 11-03 (04:01:58, 07:20); the log location since today; scan report §10b order, the 2 unique spoofed replies at 05:34, and an 11-04 entry.
+- `AGENTS.md`: the log location for log analysis. `.gitignore`: `video/.venv-qwen/` dropped (removed 11-01). This file: release hashes, blank lines between entries.
+- `video/`: the v5 friend timeline's marks, flashes and thuds share one step (`JOIN_STEP`); unused code removed (v5 `between`, `cardAt`, `UPLINK`, `glowUp`, the `World` data prop; v4 `endOf`, `Link`'s `dash`); `src/v5/sound.ts` header path; `tts.py` finds ffmpeg like `tts5.py` (`FFMPEG` env var, then PATH, then the default install); `tasks.md` V4.1–V4.4 ticked; `PLAN-v5.md` voice history and log order.
+- Checked: netbug builds (csc), both PowerShell scripts parse, `kinetograph check` passes for v4 and v5. Not run on this laptop (it would interrupt the running netbug).
+
 ### 08:09: `852388a` stale-doc sweep after v1.0.5
 - `tools/netbug.cs` header: the dashboard is on all interfaces for every copy (two lines still said localhost only for a lone exe).
 - `README.md`: the page reloads after any netbug restart (not only a version change); the CSV row has the date and UTC offset; repo layout lists the Logs and updates panel and `exports/`.
 
-### 08:06: release v1.0.5; this laptop updated itself to it
+### 08:06: `acd0263` release v1.0.5; this laptop updated itself to it
 - GitHub release `v1.0.5` (tag on `acd0263`).
 - **Machine:** this laptop's netbug (release exe) updated itself 1.0.4 -> 1.0.5 through **Install update now** in 3 s: download, swap to `netbug.old.exe`, restart. The installed exe is byte-identical to the release. Checked after: the gateway is still pinned; the page from the LAN address has no token and `/api/export` and `/api/fix` return 403 there; the CSV has the new columns (the earlier part of today is in `netbug-2026-11-04-old-080614.csv`).
 
@@ -23,7 +42,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - `tools/dashboard.html`: reads event lines with or without the offset.
 - `README.md`: the release exe's differences, uninstall, timestamps, the LAN and firewall note.
 
-### 07:56: release v1.0.4; this laptop now runs the release exe
+### 07:56: `772df36` release v1.0.4; this laptop now runs the release exe
 - GitHub release `v1.0.4` (tag on `772df36`) with `netbug.exe` built from it: log export, self-update, the in-place exe swap.
 - **Machine:** this laptop switched from the repo copy (`tools\netbug.exe`) to the v1.0.4 release exe, the same install as the friend's. The download is byte-identical to the build. Its logs (`logs\`) were copied to `C:\ProgramData\netbug\logs` first, so the history continues there. The logon task `netbug` now runs `C:\ProgramData\netbug\netbug.exe`; its dashboard is localhost-only. The gateway pin and settings are unchanged. `logs\` in the repo is left as it was at 07:55.
 
@@ -44,7 +63,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - Tested on this laptop (repo copy): export gave a valid zip of 197 files (64.7 MB before compression) with ARP up to the cutoff; a wrong token gets 403; the update check found 1.0.3, not newer. The self-install path wasn't run: it needs a lone exe and a release newer than 1.0.4.
 - **Machine:** this laptop's netbug rebuilt and restarted on this build.
 
-### 07:35: release v1.0.3
+### 07:35: `c7fc2ee` release v1.0.3
 - GitHub release `v1.0.3` (tag on `c7fc2ee`) with `netbug.exe` built from `99e7c5b`: the UDP probe reset.
 - **Machine:** this laptop's netbug rebuilt and restarted on the new build at 07:34:43 (pinned, UDP probe answering).
 
@@ -77,6 +96,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - Rendered locally, not published: both cuts, 12,350 frames (3:25.9). -14.0 LUFS, true peak -1.4 dBTP. About 14.5 min per render; ~405 MB each. Redaction checked on a decoded frame.
 - `video/README.md`, `video/PLAN-v5.md`: the camera check, render numbers, log.
 - **Machine:** removed `video/.venv-qwen` and the Hugging Face models `Qwen3-TTS-12Hz-1.7B-Base` and `whisper-large-v3-turbo` (unused since the switch to Edge Andrew); 11.1 GB freed, C: at 115 GB free. Other Hugging Face cache entries were left alone.
+
 ### 22:25: `e1dea99` video: v5 revision 1 (Andrew voice, rebuilt world, 2D type, slower pacing)
 - Narration: `video/scripts/tts5.py` now uses Microsoft Edge `en-US-AndrewMultilingualNeural` through edge-tts (the `.venv` from v4), with per-line `rate`/`pitch` in `video/narration-v5.json`, the v4 studio chain and word timings from the voice's word boundaries. Script trimmed (how1, a2_1, f1, fix1, sym1, a1_end). 30 lines, every word matched, 150.6 s of speech. `public/vo5/reference.wav` removed (Qwen clone source, no longer used).
 - `video/src/v5/world.tsx` rebuilt:
@@ -95,6 +115,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
   - About 11 min per render; ~399 MB each.
   - Redaction checked on a decoded frame.
 - `video/README.md`, `video/PLAN-v5.md`: voice, world, render numbers, log.
+
 ### 21:30: `5293326` video: `scripts/render5.ps1`; disk cleanup
 - `video/scripts/render5.ps1`: the final v5 renders in one command (redacted, plus the full cut when `data.local.json` exists): NVENC HEVC, 2-pass loudnorm, AAC 320k, hvc1 mux. `video/README.md` and `PLAN-v5.md` name it and list what narration regeneration needs.
 - **Machine:** freed 13.9 GB on C: (95.1 GB free after):
@@ -103,6 +124,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
   - removed the stalled `pip-unpack` torch download in `%TEMP%`
   - removed draft stills, raw takes, bake-off samples and solo stems from `video/out/`
 - Kept: `.venv-qwen`, Qwen3-TTS Base, Whisper large-v3-turbo, `node_modules`, and every `incident-v*.mp4` render.
+
 ### 21:21: `82b0a35` video: v5, a 3D film of every incident (1080p60, 3:23)
 - New film in `video/src/v5/` (`world.tsx`, `look.tsx`, `index.tsx`, `sound.ts`, `score.ts`, `qr.json`): a night-to-dawn 3D diorama of the hostel covering 05:34, 15:28, the friend's laptop, the fix (watch, Test and pin, announce) and prevention, with an end card and a QR code to the latest release. Plan, storyboard, fact checks and log in `video/PLAN-v5.md`.
 - Narration: `video/scripts/tts5.py` + `video/narration-v5.json`. Qwen3-TTS 1.7B clones the picked bake-off voice (`public/vo5/reference.wav`) on CUDA; for each line, the best of up to 3 takes by Whisper large-v3-turbo transcript match; studio chain; Whisper word timings into `public/vo5/timing.json`. 154 s of speech, all word cues resolve.

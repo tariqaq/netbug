@@ -85,7 +85,7 @@ if ($capture) {
     "`n--- system events, last 3 min ---"
     Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = (Get-Date).AddMinutes(-3) } |
         Where-Object { $_.ProviderName -match 'Tcpip|Dhcp|DNS|rtucx|NDIS|USB|Kernel-PnP|Netwtw|Kernel-Power' } |
-        Format-Table @{ n = 't'; e = { $_.TimeCreated.ToString('HH:mm:ss') } }, ProviderName, Id,
+        Format-Table @{ n = 't'; e = { $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss zzz') } }, ProviderName, Id,
             @{ n = 'msg'; e = { ($_.Message -split "`n")[0] } } -AutoSize | Out-String -Width 250
 
     if ($capture) {
@@ -94,7 +94,7 @@ if ($capture) {
         if ($left -gt 0) { Start-Sleep -Seconds ([Math]::Ceiling($left)) }
         pktmon stop | Out-Null
         pktmon filter remove | Out-Null
-        "`n--- packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon), $($capStart.ToString('yyyy-MM-dd HH:mm:ss zzz'))-$((Get-Date).ToString('HH:mm:ss')) ---"
+        "`n--- packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon), $($capStart.ToString('yyyy-MM-dd HH:mm:ss zzz')) to $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss zzz')) ---"
         $pkt = [IO.Path]::ChangeExtension($Out, '.pkt.txt')
         pktmon etl2txt $etl --out $pkt | Out-Null
         "saved: $etl"
@@ -104,6 +104,7 @@ if ($capture) {
         # same rules as netbug's ARP watch (arpwatch.ps1): every MAC that claimed the gateway IP or
         # this laptop's IP. This laptop's own MAC claims its own IP with every ARP request it sends.
         $lines = & (Join-Path $PSScriptRoot 'arpwatch.ps1') -Etl $etl -Gw $gw -Me $me -NoDelete
+        "ARP frames in the capture: $((@($lines | Where-Object { $_ -like 'frames *' }) -split ' ')[1])"
         $own = (Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).NetAdapter.MacAddress
         "`n--- who claimed to be the gateway $gw in the capture (more than one MAC = ARP spoofing) ---"
         $g = @($lines | Where-Object { $_ -like 'gw *' })

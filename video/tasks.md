@@ -89,10 +89,10 @@ Approach:
 ## v4 progress
 
 - [x] V4.0 Log the requests and plan here
-- [ ] V4.1 narration.json: Andrew, script changes (test1, hotspot line), per-line tone
-- [ ] V4.2 tts.py: per-line rate/pitch, studio-mic chain; re-voice; check durations and timing
-- [ ] V4.3 index.tsx: no grain, slower pacing, PART II card + test scene text, hotspot visual, new line wiring
-- [ ] V4.4 sound.ts: music +3 dB
+- [x] V4.1 narration.json: Andrew, script changes (test1, hotspot line), per-line tone
+- [x] V4.2 tts.py: per-line rate/pitch, studio-mic chain; re-voice; check durations and timing
+- [x] V4.3 index.tsx: no grain, slower pacing, PART II card + test scene text, hotspot visual, new line wiring
+- [x] V4.4 sound.ts: music +3 dB
 - [x] V4.5 check, lint, strip, stills (check clean, lint 0 errors; strip + stills reviewed)
 - [x] V4.6 Render v4 full + redacted (3 Mbit/s), loudness, spot-check (2:22, -14.8 LUFS, peak -0.9 dBFS, ~55 MB each; redaction checked; voice limiter added after a first render peaked at 0 dBFS)
 - [x] V4.7 Docs (video/README, root README, CHANGELOG), commit, push

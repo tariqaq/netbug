@@ -16,7 +16,7 @@ At 05:34:03 a device on the hostel LAN began sending ARP replies saying **"10.25
 |---|---|
 | **MAC address** | **`xx-xx-xx-xx-xx-xx`** (randomized / locally administered: typical of a phone or laptop with MAC randomization, or a spoofing tool) |
 | **IP address** | **`10.255.18.145`** (the same MAC, seen in my laptop's ARP table) |
-| **Seen active** | **2026-10-28 to at least 2026-11-01 18:31 MYT, on two residents' laptops.** On mine: 05:34:03 – 05:36:35 and 15:28:44–54 – 15:31:31 on 10-28 (both times I unplugged, so it may have run longer). On another resident's: every wired session from 10-28 22:55 to 11-01 18:31 (see below). |
+| **Seen active** | **2026-10-28 to at least 2026-11-03 07:20 MYT, on two residents' laptops.** On mine: 05:34:03 – 05:36:35 and 15:28:44–54 – 15:31:31 on 10-28 (both times I unplugged, so it may have run longer). On another resident's: every wired session from 10-28 22:55 to 11-01 18:31 (see below). Last seen by my laptop on 11-03 (see below). |
 | **Behaviour** | sends unicast ARP replies claiming the gateway IP `10.255.31.254`; forwards nothing (blackholes victims) |
 
 ## Evidence (logs available on request)
@@ -50,7 +50,15 @@ The same device (`xx-xx-xx-xx-xx-xx`, `10.255.18.145`) did it again at **15:28**
 A second resident's laptop (`10.255.16.59`) ran the same monitor for four days. The same device (`xx-xx-xx-xx-xx-xx`, `10.255.18.145`) cut it off **every time it joined the wired LAN**: 10-28 22:55 and 23:10, 10-29 01:32, and 11-01 07:06, 17:45 and 18:28. The longest outage lasted **37 minutes** (11-01 17:45–18:23).
 - Its packet capture on 11-01 shows `xx-xx-xx-xx-xx-xx` sending **8 fake "10.255.31.254 is-at xx-xx-xx-xx-xx-xx" replies** between 18:28 and 18:31.
 - It also shows the device **looking up the victim** by its own IP (`who-has 10.255.16.59 tell 10.255.18.145`, 18:28:52).
-- That laptop is now protected the same way as mine (gateway MAC pinned, router reminded of its real MAC every second). The attacker is still active as of **2026-11-01 18:31**.
+- That laptop is now protected the same way as mine (gateway MAC pinned, router reminded of its real MAC every second).
+
+## Still active (2026-11-03)
+
+My laptop's continuous ARP capture saw the device again on 11-03:
+- **04:01:58**: a fake "10.255.31.254 is-at xx-xx-xx-xx-xx-xx" reply, sent to another device on the LAN (not to mine).
+- **07:20:04–07:20:06**: 9 broadcast ARP requests for the gateway, 8 of them from `0.0.0.0` (probes). That looks like the device coming back online.
+
+Neither reached my laptop (it's pinned), but other residents without a pin are still exposed.
 
 ## How to find it on the MikroTik
 

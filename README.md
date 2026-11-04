@@ -19,7 +19,7 @@ Nothing in Windows explained it, so netbug watches every layer and timestamps wh
 > 🎯 **Found it (2026-10-28 05:34, and again 15:28 from the same device):** another device on the hostel LAN was **ARP spoofing the gateway**. It told the laptop "I'm the router", then swallowed every packet. netbug caught the gateway MAC change, the outage and the spoofed ARP replies live.
 > - Write-up: [`REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md`](REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md)
 > - Report for the hostel: [`REDACTED_RCC_REPORT.md`](REDACTED_RCC_REPORT.md)
-> - 🎬 Narrated explainer (2:22): [`video/incident-v4-redacted.mp4`](video/incident-v4-redacted.mp4)
+> - 🎬 Narrated explainer (2:22, both attacks): [`video/incident-v4-redacted.mp4`](video/incident-v4-redacted.mp4). A 3D v5 (3:26: every incident, the fix, prevention) is in `video/src/v5/`, rendered locally (see [`video/README.md`](video/README.md)).
 
 ---
 
@@ -146,7 +146,7 @@ Double-click again:
 | What they run | What happens |
 |---|---|
 | The same build again | Only opens the page. |
-| A newer build | Replaces the installed copy, restarts it, opens the page. Before v1.0.4 this was the only way to update. |
+| A different build (newer or older) | Replaces the installed copy, restarts it, opens the page. Before v1.0.4 this was the only way to update. An older build is replaced again by the next update check. |
 
 To uninstall, use the button, or run `netbug.exe --uninstall`. Either way it removes the task, the router pin and netbug's program files in `C:\ProgramData\netbug` (the exe, the page and scripts). The logs in `C:\ProgramData\netbug\logs` stay; installing again appends to them.
 
@@ -196,7 +196,7 @@ If the gateway stops answering while pinned (for example the router was replaced
 | ⏱️ Every | 🔍 Check | 🎯 Catches |
 |---|---|---|
 | 1 s | Ping gateway, `1.1.1.1`, `8.8.8.8`; tx/rx packet counters | LAN lag, internet loss, one-way traffic |
-| On Windows network events, 1 s while failing, else 10 s | Active interface, dongle link state | Cable/link drops, hotspot switch |
+| On Windows network events, 1 s while failing, else 10 s | Active interface, link state of the wired adapter last used | Cable/link drops, hotspot switch |
 | 2 s (1 s after a failure) | DNS query to the router | Resolver stalls ("sites load forever") |
 | 2 s | STUN on one long-lived UDP socket (Cloudflare, then Google); after 3 failures in a row it opens a new socket once and resolves the servers again | UDP loss, **NAT mapping changes** (what kills voice/game sessions) |
 | 10 s (1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
@@ -210,6 +210,8 @@ If the gateway stops answering while pinned (for example the router was replaced
 
 🚨 **Outage** = no interface, or both internet pings, DNS, TCP or UDP failing **2 seconds in a row**. Gateway-only ping loss doesn't count (the router rate-limits ICMP).
 
+The schedules above run by the clock, so slow probes don't stretch them. More than 30 s between two rounds (the laptop slept) is not an outage: a running outage ends at the last sample, `events.log` gets a `no samples for N s` line, and the packet counters start fresh (as they do when they go backwards after an adapter reset).
+
 ```mermaid
 flowchart TD
     A["🔑 Logon"] --> B["📅 Scheduled task 'netbug' (highest privileges)"]
@@ -220,6 +222,7 @@ flowchart TD
     C --> W["🖥️ Dashboard :8787"]
     C --> AW["🕵️ ARP capture thread"]
     C --> AN["📢 MAC announce thread"]
+    C --> UP["⬆️ Update check (6 h)"]
     M --> K{"🧮 Classify"}
     K -->|"all good"| R1["📝 CSV row every 5 s"]
     K -->|"failing"| R2["📝 CSV row every 1 s"]
@@ -238,6 +241,7 @@ flowchart TD
     G --> E
     SP --> E
     E --> W
+    W -->|"Export all logs"| X["📦 zip of logs\\ + ARP ring"]
 ```
 
 ---
@@ -260,7 +264,7 @@ Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` for a lone 
 
 Lines and rows from before v1.0.5 have no offset (they were all written in MYT, UTC+08:00). A CSV of the day the columns changed is kept as `netbug-<date>-old-<HHmmss>.csv`.
 
-🧹 Files older than **30 days** are deleted, and `logs\` is capped at **500 MB** (oldest snapshots first, then oldest CSVs).
+🧹 Files older than **30 days** are deleted (not `netbug.settings`), and `logs\` is capped at **500 MB** (oldest snapshots first, then oldest CSVs). The live ARP capture files (`arpring-a.etl`/`-b.etl`, a few hundred MB that pktmon reuses) are neither counted nor deleted.
 
 ---
 
@@ -295,7 +299,7 @@ The page makes no external requests, so it works while the internet is down. It 
 |---|---|
 | 🧠 RAM | ~25–45 MB for netbug, plus **512 MB of kernel memory** that `pktmon` reserves while the ARP capture runs (not adjustable) |
 | ⚡ CPU | ~1% of one core, BelowNormal priority, locked to the 4 highest-numbered logical processors (child processes too), so games keep the rest |
-| 🌐 Network | ~0.75 KB/s plus one 42-byte ARP broadcast per second; nothing to game or voice servers. The dashboard adds under 1 KB/s per open tab, LAN only |
+| 🌐 Network | ~0.75 KB/s plus one 42-byte ARP broadcast per second; nothing to game or voice servers. The dashboard adds under 1 KB/s per open tab, LAN and Tailscale only |
 | 💾 Disk | ~3–4 MB/day |
 | 🛡️ Safety | Restarts itself past 200 MB private memory, 5000 handles or 100 threads |
 
@@ -316,6 +320,6 @@ The page makes no external requests, so it works while the internet is down. It 
 | `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md` | 🔒 Incident report: the ARP spoofing attacks, evidence, mitigation |
 | `REDACTED_RCC_REPORT.md` | 🔒 Report for the hostel RCC: who to look for and how to stop it |
 | `REDACTED_NETWORK_SCAN.md` | 🔒 Network scan and findings |
-| `video/` | 🎬 Narrated explainer (2:22) of both attacks and the fix; see `video/README.md` |
+| `video/` | 🎬 Narrated explainers: v4 (2:22, committed) and the 3D v5 (3:26, rendered locally); see `video/README.md` |
 | `CHANGELOG.md` | 📜 Every change, timestamped in MYT (UTC+08:00) |
 | `AGENTS.md` | 📏 Rules for anyone (or any AI agent) working on this repo |

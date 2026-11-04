@@ -1,6 +1,6 @@
 # Incident report: ARP spoofing of the hostel gateway (2026-10-28 05:34)
 
-All times are MYT (UTC+08:00), the laptop's system clock. Evidence files live in `logs/` on the laptop (gitignored):
+All times are MYT (UTC+08:00), the laptop's system clock. Evidence files live in the laptop's netbug logs (gitignored): `C:\ProgramData\netbug\logs` since 2026-11-04 (the release exe; the earlier history was copied there from the repo's `logs/`):
 - `logs/events.log`
 - `logs/netbug-2026-10-28-old-*.csv` (CSV rows from before the 05:53 column change)
 - `logs/snapshots/2026-10-28_05-34-06_outage.txt` / `.etl` / `.pkt.txt`
@@ -20,7 +20,7 @@ This is **ARP spoofing / ARP cache poisoning**. It is what tools like NetCut, ar
 **It happened again at 15:28 the same day, from the same device, and it is confirmed as the same issue (§11).**
 
 **Response:**
-- The gateway's MAC was **pinned** on the laptop (a static ARP entry) at 05:50, then **removed at 15:12 at the user's request** (§8). The next incident will first be checked against this one, and a fix applied only if it's the same issue.
+- The gateway's MAC was **pinned** on the laptop (a static ARP entry) at 05:50, **removed at 15:12** at the user's request so the next drop could confirm the cause, and **re-applied at 15:37** after the 15:28 attack confirmed it (§8, §11).
 - netbug now raises an alert for a changed gateway MAC, shows whether the gateway is pinned, and runs a periodic ARP watch that detects spoofing even while the pin protects the laptop (§9).
 - A write-up for the hostel RCC is in `RCC_REPORT.md` (§10).
 
@@ -177,7 +177,7 @@ Earlier suspects, now explained or ruled out:
 |---|---|
 | Attacker MAC | `xx-xx-xx-xx-xx-xx` (locally administered/randomized, so no vendor lookup possible) |
 | Attacker IP | `10.255.18.145` (from the same MAC in the laptop's neighbor cache) |
-| Active | at least 05:34:03 – 05:36:35 on 2026-10-28 (the laptop left the LAN at 05:36:35) |
+| Active | at least 05:34:03 – 05:36:35 on 2026-10-28 (the laptop left the LAN at 05:36:35); again 15:28 (§11), on a friend's laptop to 11-01 (§12), and in this laptop's capture on 11-03 04:01:58 (a fake gateway reply sent to another device) |
 | Behaviour | unicast ARP replies claiming `10.255.31.254`; dropped all forwarded traffic |
 
 The laptop can't see which room this is. The hostel MikroTik can:
@@ -191,7 +191,7 @@ A randomized MAC can change, but it usually stays the same per Wi-Fi network on 
 ## 8. Mitigation: gateway MAC pin (applied 05:50, removed 15:12, re-applied 15:37)
 
 **Current status: APPLIED again since 15:37:57** (§11), after the 15:28 attack confirmed the cause. History: applied 05:50, removed on purpose at 15:12, re-applied 15:37.
-- The plan is to let the next drop happen unprotected and analyze it with netbug, to confirm it's the same ARP-spoofing issue rather than assume so. Only then is a fix applied, with the user's OK.
+- From 15:12 to 15:37 the pin was off on purpose: the next drop hit the laptop unprotected so it could be compared with this one before any fix was applied (with the user's OK).
 - Removed with `netsh interface ipv4 delete neighbors "Ethernet 7" 10.255.31.254`.
 - Verified afterwards: the gateway entry was back to `Reachable` (dynamic) with the real MikroTik MAC, nothing remained in the PersistentStore, and netbug logged `gateway ARP entry for 10.255.31.254: ? -> dynamic`.
 - Overnight (06:13–15:00, ~9 h, pinned) there were no spoofing alerts, no gateway MAC changes and no real outages.
@@ -200,7 +200,7 @@ Everything netbug does to *detect* spoofing (§9) stays on, since that's how the
 
 The rest of this section documents the pin as it was applied, for re-use.
 
-**Machine change, approved by the user, 2026-10-28 05:50 (removed 15:12):**
+**Machine change, approved by the user, 2026-10-28 05:50 (removed 15:12; the same command re-applied it at 15:37:57):**
 
 ```
 netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx store=persistent
@@ -255,6 +255,17 @@ Verified on the laptop after the change:
 
 ---
 
+## 10. What the hostel should do (summary of `RCC_REPORT.md`)
+
+1. Find `10.255.18.145` / `xx-xx-xx-xx-xx-xx` in the MikroTik DHCP leases and bridge host table, then locate the port or AP and the room.
+2. Protect the gateway's ARP on the LAN, for example:
+   - DHCP-only ARP: `arp=reply-only` on the LAN bridge, with **add-arp-for-leases** on the DHCP server. The router then trusts only leases it handed out.
+   - DHCP snooping plus ARP inspection on managed switches, if they support it.
+   - **client isolation** on APs and switch ports, so residents can't send frames to each other at all
+3. Watch for repeat offenders (the same MAC or IP claiming `10.255.31.254`).
+
+---
+
 ## 11. Second occurrence: 2026-10-28 15:28 (same attacker, confirmed)
 
 The pin had been removed at 15:12 so that the next drop would hit the laptop unprotected and could be compared. It came 16 minutes later.
@@ -287,7 +298,7 @@ The pin had been removed at 15:12 so that the next drop would hit the laptop unp
   - **3 spoofed replies**, `xx-xx-xx-xx-xx-xx > laptop: Reply 10.255.31.254 is-at xx-xx-xx-xx-xx-xx`, each answering Windows' re-check within a millisecond (15:29:39, :45, :53).
   - The real MikroTik `xx-xx-xx-xx-xx-xx` never appears.
   - **The attacker is seen picking a target:** `xx-xx-xx-xx-xx-xx > broadcast: who-has 10.255.23.47 tell 10.255.18.145`. `10.255.23.47` was a victim at 05:34 too. That is how NetCut-style tools look up their victims' MACs before poisoning them.
-  - **Four other devices** lost the gateway and broadcast "who-has 10.255.31.254": `10.255.16.66`, `10.255.20.57`, `10.255.23.47` and `10.255.23.235` (two at 05:34).
+  - **Four other devices** lost the gateway and broadcast "who-has 10.255.31.254": `10.255.16.66`, `10.255.20.57`, `10.255.23.47` and `10.255.23.235` (`10.255.23.47` was hit at 05:34 too).
 - Snapshot summary line: `who claimed to be the gateway: xx-xx-xx-xx-xx-xx  3 frame(s)`.
 
 ### Comparison with 05:34
@@ -320,16 +331,7 @@ netsh interface ipv4 add neighbors "Ethernet 7" 10.255.31.254 xx-xx-xx-xx-xx-xx 
 - Before: the cache still held the impostor, `10.255.31.254 xx-xx-xx-xx-xx-xx Unreachable`.
 - After: `xx-xx-xx-xx-xx-xx Permanent` in the active store and the PersistentStore.
 - The user replugged Ethernet only after the pin was in place.
-- Next question: does the problem still happen with the pin on? If the attacker also poisons the router's side, inbound traffic can still break (§8). netbug and ARP watch will show which.
-
-## 10. What the hostel should do (summary of `RCC_REPORT.md`)
-
-1. Find `10.255.18.145` / `xx-xx-xx-xx-xx-xx` in the MikroTik DHCP leases and bridge host table, then locate the port or AP and the room.
-2. Protect the gateway's ARP on the LAN, for example:
-   - DHCP-only ARP: `arp=reply-only` on the LAN bridge, with **add-arp-for-leases** on the DHCP server. The router then trusts only leases it handed out.
-   - DHCP snooping plus ARP inspection on managed switches, if they support it.
-   - **client isolation** on APs and switch ports, so residents can't send frames to each other at all
-3. Watch for repeat offenders (the same MAC or IP claiming `10.255.31.254`).
+- The open question then was whether drops continue with the pin on. They did: three short drops on 11-01 02:34–02:38 while pinned fit the router's side being poisoned (§8), which led to the MAC announce and the continuous ARP capture (§9 update).
 
 ## 12. Second victim: a friend's laptop on the same LAN (2026-10-28 to 2026-11-03)
 

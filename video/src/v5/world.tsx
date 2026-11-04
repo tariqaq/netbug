@@ -476,7 +476,7 @@ export const Ground: React.FC<{ w: WorldState; uplink: number }> = ({ w, uplink 
 };
 
 /** The MikroTik in the rack: a dark box with a row of blinking LEDs; `t` seconds, `on` 0..1 traffic, `bad` 0..1 poisoned. */
-export const Router: React.FC<{ t: number; on: number; bad?: number; glowUp?: number }> = ({ t, on, bad = 0, glowUp = 0 }) => (
+export const Router: React.FC<{ t: number; on: number; bad?: number }> = ({ t, on, bad = 0 }) => (
   <Group3D position={ROUTER}>
     <Mesh castShadow receiveShadow geometry={box(1.1, 0.22, 0.55)} material={{ color: '#343b48', metallic: 0.25, roughness: 0.45 }} />
     <Mesh position={[0, 0.115, 0]} geometry={box(1.0, 0.01, 0.45)} material={{ color: '#2a2e38', metallic: 0.6, roughness: 0.3 }} />
@@ -484,7 +484,7 @@ export const Router: React.FC<{ t: number; on: number; bad?: number; glowUp?: nu
     {Array.from({ length: 8 }, (_, i) => {
       const blink = on * (0.5 + 0.5 * Math.sin(t * (9 + i * 1.7) + i * 2.1));
       const c = bad > 0.5 && i % 3 === 0 ? COL.bad : COL.ok;
-      return <Mesh key={i} position={[-0.42 + i * 0.08, 0.02, 0.28]} geometry={box(0.04, 0.03, 0.01)} material={{ color: '#000000', emissive: c, emissiveIntensity: 0.3 + 2.5 * blink + glowUp }} />;
+      return <Mesh key={i} position={[-0.42 + i * 0.08, 0.02, 0.28]} geometry={box(0.04, 0.03, 0.01)} material={{ color: '#000000', emissive: c, emissiveIntensity: 0.3 + 2.5 * blink }} />;
     })}
   </Group3D>
 );
@@ -599,7 +599,6 @@ const P_ROUTER_OUT: V3[] = [
   ...catenary(BRACKET, add(POLE_TOP, [0, 0.12, 0]), 0.35, 10).slice(0),
   ...catenary(add(POLE_TOP, [0, 0.12, 0]), MAST_TOP, 2.2, 18).slice(1),
 ];
-export const UPLINK = P_ROUTER_OUT;
 
 /** The wire path from a room's device to the router: through the switch. */
 export const pathToRouter = (fl: number, col: number): V3[] => {

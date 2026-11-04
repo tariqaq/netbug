@@ -107,12 +107,10 @@ const at = (id: string, w?: number | string, n = 0): number => {
   return l.from + sec(l.words[idx].start);
 };
 const endOf = (id: string) => lineOf(id).from + lineOf(id).frames;
-const cardAt = (id: string) => sceneFrom[id];
 
 // ---------------------------------------------------------------- helpers
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const between = (f: number, a: number, b: number) => f >= a && f < b;
 /** 0..1 on from `a` (fade `d`), back to 0 from `b`. */
 const span = (f: number, a: number, b: number, d = 16) => Math.min(prog(f, a, d), fadeOut(f, b, d));
 const pop = (f: number, a: number) => (f < a ? 0 : spring({ frame: f - a, fps: FPS, config: { damping: 14, stiffness: 140 } }));
@@ -282,7 +280,7 @@ const roomsAt = (f: number): Record<string, RoomState> => {
     set(k, { red: Math.max(prev, span(f, at('a2_count', 'four') + i * 9, sceneFrom.friend, 30) * (0.75 + 0.25 * Math.sin(f * 0.19 + i * 2))) });
   });
   // friend: six red flashes (one per wired join), then green after the pin
-  const flashes = FRIEND_JOINS.map((_, i) => at('f2', 'outages') + i * 16);
+  const flashes = FRIEND_JOINS.map((_, i) => at('f2', 'outages') + i * JOIN_STEP);
   let fr = 0;
   for (const a of flashes) fr = Math.max(fr, f >= a ? Math.exp(-(f - a) / 20) : 0);
   fr = Math.max(fr, span(f, at('f2', 'longest'), sceneFrom.fix, 20) * 0.9);
@@ -291,6 +289,8 @@ const roomsAt = (f: number): Record<string, RoomState> => {
 };
 
 /** The friend's six cut-off wired joins (incident report §12). */
+/** Frames between the joins' marks, red flashes and thuds, so the three land together. */
+const JOIN_STEP = 16;
 const FRIEND_JOINS = ['10-28 22:55', '10-28 23:10', '10-29 01:32', '11-01 07:06', '11-01 17:45', '11-01 18:28'];
 
 const worldAt = (f: number): WorldState => {
@@ -337,7 +337,7 @@ const CAND: V3[] = [add(MINE, [-0.27, 0.02, 0.12]), add(MINE, [0.3, 0.32, 0.25])
 
 // ---------------------------------------------------------------- the 3D world
 
-const World: React.FC<{ f: number; cam: Cam; d: Data }> = ({ f, cam }) => {
+const World: React.FC<{ f: number; cam: Cam }> = ({ f, cam }) => {
   const t = f / FPS;
   const w = worldAt(f);
   const imp = prog(f, at('a1_1', 'replying') - 6, 40);
@@ -700,7 +700,7 @@ const FriendStrip: React.FC<{ f: number }> = ({ f }) => {
   const day = (x1 - x0) / 5;
   const hrs = (s: string) => { const [d, t] = s.split(' '); const k = ['10-28', '10-29', '10-30', '10-31', '11-01'].indexOf(d); const [h, m] = t.split(':').map(Number); return k * 24 + h + m / 60; };
   const X = (h: number) => x0 + (h / 24) * day;
-  const n = FRIEND_JOINS.filter((_, i) => f >= at('f2', 'outages') + i * 14).length;
+  const n = FRIEND_JOINS.filter((_, i) => f >= at('f2', 'outages') + i * JOIN_STEP).length;
   const lp = prog(f, at('f2', 'longest'), 24);
   const ls = X(hrs('11-01 17:45')), le = X(hrs('11-01 18:22'));
   return (
@@ -716,7 +716,7 @@ const FriendStrip: React.FC<{ f: number }> = ({ f }) => {
       ))}
       {/* one red mark per cut-off join, centred on the track */}
       {FRIEND_JOINS.map((j, i) => {
-        const p = pop(f, at('f2', 'outages') + i * 14);
+        const p = pop(f, at('f2', 'outages') + i * JOIN_STEP);
         return p > 0.01 ? <Rect key={j} x={X(hrs(j)) - 6} y={ty - 18 * p} width={12} height={36 * p} radius={6} fill={COL.bad} /> : null;
       })}
       {/* the longest outage, bracketed and labelled above its mark */}
@@ -888,7 +888,7 @@ const fx = (f: number, kind: Sfx, gain = 1, len?: number) => cue(f, kind, { gain
   fx(at('a2_hunt', 'looking') - 10, 'sweep', 0.9);
   hit(at('a2_verdict', 'purpose'), 0.05, 4, ['bigImpact']);
   // friend
-  for (let i = 0; i < 6; i++) fx(at('f2', 'outages') + i * 16, 'thud', 0.55);
+  for (let i = 0; i < FRIEND_JOINS.length; i++) fx(at('f2', 'outages') + i * JOIN_STEP, 'thud', 0.55);
   fx(at('f2', 'longest'), 'flatline', 0.7, 1.6);
   // fix
   hit(at('fix0', 'teeth'), 0.03, 0, ['lock']);
@@ -953,7 +953,7 @@ const Film: React.FC<Data> = (d) => {
     <Layer>
       <Sky dawn={w.dawn} stars={1 - w.dawn} red={redSky} t={f / FPS} />
       <Layer effects={[...(blurAmt > 0.01 ? [blur(14 * blurAmt)] : []), ...(sh.fringe > 0.05 ? [chromaticAberration(sh.fringe)] : []), ...(MB > 1 ? [motionBlur({ samples: MB, shutter: 0.5 })] : [])]}>
-        <World f={f} cam={cam} d={d} />
+        <World f={f} cam={cam} />
       </Layer>
       <Haze dawn={w.dawn} amt={0.5} />
       <Vignette strength={0.62 - 0.2 * w.dawn} />

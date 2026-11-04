@@ -104,7 +104,6 @@ const at = (id: string, w?: number | string): number => {
   if (idx < 0) throw new Error(`word "${w}" not in ${id}`);
   return l.from + sec(l.words[idx].start);
 };
-const endOf = (id: string) => lineOf(id).from + lineOf(id).frames;
 
 // ---------------------------------------------------------------- helpers
 
@@ -180,7 +179,7 @@ const Packets: React.FC<{ f: number; a: [number, number]; b: [number, number]; s
   };
 
 /** A straight link line between two points. */
-const Link: React.FC<{ a: [number, number]; b: [number, number]; color?: string; opacity?: number; dash?: boolean }> =
+const Link: React.FC<{ a: [number, number]; b: [number, number]; color?: string; opacity?: number }> =
   ({ a, b, color = C.line, opacity = 1 }) => (
     <Path d={`M ${a[0]} ${a[1]} L ${b[0]} ${b[1]}`} opacity={opacity} stroke={{ color, width: 4 }} />
   );

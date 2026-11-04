@@ -361,7 +361,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const top = [...(s.udpTop || '').matchAll(/(\S.*?)=(\d+)/g)].map(m => m[1] + ' ' + m[2]).join(', ');
     const facts = [
       ['Interface', esc(s.iface || 'none')],
-      ['USB Ethernet link', esc(s.link)],
+      ['Wired link', esc(s.link)],
       ['Local IP', esc(s.ip || '–')],
       ['Gateway', esc(s.gw || '–')],
       ['Gateway MAC', esc(s.gwMac || '–') + '<span>' +

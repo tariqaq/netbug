@@ -8,6 +8,8 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 ### 21:00: `480f056` v1.0.6
 - `tools/netbug.cs`: `Version` 1.0.6, the audit fixes of 20:26.
 - GitHub release `v1.0.6` with `netbug.exe` built from this commit. Copies from v1.0.4 on install it by themselves within 6 h.
+- The first upload was built as `netbug-release.exe`, so its assembly name was wrong. The updater refused it ("the new file is netbug-release 1.0.6.0, not netbug 1.0.6") and nothing was installed. It was replaced at 21:04 with a correct `netbug.exe` build; the download now checks out as assembly `netbug` 1.0.6.
+- **Machine:** this laptop's netbug updated itself 1.0.5 -> 1.0.6 through **Install update now** at 21:05. The installed exe is byte-identical to the release. Checked after: the gateway is still pinned, the wired link shows `up`, no errors, and the CSV rows are normal.
 
 ### 20:26: `ab459d3` audit fixes (code bugs, stale docs, video)
 - `tools/netbug.cs`:

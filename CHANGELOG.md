@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
-### 20:26: audit fixes (code bugs, stale docs, video)
+### 20:26: `ab459d3` audit fixes (code bugs, stale docs, video)
 - `tools/netbug.cs`:
   - Retention no longer deletes `netbug.settings` (it's rewritten only when a switch changes, so it aged out after 30 days and reset the switches) or the live ARP capture files.
   - The 500 MB cap no longer counts `arpring-*.etl` (a few hundred MB that pktmon reuses), which made it delete snapshots early.

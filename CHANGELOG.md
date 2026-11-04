@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
-### 08:05: v1.0.5: dashboard on every interface, uninstall keeps logs, UTC offset on every timestamp
+### 08:05: `acd0263` v1.0.5: dashboard on every interface, uninstall keeps logs, UTC offset on every timestamp
 - `tools/netbug.cs`:
   - The dashboard listens on all interfaces (`http://+:8787/`, Tailscale included) for the release exe too. Other devices get the page read-only: no control token, so no Router protection, update or export controls, and those APIs refuse them.
   - Uninstall (button or `--uninstall`) on a lone exe removes the task, the router pin and the program files in `%ProgramData%\netbug` (`RemoveProgram`), and keeps `logs\`. It's logged in `events.log` for both kinds of copy.

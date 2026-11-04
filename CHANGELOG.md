@@ -5,6 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 21:00: v1.0.6
+- `tools/netbug.cs`: `Version` 1.0.6, the audit fixes of 20:26.
+- GitHub release `v1.0.6` with `netbug.exe` built from this commit. Copies from v1.0.4 on install it by themselves within 6 h.
+
 ### 20:26: `ab459d3` audit fixes (code bugs, stale docs, video)
 - `tools/netbug.cs`:
   - Retention no longer deletes `netbug.settings` (it's rewritten only when a switch changes, so it aged out after 30 days and reset the switches) or the live ARP capture files.

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
-### 21:00: v1.0.6
+### 21:00: `480f056` v1.0.6
 - `tools/netbug.cs`: `Version` 1.0.6, the audit fixes of 20:26.
 - GitHub release `v1.0.6` with `netbug.exe` built from this commit. Copies from v1.0.4 on install it by themselves within 6 h.
 

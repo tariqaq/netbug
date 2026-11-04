@@ -5,6 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
+### 08:09: stale-doc sweep after v1.0.5
+- `tools/netbug.cs` header: the dashboard is on all interfaces for every copy (two lines still said localhost only for a lone exe).
+- `README.md`: the page reloads after any netbug restart (not only a version change); the CSV row has the date and UTC offset; repo layout lists the Logs and updates panel and `exports/`.
+
 ### 08:06: release v1.0.5; this laptop updated itself to it
 - GitHub release `v1.0.5` (tag on `acd0263`).
 - **Machine:** this laptop's netbug (release exe) updated itself 1.0.4 -> 1.0.5 through **Install update now** in 3 s: download, swap to `netbug.old.exe`, restart. The installed exe is byte-identical to the release. Checked after: the gateway is still pinned; the page from the LAN address has no token and `/api/export` and `/api/fix` return 403 there; the CSV has the new columns (the earlier part of today is in `netbug-2026-11-04-old-080614.csv`).

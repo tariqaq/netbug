@@ -248,7 +248,7 @@ Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` for a lone 
 
 | File | Contents |
 |---|---|
-| `netbug-<date>.csv` | One row per 5 s (per 1 s around failures): interface, link, IP, gateway + MAC + ARP entry type, ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures |
+| `netbug-<date>.csv` | One row per 5 s (per 1 s around failures): interface, link, IP, gateway + MAC + ARP entry type, ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures, then the date and UTC offset |
 | `events.log` | Timeline: `OUTAGE START/END`, `LAG`, `GATEWAY MAC CHANGED`, `ARP SPOOFING DETECTED`, link/interface/MAC/pin/public IP/NAT changes, TCP connection deaths, high UDP usage, hourly `health:` lines |
 | `snapshots\` | Per incident: adapters, NCSI, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, system events, a `pktmon` capture taken while the probes run, who claimed the gateway or this laptop in it, and `<name>.ring.txt` (the ARP about the gateway or this laptop from the 15 min before) |
 | `netbug.settings` | The Auto-detect and Keep-the-router-updated switches |
@@ -283,7 +283,7 @@ Lines and rows from before v1.0.5 have no offset (they were all written in MYT, 
     - `EXPORT_MANIFEST.txt`: the cutoff time, version, and every file with its size
   - Nothing is redacted: the zip has MACs, IPs and network names.
 
-The page makes no external requests, so it works while the internet is down. It polls only while visible (`/api/state` 1 s, `/api/events` 2 s, `/api/fix` 2 s on the laptop). It reloads itself when netbug's version changes (after an update).
+The page makes no external requests, so it works while the internet is down. It polls only while visible (`/api/state` 1 s, `/api/events` 2 s, `/api/fix` 2 s on the laptop). It reloads itself whenever netbug restarts (an update, a crash, a rebuild), so the laptop's controls always carry the running netbug's token.
 
 > ⚠️ Anyone on the LAN (and on your Tailscale network) can see the page, including your public IP, the gateway MAC and process names. This applies to the release exe too. The Router protection, update and export controls are localhost-only: other devices get the page without them, and those APIs refuse them. Windows Firewall decides who can reach port 8787: with the firewall on for the network's profile (usually Public for a hostel LAN), other devices can't open the page until an inbound rule allows it.
 
@@ -306,11 +306,12 @@ The page makes no external requests, so it works while the internet is down. It 
 | Path | What |
 |---|---|
 | `tools/netbug.cs` | The program |
-| `tools/dashboard.html` | Dashboard page (with the Router protection panel on the laptop) |
+| `tools/dashboard.html` | Dashboard page (with the Router protection and Logs and updates panels on the laptop) |
 | `tools/snapshot.ps1` | Incident snapshot, run by netbug |
 | `tools/arpwatch.ps1` | Reads a snapshot's capture file: who claimed the gateway IP or this laptop's IP |
 | `tools/routers.local.txt` | Gitignored: known router MACs built into the exe for the **Router MAC** dropdown |
 | `tools/fonts/` | Inter font for the dashboard (SIL Open Font License, `OFL.txt`) |
+| `exports/` | Gitignored: log exports (zips from this laptop and the friend's) and release notes drafts |
 | `tools/redact.ps1` | Builds `REDACTED_<name>.md` from gitignored notes (MACs + terms in `redact.local.txt` → `xxx`); refuses to write if PII remains |
 | `REDACTED_INCIDENT_2026-10-28_ARP_SPOOFING.md` | 🔒 Incident report: the ARP spoofing attacks, evidence, mitigation |
 | `REDACTED_RCC_REPORT.md` | 🔒 Report for the hostel RCC: who to look for and how to stop it |

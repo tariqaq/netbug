@@ -25,8 +25,8 @@
 // "MAC announce" section.
 // logs/ is kept under 30 days and 500 MB. An hourly health line is written, and the
 // process restarts itself past 200 MB private memory / 5000 handles / 100 threads.
-// A dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served on port 8787,
-// read-only, on all interfaces (localhost only for a lone exe, see below).
+// A dashboard (tools/dashboard.html + its font + /api/state + /api/events) is served on port 8787 on all
+// interfaces (Tailscale included), read-only for other devices: its controls work only from this laptop.
 // Router check and pin (the dashboard's "Router protection" panel, for the person at this laptop
 // only): finds the real router MAC by testing every MAC that claims the gateway IP (or tests one known
 // or typed MAC), and can pin it as a permanent ARP entry. See the "router check and pin" section.
@@ -34,8 +34,8 @@
 // Started without admin rights (a double-click), netbug asks for UAC, starts an elevated copy and
 // opens the dashboard in the default browser. The first elevated start sets up the "netbug" logon task
 // (see the "install" section). A lone netbug.exe (no dashboard.html next to it, e.g. a GitHub release
-// download) installs itself to %ProgramData%\netbug, runs from there, unpacks its page, font and
-// scripts from its own resources and serves the dashboard on localhost only.
+// download) installs itself to %ProgramData%\netbug, runs from there and unpacks its page, font and
+// scripts from its own resources.
 // netbug.exe --uninstall removes the task and the router pin (and, for a lone exe, its program files in
 // %ProgramData%\netbug). The logs always stay.
 // Export and updates (the page's "Logs and updates" panel, this laptop only): one zip of everything in

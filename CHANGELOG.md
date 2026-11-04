@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-04
 
-### 08:09: stale-doc sweep after v1.0.5
+### 08:09: `852388a` stale-doc sweep after v1.0.5
 - `tools/netbug.cs` header: the dashboard is on all interfaces for every copy (two lines still said localhost only for a lone exe).
 - `README.md`: the page reloads after any netbug restart (not only a version change); the CSV row has the date and UTC offset; repo layout lists the Logs and updates panel and `exports/`.
 

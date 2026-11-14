@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-15
 
-### 02:16: `HASH` attacker investigation handoff
+### 02:16: `db55aa2` attacker investigation handoff
 - Deep-dived the ARP-spoofing attacker across this laptop's logs and the friend's three exports (66,666 ARP frames), then did live non-destructive recon of the device.
 - Findings: `7A-EC-33-BB-8A-12` / `10.255.18.145` is a hardened stock **Android** phone on Wi-Fi (mDNS `Android.local`, IPv6 LL `fe80::78ec:33ff:febb:8a12`, TTL 64, randomized MAC, **zero open TCP/UDP ports** on IPv4 and IPv6, no advertised services). Reactive gateway poisoner that blackholes victims; 0–1 ms reply race with the real router; 8-probe join fingerprint; active 12 of 18 days, heaviest 20:00–23:00.
 - **Machine:** active recon from this laptop — `ping`, `nbtstat -A`, LLMNR/reverse DNS, direct mDNS queries, and nmap (`-sS -sV -O` top-1000, full `-p-`, `-sU` common ports, IPv6 link-local). No exploitation, MITM, or hack-back. Scan outputs in `%TEMP%\nb_scan*.txt`, `%TEMP%\nb_udp.txt`.

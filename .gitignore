@@ -11,3 +11,4 @@ video/data.local.json
 tools/routers.local.txt
 video/scripts/__pycache__/
 exports/
+HANDOFF_ATTACKER_INVESTIGATION.md

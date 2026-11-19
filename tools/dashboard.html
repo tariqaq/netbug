@@ -158,6 +158,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid #444; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .fix-err { color: var(--down); font-size: 14px; margin-top: 10px; }
+.upd { margin: 0 0 16px; }
+.upd[hidden] { display: none; }
+.upd-bar { height: 6px; border-radius: 3px; background: #2c2c2e; overflow: hidden; }
+.upd-bar i { display: block; height: 100%; width: 0; background: var(--gw); border-radius: 3px; transition: width .4s ease; }
+.upd-bar.unknown i { width: 30%; animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.upd-line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-top: 8px; }
+.upd-line b { font-weight: 600; }
 
 @media (max-width: 600px) {
   .facts { grid-template-columns: repeat(2, 1fr); column-gap: 16px; }
@@ -182,7 +190,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   #log .l { grid-template-columns: 1fr; gap: 0; padding: 4px 14px; }
   #log .t { font-size: 11.5px; }
 }
-@media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .dot, .upd-bar i { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body data-state="ok">
@@ -221,6 +229,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   <section class="fix" id="tools" hidden aria-live="polite">
     <div class="fix-head"><h2>Logs and updates:</h2><span class="fix-state" id="up-state"></span></div>
     <p class="fix-sub" id="up-sub"></p>
+    <div class="upd" id="up-prog" hidden>
+      <div class="upd-bar" id="up-bar" role="progressbar" aria-label="Update progress" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+      <div class="upd-line"><span id="up-step"></span><b id="up-pct"></b></div>
+    </div>
     <div class="fix-actions">
       <button class="btn" id="up-install" type="button" hidden>Install update now</button>
       <button class="btn ghost" id="up-check" type="button">Check for updates</button>
@@ -541,13 +553,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   // ---------- router protection (only on the laptop itself) ----------
   const token = document.querySelector('meta[name="netbug-token"]').content;
   const fixOn = /^[0-9a-f]{32}$/.test(token);
-  let fix = null, uninstArmed = false;
+  let fix = null, uninstArmed = false, fixPolling = false, fastFix = 0;
   async function fixCall(path, method) {
+    const poll = !path;
+    if (poll && fixPolling) return;   // a status poll waits for the previous one
+    if (poll) fixPolling = true;
     try {
       const r = await fetch('/api/fix' + path, { method: method || 'GET', cache: 'no-store', headers: { 'X-Netbug-Token': token } });
       if (r.ok) { fix = await r.json(); renderFix(); }
       else if (r.status === 403) location.reload();   // the token is from a netbug that has restarted since
-    } catch (e) { }
+    } catch (e) {
+      // netbug is gone for a moment while an update restarts it: say so until the new one answers (the
+      // page then reloads, see pollState)
+      if (fix && fix.update && fix.update.busy && fix.update.pct >= 95) {
+        fix.update.step = 'Waiting for netbug ' + (fix.update.latest || '') + ' to start';
+        renderTools();
+      }
+    } finally { if (poll) fixPolling = false; }
   }
   function renderFix() {
     const f = fix, res = f.result;
@@ -584,13 +606,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     renderTools();
   }
 
-  // "Logs and updates": version, the 6-hourly GitHub release check, install, and the full log export
+  // "Logs and updates": version, the 15-minute GitHub release check, install (with a progress bar and the
+  // current step while it runs), and the full log export
   let exportUntil = 0;
   function renderTools() {
     const f = fix, u = f.update || {};
     $('tools').hidden = false;
+    // while an update runs: the bar (pct -1 = size not known, an animated bar) and one line with the step
+    $('up-prog').hidden = !u.busy;
+    if (u.busy) {
+      const known = typeof u.pct === 'number' && u.pct >= 0;
+      $('up-bar').classList.toggle('unknown', !known);
+      $('up-bar').firstElementChild.style.width = known ? u.pct + '%' : '';
+      if (known) $('up-bar').setAttribute('aria-valuenow', u.pct); else $('up-bar').removeAttribute('aria-valuenow');
+      putText($('up-step'), u.step || 'Starting');
+      putText($('up-pct'), known ? u.pct + '%' : '');
+    }
+    // poll every 0.5 s while an update runs, so the bar moves smoothly
+    if (u.busy && !fastFix) fastFix = setInterval(() => fixCall(''), 500);
+    else if (!u.busy && fastFix) { clearInterval(fastFix); fastFix = 0; }
     let st, cls;
-    if (u.busy) { st = u.step || 'Updating…'; cls = 'warn'; }
+    if (u.busy) { st = 'Updating to ' + (u.latest || 'the new release'); cls = 'warn'; }
     else if (u.checking) { st = 'Checking…'; cls = ''; }
     else if (u.available) { st = 'Update available: ' + u.latest; cls = 'warn'; }
     else if (u.checkedAt && !u.error) { st = 'Up to date'; cls = 'ok'; }
@@ -672,7 +708,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     timers = [setInterval(pollState, 1000), setInterval(pollEvents, 2000)];
     if (fixOn) { fixCall(''); timers.push(setInterval(() => fixCall(''), 2000)); }
   }
-  function stop() { timers.forEach(clearInterval); timers = []; }
+  function stop() { timers.forEach(clearInterval); timers = []; if (fastFix) { clearInterval(fastFix); fastFix = 0; } }
   document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
   let raf = 0;
   window.addEventListener('resize', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });

@@ -5,6 +5,22 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
+### 07:15: `PENDING` v1.0.10: update progress bar, safer updater, README rewrite
+- `tools/netbug.cs` (`Version` 1.0.10), updater:
+  - Download read in 64 KB blocks with progress (`updPct` 0-100, `pct` in `/api/fix` `update`); steps shown as one line: connecting, `Downloading netbug <tag>: x of y MB`, SHA-256 check, build check, replacing netbug.exe, restarting.
+  - A download over 64 MB, or shorter than its announced length, fails.
+  - If the new build can't be started after the swap, netbug.old.exe takes netbug.exe back and netbug keeps running (before: netbug.exe was left as the new build and every later update failed deleting the running netbug.old.exe). A failed install also resumes the ARP capture and releases its lock.
+  - A release whose install failed is retried automatically after 1 h, not every 15 min (the page's button still tries at once).
+  - Comments: header mentions the progress bar; Main's mutex comment points at `Restart`.
+- `tools/dashboard.html`: progress bar (an animated bar when the size isn't known) and a step line under Logs and updates; "Waiting for netbug <tag> to start" while it restarts; `/api/fix` polled every 0.5 s during an update and each status poll waits for the previous one.
+- `README.md`: rewritten short, for someone using the page: install, what the dashboard says, router protection, updates, logs, uninstall, footprint; developer notes at the end.
+- `INCIDENT_2026-10-28_ARP_SPOOFING.md` §9 and `NETWORK_SCAN.md` (2026-11-04 entry): dated notes now say the ARP capture is read live and updates are checked every 15 min since v1.0.8; `REDACTED_*` regenerated.
+- Checked: builds clean, all five resources embedded.
+
+### 07:10: Machine: netbug 1.0.8 -> 1.0.9; Cloudflare route degraded again
+- **Machine:** the user installed v1.0.9 from the page at 07:05:30 (download 22 s, SHA-256 checked); running at 07:05:53, **under the logon task** (task `Running`): v1.0.8's restart through the task works.
+- `CLOUDFLARE ROUTE DEGRADED` at 07:09:41 (1.1.1.1 median 16 ms vs usual 8, 20% loss; then ~23 ms with frequent loss while 8.8.8.8 answered in 1-2 ms and the gateway in 0 ms, pin `static`, no spoofing). Claude's API stalled for the user meanwhile (it is behind Cloudflare).
+
 ### 07:02: `3b7d9eb` v1.0.9: known routers only on their own network
 - `tools/netbug.cs` (`Version` 1.0.9): a known router (built-in list) is offered in the Router MAC dropdown and tested by Check now only when it is present on the current network: the gateway's ARP entry is that MAC, or the ARP ring saw it answer for the gateway IP in the last 15 min (`KnownHere`). Before, a matching gateway IP was enough, so another network using the same private gateway address would have shown the hostel router's MAC. Check now adds the known routers after its 10 s listen. The list stays embedded in the exe.
 - `tools/dashboard.html`, `README.md`: dropdown and Check now text match; footprint states pktmon's real-time buffer (~515 MB private, flat).

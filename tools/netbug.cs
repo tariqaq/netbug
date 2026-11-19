@@ -54,8 +54,8 @@
 // %ProgramData%\netbug). The logs always stay.
 // Export and updates (the page's "Logs and updates" panel, this laptop only): one zip of everything in
 // logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 15 min (and on
-// the page's button) netbug asks GitHub for the latest release; a lone exe installs a newer one by itself,
-// a repo copy only reports it. See "export and updates".
+// the page's button) netbug asks GitHub for the latest release; a lone exe installs a newer one by itself
+// (the page shows a progress bar and the current step), a repo copy only reports it. See "export and updates".
 //
 // Build: tools\build.ps1 (csc with the page, font, scripts and, when present, tools\routers.local.txt
 // embedded; the release exe is built with it). routers.local.txt, gitignored: known router MACs, offered on
@@ -84,7 +84,7 @@ using System.IO.Compression;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.9";
+    public const string Version = "1.0.10";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -280,7 +280,7 @@ class NetBug
 
         using (var mutex = new Mutex(false, "Global\\netbug"))
         {
-            // wait a little so a self-restart (see Health) can take over from the exiting instance
+            // wait a little so a restart (see Restart) can take over from the exiting instance
             try { if (!mutex.WaitOne(15000)) { if (openPage) OpenPage(); return; } }   // another instance is running
             catch (AbandonedMutexException) { }
             if (portable) Unpack();   // only once this is the running instance: never under a running one's feet
@@ -2017,7 +2017,10 @@ class NetBug
     static readonly object updLock = new object();
     static volatile bool updBusy, updChecking;
     static volatile string updLatest = "", updUrl = "", updSha = "", updError = "", updStep = "";
+    static volatile int updPct = -1;   // install progress for the page's bar, 0-100; -1 = not known (or no install)
     static string updEtag = "", updJson = "";
+    static volatile string updFailedTag = "";   // the release whose last install failed, and when (Mono)
+    static double updFailedAt;
     static DateTime updCheckedAt = DateTime.MinValue;
     static int exporting;
 
@@ -2031,7 +2034,9 @@ class NetBug
             try { CheckUpdate(); } finally { updChecking = false; }
             if (UpdateAvailable())
             {
-                if (portable)
+                // a release whose install failed is retried automatically after 1 h, not every 15 min (the
+                // page's button always tries at once)
+                if (portable && !(updLatest == updFailedTag && Mono() - updFailedAt < 3600))
                 {
                     while (fixBusy) Thread.Sleep(5000);   // never in the middle of a router check
                     InstallUpdate("automatic");
@@ -2094,13 +2099,16 @@ class NetBug
     }
 
     // Starts installing the update found by the last check; returns an error for the page, "" when started.
-    // Lone exe only. The release's netbug.exe is downloaded next to the running exe as netbug.new.exe; it
-    // must match the SHA-256 GitHub lists for the asset (when GitHub lists one: it catches a corrupted or
-    // swapped download, not a release made by someone controlling the GitHub account) and be an assembly
-    // named netbug of at least the release's version. The running exe is renamed to netbug.old.exe (Windows
-    // allows renaming a running exe; the old build stays as a fallback), netbug.new.exe takes its name, and
-    // netbug restarts through its logon task (see Restart). The task's command doesn't change; the new copy
-    // unpacks its page and scripts when it takes over.
+    // Lone exe only. The release's netbug.exe is downloaded next to the running exe as netbug.new.exe
+    // (at most 64 MB; a download shorter than its announced length fails); it must match the SHA-256 GitHub
+    // lists for the asset (when GitHub lists one: it catches a corrupted or swapped download, not a release
+    // made by someone controlling the GitHub account) and be an assembly named netbug of at least the
+    // release's version. The running exe is renamed to netbug.old.exe (Windows allows renaming a running
+    // exe; the old build stays as a fallback), netbug.new.exe takes its name, and netbug restarts through its
+    // logon task (see Restart). The task's command doesn't change; the new copy unpacks its page and scripts
+    // when it takes over. If the new build can't be started, netbug.old.exe goes back to netbug.exe and
+    // netbug keeps running. Any failure deletes the downloaded files, is logged as "update failed" and shown
+    // on the page; updStep and updPct drive the page's progress line and bar.
     static string InstallUpdate(string why)
     {
         if (!portable) return "This netbug runs from its repo (a developer build): update it with git pull and a rebuild.";
@@ -2115,49 +2123,77 @@ class NetBug
         {
             string self = SelfPath(), dir = Path.GetDirectoryName(self);
             string part = Path.Combine(dir, "netbug.new.exe.part"), exe = Path.Combine(dir, "netbug.new.exe"), old = Path.Combine(dir, "netbug.old.exe");
+            bool swapped = false, paused = false;
             try
             {
                 Event("updating netbug " + Version + " -> " + tag + " (" + why + "): downloading " + url);
                 if (File.Exists(exe)) File.Delete(exe);
-                updStep = "Downloading " + tag;
+                updPct = 0; updStep = "Connecting to GitHub";
                 var req = (HttpWebRequest)WebRequest.Create(url);
                 req.UserAgent = "netbug/" + Version; req.Timeout = 60000; req.ReadWriteTimeout = 60000;
                 using (var resp = req.GetResponse())
                 using (var s = resp.GetResponseStream())
-                using (var f = File.Create(part)) s.CopyTo(f);
+                using (var f = File.Create(part))
+                {
+                    long total = resp.ContentLength, got = 0;
+                    var buf = new byte[65536];
+                    for (int n; (n = s.Read(buf, 0, buf.Length)) > 0; )
+                    {
+                        f.Write(buf, 0, n); got += n;
+                        if (got > 64L << 20) throw new Exception("the download is over 64 MB, so it isn't a netbug build");
+                        updStep = "Downloading netbug " + tag + ": " + Mb(got) + (total > 0 ? " of " + Mb(total) : "") + " MB";
+                        updPct = total > 0 ? (int)(got * 80 / total) : -1;   // the download is the first 80% of the bar
+                    }
+                    if (total > 0 && got != total) throw new Exception("the download stopped at " + Mb(got) + " of " + Mb(total) + " MB");
+                }
                 File.Move(part, exe);
                 if (sha != "")
                 {
+                    updPct = 85; updStep = "Checking the download against GitHub's SHA-256";
                     string got;
                     using (var h = System.Security.Cryptography.SHA256.Create())
                     using (var f = File.OpenRead(exe)) got = BitConverter.ToString(h.ComputeHash(f)).Replace("-", "").ToLowerInvariant();
                     if (got != sha) throw new Exception("the download's SHA-256 is " + got + ", GitHub lists " + sha);
                 }
+                updPct = 90; updStep = "Checking that it is a netbug " + tag + " build";
                 System.Reflection.AssemblyName an;
                 try { an = System.Reflection.AssemblyName.GetAssemblyName(exe); }
                 catch { throw new Exception("the new file isn't a netbug build"); }
                 if (an.Name != "netbug" || an.Version < System.Version.Parse(tag))
                     throw new Exception("the new file is " + an.Name + " " + an.Version + ", not netbug " + tag);
 
-                updStep = "Installing " + tag;
+                updPct = 95; updStep = "Replacing netbug.exe (the current build is kept as netbug.old.exe)";
                 if (File.Exists(old)) File.Delete(old);
                 File.Move(self, old);
                 try { File.Move(exe, self); }
                 catch { File.Move(old, self); throw; }
+                swapped = true;
                 Event("installing netbug " + an.Version + ": " + self + " replaced (the previous build is " + old + (sha != "" ? "; SHA-256 checked" : "; GitHub listed no SHA-256") + "), restarting");
-                if (Monitor.TryEnter(pktmonLock, 10000)) RingPause();
+                updPct = 100; updStep = "Restarting netbug " + tag + " (the page reloads by itself)";
+                paused = Monitor.TryEnter(pktmonLock, 10000);
+                if (paused) RingPause();
                 Restart(self);   // the path from before the rename: the running file is netbug.old.exe now
             }
             catch (Exception ex)
             {
-                updError = "update failed: " + ex.Message;
-                Event("update failed: " + ex.Message);
+                string undo = "";
+                if (swapped)   // the new build couldn't be started: the running build takes netbug.exe back
+                {
+                    try { File.Delete(self); File.Move(old, self); undo = "; netbug.exe is the running build again"; }
+                    catch (Exception e2) { undo = "; netbug.exe is already the new build and runs from the next restart (" + e2.Message + ")"; }
+                }
+                if (paused) { RingResume(); Monitor.Exit(pktmonLock); }
+                updError = "update failed: " + ex.Message + undo;
+                Event("update failed: " + ex.Message + undo);
                 foreach (var f in new[] { part, exe }) try { File.Delete(f); } catch { }
-                updStep = ""; updBusy = false;
+                updFailedTag = tag; updFailedAt = Mono();
+                updPct = -1; updStep = ""; updBusy = false;
             }
         });
         return "";
     }
+
+    static string Mb(long bytes) { return (bytes / 1048576.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture); }
 
     static void DeleteUpdateFiles()
     {
@@ -2420,9 +2456,9 @@ class NetBug
         string ann = string.Format("{{\"on\":{0},\"target\":{1},\"sent\":{2},\"seen\":{3},\"seenAt\":{4},\"seenFrom\":{5},\"error\":{6}}}",
             announce ? "true" : "false", J(announceTarget), Thread.VolatileRead(ref announceSent), announceSeen,
             announceSeenAt == DateTime.MinValue ? 0 : Unix(announceSeenAt), announceSeenFrom == DateTime.MinValue ? 0 : Unix(announceSeenFrom), J(announceErr));
-        string upd = string.Format("{{\"latest\":{0},\"available\":{1},\"checkedAt\":{2},\"checking\":{3},\"busy\":{4},\"step\":{5},\"error\":{6}}}",
+        string upd = string.Format("{{\"latest\":{0},\"available\":{1},\"checkedAt\":{2},\"checking\":{3},\"busy\":{4},\"step\":{5},\"pct\":{6},\"error\":{7}}}",
             J(updLatest), UpdateAvailable() ? "true" : "false", updCheckedAt == DateTime.MinValue ? 0 : Unix(updCheckedAt),
-            updChecking ? "true" : "false", updBusy ? "true" : "false", J(updStep), J(updError));
+            updChecking ? "true" : "false", updBusy ? "true" : "false", J(updStep), updPct, J(updError));
         return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12},\"known\":[{13}],\"version\":{14},\"update\":{15},\"exporting\":{16}}}",
             fixBusy ? "true" : "false", J(fixStep), autoDetect ? "true" : "false", portable ? "true" : "false", J(iface), J(gw == null ? "" : gw.ToString()),
             J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann, known, J(Version), upd, exporting == 1 ? "true" : "false");

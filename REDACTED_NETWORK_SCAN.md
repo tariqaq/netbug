@@ -378,7 +378,7 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 
 ### 2026-11-04 07:56 — netbug runs the release exe
 
-- The logon task `netbug` now runs `C:\ProgramData\netbug\netbug.exe`, the GitHub release (v1.0.4, self-updated to v1.0.5 at 08:06), the same install a friend gets. It checks for updates every 6 h and installs them by itself.
+- The logon task `netbug` now runs `C:\ProgramData\netbug\netbug.exe`, the GitHub release (v1.0.4, self-updated to v1.0.5 at 08:06), the same install a friend gets. It checks for updates every 6 h (every 15 min since v1.0.8) and installs them by itself.
 - Logs moved with it: `logs\` was copied to `C:\ProgramData\netbug\logs`, where the history continues. The repo's `logs\` stops at 07:55.
 - The gateway pin, the NIC power settings and the netbug settings are unchanged.
 

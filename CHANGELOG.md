@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
-### 07:15: `PENDING` v1.0.10: update progress bar, safer updater, README rewrite
+### 07:15: `278425b` v1.0.10: update progress bar, safer updater, README rewrite
 - `tools/netbug.cs` (`Version` 1.0.10), updater:
   - Download read in 64 KB blocks with progress (`updPct` 0-100, `pct` in `/api/fix` `update`); steps shown as one line: connecting, `Downloading netbug <tag>: x of y MB`, SHA-256 check, build check, replacing netbug.exe, restarting.
   - A download over 64 MB, or shorter than its announced length, fails.
@@ -15,7 +15,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - `tools/dashboard.html`: progress bar (an animated bar when the size isn't known) and a step line under Logs and updates; "Waiting for netbug <tag> to start" while it restarts; `/api/fix` polled every 0.5 s during an update and each status poll waits for the previous one.
 - `README.md`: rewritten short, for someone using the page: install, what the dashboard says, router protection, updates, logs, uninstall, footprint; developer notes at the end.
 - `INCIDENT_2026-10-28_ARP_SPOOFING.md` §9 and `NETWORK_SCAN.md` (2026-11-04 entry): dated notes now say the ARP capture is read live and updates are checked every 15 min since v1.0.8; `REDACTED_*` regenerated.
-- Checked: builds clean, all five resources embedded.
+- Checked: builds clean, all five resources embedded. Released as v1.0.10; the asset's listed SHA-256 (`a94ceb2e…`) matches the build.
 
 ### 07:10: Machine: netbug 1.0.8 -> 1.0.9; Cloudflare route degraded again
 - **Machine:** the user installed v1.0.9 from the page at 07:05:30 (download 22 s, SHA-256 checked); running at 07:05:53, **under the logon task** (task `Running`): v1.0.8's restart through the task works.

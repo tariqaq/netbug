@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
-### 07:34: video sources off GitHub
+### 07:34: `ffdd42a` video sources off GitHub
 - `.gitignore`: everything under `video/` except top-level `.mp4` files (replaces the separate `node_modules/`, `out/`, `.venv/`, `data.local.json`, `scripts/__pycache__/` lines). The 79 source files (Remotion/kinetograph code, narration, voice clips, scripts, plans, `video/README.md`) are untracked; they stay on disk and in git history. Only `video/incident-v4-redacted.mp4` stays published.
 - `README.md`: repo layout row for `video/` no longer links the untracked `video/README.md`.
 

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
-### 05:44: `HASH` VPN, adapter type and Wi-Fi network in the logs; nightly Cloudflare table
+### 05:44: `1ef1975` VPN, adapter type and Wi-Fi network in the logs; nightly Cloudflare table
 - `tools/netbug.cs` (not released yet; `Version` stays 1.0.6 until a release):
   - With every interface scan it now notes the active interface's type (ethernet / wifi / mobile / ...), its Wi-Fi network (SSID, from `netsh wlan show interfaces`, re-read at most every 10 s), the VPN adapters that are up, and the adapter Windows routes 1.1.1.1 through (`GetBestInterface`).
   - VPN adapters (PPP, tunnel, type 53 "proprietary virtual", or a known VPN name; not Windows' Teredo/6to4/ISATAP/IP-HTTPS tunnels) are never picked as the active interface any more. Before, a connected VPN adapter with a gateway could win on Wi-Fi.

@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
-### 06:51: AGENTS.md: log-analysis step order
+### 06:51: `fbab740` AGENTS.md: log-analysis step order
 - `AGENTS.md`: the "if it matches while pinned / doesn't match" bullets moved back under step 3 (the outage signature); `26c7652` had put the new Cloudflare step 4 between them.
 
 ### 06:49: `26c7652` v1.0.8: audit fixes, Cloudflare route check, real-time ARP capture

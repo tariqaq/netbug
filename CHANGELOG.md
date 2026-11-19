@@ -5,8 +5,12 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
+### 05:53: `PENDING` v1.0.7
+- `tools/netbug.cs`: `Version` 1.0.7, the VPN / adapter type / Wi-Fi network logging of 05:44.
+- GitHub release `v1.0.7` with `netbug.exe` built from this commit. Copies from v1.0.4 on install it by themselves within 6 h.
+
 ### 05:44: `1ef1975` VPN, adapter type and Wi-Fi network in the logs; nightly Cloudflare table
-- `tools/netbug.cs` (not released yet; `Version` stays 1.0.6 until a release):
+- `tools/netbug.cs` (released as v1.0.7 at 05:53):
   - With every interface scan it now notes the active interface's type (ethernet / wifi / mobile / ...), its Wi-Fi network (SSID, from `netsh wlan show interfaces`, re-read at most every 10 s), the VPN adapters that are up, and the adapter Windows routes 1.1.1.1 through (`GetBestInterface`).
   - VPN adapters (PPP, tunnel, type 53 "proprietary virtual", or a known VPN name; not Windows' Teredo/6to4/ISATAP/IP-HTTPS tunnels) are never picked as the active interface any more. Before, a connected VPN adapter with a gateway could win on Wi-Fi.
   - CSV: four new columns at the end, `iface_type,ssid,vpn,via`. The header changed, so a running day's CSV is moved to `netbug-<date>-old-<time>.csv` on the first start of the new build, as with any header change.

@@ -5,6 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
+### 07:34: video sources off GitHub
+- `.gitignore`: everything under `video/` except top-level `.mp4` files (replaces the separate `node_modules/`, `out/`, `.venv/`, `data.local.json`, `scripts/__pycache__/` lines). The 79 source files (Remotion/kinetograph code, narration, voice clips, scripts, plans, `video/README.md`) are untracked; they stay on disk and in git history. Only `video/incident-v4-redacted.mp4` stays published.
+- `README.md`: repo layout row for `video/` no longer links the untracked `video/README.md`.
+
 ### 07:30: `677a05d` v1.0.11: network profile name as Wi-Fi name fallback
 - `tools/netbug.cs` (`Version` 1.0.11): the active interface's Windows network profile name (WMI `MSFT_NetConnectionProfile`, what `Get-NetConnectionProfile` shows; no location access needed) is read in the background on a new interface and every 10 s (~120 ms per query, never on the main loop). New CSV column `net_profile` at the end (the header changed, so a running day's CSV is moved to `netbug-<date>-old-<time>.csv`), `netProfile` in `/api/state`, and an `events.log` line `network profile (...): 'a' -> 'b'` on change. `ssid` stays WLAN-API only.
 - `tools/dashboard.html`: on Wi-Fi with no SSID (Windows 11 24H2+ hides it without location access) the Interface reading shows the profile name, marked "Windows network name, SSID hidden".

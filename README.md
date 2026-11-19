@@ -121,5 +121,5 @@ Every timestamp carries the date and UTC offset (`2026-11-04 08:01:02 +08:00`). 
 | `tools/redact.ps1` | Builds the `REDACTED_*.md` reports from gitignored originals |
 | `tools/fonts/` | Inter font (SIL Open Font License) |
 | `REDACTED_*.md` | Incident report, hostel report, network scan, attacker handoff |
-| `video/` | The explainer videos ([`video/README.md`](video/README.md)) |
+| `video/` | The explainer video (its source is kept locally, not on GitHub) |
 | `CHANGELOG.md` | Every change, newest first |

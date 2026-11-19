@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
-### 05:53: `PENDING` v1.0.7
+### 05:53: `d00d803` v1.0.7
 - `tools/netbug.cs`: `Version` 1.0.7, the VPN / adapter type / Wi-Fi network logging of 05:44.
 - GitHub release `v1.0.7` with `netbug.exe` built from this commit. Copies from v1.0.4 on install it by themselves within 6 h.
 

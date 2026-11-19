@@ -378,8 +378,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const nat = s.udpMap ? esc(s.udpMap.replace(/^\w+=/, '')) + '<span>seen by ' + (s.udpMap.startsWith('cf=') ? 'Cloudflare' : 'Google') + ' STUN</span>' : '–';
     // "svchost=14 NVIDIA Overlay=8" -> "svchost 14, NVIDIA Overlay 8" (names can contain spaces)
     const top = [...(s.udpTop || '').matchAll(/(\S.*?)=(\d+)/g)].map(m => m[1] + ' ' + m[2]).join(', ');
+    // Wi-Fi name: the SSID, else (Windows hides SSIDs without location access) Windows' network profile name, marked as such
+    const wifi = 'Wi-Fi' + (s.ssid ? ': ' + s.ssid : s.netProfile ? ': ' + s.netProfile + ' (Windows network name, SSID hidden)' : '');
     const facts = [
-      ['Interface', esc(s.iface || 'none') + (s.ifType ? '<span>' + esc(s.ifType === 'wifi' ? 'Wi-Fi' + (s.ssid ? ': ' + s.ssid : '') : s.ifType) + '</span>' : '')],
+      ['Interface', esc(s.iface || 'none') + (s.ifType ? '<span>' + esc(s.ifType === 'wifi' ? wifi : s.ifType) + '</span>' : '')],
       ['Wired link', esc(s.link)],
       ['VPN', esc(s.vpn || 'none') + (s.viaVpn
         ? '<span>Internet traffic goes through ' + esc(s.via) + ', so the internet readings measure the VPN tunnel</span>'

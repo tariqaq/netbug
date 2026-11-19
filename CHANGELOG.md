@@ -5,6 +5,13 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
+### 07:30: v1.0.11: network profile name as Wi-Fi name fallback
+- `tools/netbug.cs` (`Version` 1.0.11): the active interface's Windows network profile name (WMI `MSFT_NetConnectionProfile`, what `Get-NetConnectionProfile` shows; no location access needed) is read in the background on a new interface and every 10 s (~120 ms per query, never on the main loop). New CSV column `net_profile` at the end (the header changed, so a running day's CSV is moved to `netbug-<date>-old-<time>.csv`), `netProfile` in `/api/state`, and an `events.log` line `network profile (...): 'a' -> 'b'` on change. `ssid` stays WLAN-API only.
+- `tools/dashboard.html`: on Wi-Fi with no SSID (Windows 11 24H2+ hides it without location access) the Interface reading shows the profile name, marked "Windows network name, SSID hidden".
+- `tools/build.ps1`: references `System.Management.dll`.
+- `README.md`: the dashboard note and the `ssid`/`net_profile` columns.
+- Checked: builds clean; the WMI query returns this laptop's profile name for the Ethernet adapter. A wired network can carry a Wi-Fi profile's name when both sit behind the same router (seen here), so the name is labelled as Windows', not as the SSID. The Wi-Fi fallback itself can only be checked on Wi-Fi.
+
 ### 07:20: Machine: netbug 1.0.9 -> 1.0.10
 - **Machine:** the user installed v1.0.10 from the page at 07:18:49 (SHA-256 checked); running under the logon task (`Running`). MAC announce at ~1/s (51 in the first minute).
 

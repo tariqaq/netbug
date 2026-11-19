@@ -13,14 +13,16 @@
 // long-lived UDP socket doing STUN every 2 s (UDP RTT + NAT mapping).
 // With the interface scan it also notes the active interface's type (ethernet / wifi / ...), its Wi-Fi
 // network (SSID, from the WLAN API), the VPN adapters that are up (never picked as the active interface)
-// and the adapter Windows routes 1.1.1.1 through. The active interface is the non-VPN adapter Windows
+// and the adapter Windows routes 1.1.1.1 through. The interface's Windows network profile name (WMI, in
+// the background every 10 s) goes in its own column: the page shows it in place of the SSID when Windows
+// hides that (no location access). The active interface is the non-VPN adapter Windows
 // routes 1.1.1.1 through, else a wired one, else any one with a gateway; when that route goes through a
 // VPN adapter, the internet probes measure the tunnel, not the ISP route (logged).
 // Cloudflare route check: 1.1.1.1 losing pings or running at twice its usual time for 30 s while 8.8.8.8
 // is fine is logged as CLOUDFLARE ROUTE DEGRADED (Discord, Claude and other Cloudflare-hosted services
 // suffer then); it isn't an outage.
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
-// any failure. Outage/LAG start/end, Cloudflare route, link, interface, Wi-Fi network, VPN adapters, VPN
+// any failure. Outage/LAG start/end, Cloudflare route, link, interface, Wi-Fi network, network profile, VPN adapters, VPN
 // routing, gateway MAC, public IP, NAT mapping, TCP-connection deaths and UDP-usage changes go to
 // events.log. An outage, 5 s of lag, high UDP usage, a gateway MAC change or detected ARP spoofing
 // triggers snapshot.ps1, at most once per 60 s.
@@ -76,6 +78,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO.Compression;
+using System.Management;
 
 [assembly: System.Reflection.AssemblyTitle("netbug")]
 [assembly: System.Reflection.AssemblyVersion(NetBug.Version)]
@@ -84,7 +87,7 @@ using System.IO.Compression;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.10";
+    public const string Version = "1.0.11";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -239,7 +242,7 @@ class NetBug
     static DateTime dashMemAt = DateTime.MinValue;
 
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
-    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset,iface_type,ssid,vpn,via";
+    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset,iface_type,ssid,vpn,via,net_profile";
 
     static void Main(string[] args)
     {
@@ -617,6 +620,11 @@ class NetBug
     static bool scanViaVpn;
     static double ssidAt = double.MinValue;
     static string lastSsid = null, lastVpn = null, lastViaKey = null;   // null = nothing logged yet
+    // the active interface's Windows network profile name (what Get-NetConnectionProfile shows), read in
+    // the background: WMI can take a while, and unlike the SSID it doesn't need location access
+    static Task<string> profTask;
+    static string netProfile = "", profIface = "", lastProfile = null;
+    static double profAt = double.MinValue;
 
     // no background probe of that kind in flight or waiting to be read (a finished one is read, then set to null)
     static bool Idle(Task t) { return t == null; }
@@ -666,6 +674,21 @@ class NetBug
                 // packet counters start fresh
                 bool ifChanged = ifaceName != lastIface;
                 if (ifChanged) { lastTx = -1; gwMac = ""; gwArp = ""; }
+
+                // the network profile name: on a new interface, else every 10 s; a result for an interface
+                // that is no longer the active one is dropped
+                if (profTask != null && profTask.IsCompleted)
+                {
+                    if (profIface == ifaceName) netProfile = profTask.Status == TaskStatus.RanToCompletion ? profTask.Result : "";
+                    profTask = null;
+                }
+                if (ni == null || profIface != ifaceName) netProfile = "";
+                if (ni != null && Idle(profTask) && (profIface != ifaceName || mono - profAt >= 10))
+                {
+                    int idx = IfIndex(ni);
+                    profAt = mono; profIface = ifaceName;
+                    profTask = idx < 0 ? Task.FromResult("") : Task.Run(() => NetProfile(idx));
+                }
 
                 // the background probes start with the pings; a failed DNS query or TCP connect is re-checked
                 // as soon as the last one has finished
@@ -754,6 +777,14 @@ class NetBug
                 if (ssid != lastSsid && (lastSsid != null || ssid != ""))
                     Event(string.Format("Wi-Fi network: {0} -> {1}", string.IsNullOrEmpty(lastSsid) ? "none" : "'" + lastSsid + "'", ssid == "" ? "none" : "'" + ssid + "'"));
                 lastSsid = ssid;
+                // "none" is logged only once no lookup is pending, so a new interface logs one change, not two
+                string prof = netProfile;
+                if (prof != lastProfile && (lastProfile != null || prof != "") && (prof != "" || Idle(profTask)))
+                {
+                    Event(string.Format("network profile (Windows' name for this network, not necessarily the SSID): {0} -> {1}",
+                        string.IsNullOrEmpty(lastProfile) ? "none" : "'" + lastProfile + "'", prof == "" ? "none" : "'" + prof + "'"));
+                    lastProfile = prof;
+                }
                 if (vpn != lastVpn)
                 {
                     Event(string.Format("VPN adapters up: {0} -> {1}", lastVpn == null ? "?" : lastVpn == "" ? "none" : lastVpn, vpn == "" ? "none" : vpn));
@@ -866,7 +897,7 @@ class NetBug
                         loopStart.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac, gwArp,
                         gwMs.ToString(), cfMs.ToString(), gMs.ToString(), dnsMs.ToString(), tcpMs.ToString(),
                         udpMs.ToString(), map, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubShown, failStr,
-                        loopStart.ToString("yyyy-MM-dd"), loopStart.ToString("zzz"), ifType, Csv(ssid), Csv(vpn), Csv(via) }));
+                        loopStart.ToString("yyyy-MM-dd"), loopStart.ToString("zzz"), ifType, Csv(ssid), Csv(vpn), Csv(via), Csv(prof) }));
                     lastRow = mono;
                 }
 
@@ -879,11 +910,11 @@ class NetBug
                     if (histCount < hist.Length) histCount++;
                 }
                 if (gwAlert != "" && (DateTime.Now - gwAlertAt).TotalMinutes >= 30) gwAlert = "";   // alert shows for 30 min
-                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14},\"gwArp\":{15},\"gwAlert\":{16},\"arpWatch\":{17},\"ifType\":{18},\"ssid\":{19},\"vpn\":{20},\"via\":{21},\"viaVpn\":{22},\"cfRoute\":{23}}}",
+                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14},\"gwArp\":{15},\"gwAlert\":{16},\"arpWatch\":{17},\"ifType\":{18},\"ssid\":{19},\"vpn\":{20},\"via\":{21},\"viaVpn\":{22},\"cfRoute\":{23},\"netProfile\":{24}}}",
                     now, J(ifaceName), J(ethLink), J(ip == null ? "" : ip.ToString()), J(gw == null ? "" : gw.ToString()), J(gwMac),
                     txDelta, rxDelta, J(map), udpTotal, J(udpTop), J(pubShown), J(failStr),
                     inOutage ? Unix(outageStart) : 0, inLag ? Unix(lagStart) : 0, J(gwArp), J(gwAlert), J(arpWatch),
-                    J(ifType), J(ssid), J(vpn), J(via), viaVpn ? "true" : "false", cfBad ? Unix(cfBadStart) : 0);
+                    J(ifType), J(ssid), J(vpn), J(via), viaVpn ? "true" : "false", cfBad ? Unix(cfBadStart) : 0, J(prof));
             }
             catch (Exception ex)
             {
@@ -1001,7 +1032,7 @@ class NetBug
 
     // The Wi-Fi network (SSID) the adapter is connected to, from the WLAN API (matched by adapter GUID, so
     // it doesn't depend on the Windows language; no process started), or "" (not connected, no WLAN service,
-    // or Windows hides it: since Windows 11 24H2 SSIDs need location access).
+    // or Windows hides it: since Windows 11 24H2 SSIDs need location access; see NetProfile for the fallback).
     static string Ssid(NetworkInterface ni)
     {
         Guid want;
@@ -1039,6 +1070,29 @@ class NetBug
             if (list != IntPtr.Zero) WlanFreeMemory(list);
             if (h != IntPtr.Zero) WlanCloseHandle(h, IntPtr.Zero);
         }
+    }
+
+    // The Windows network profile name of the adapter with this IPv4 interface index (MSFT_NetConnectionProfile,
+    // what Get-NetConnectionProfile shows), or "" (none, or WMI failed). Windows names a Wi-Fi network after
+    // its SSID when it first joins it, but the user can rename it, a second network with the same name gets
+    // " 2", and a wired network can carry a Wi-Fi network's name when both sit behind the same router.
+    static string NetProfile(int ifIndex)
+    {
+        try
+        {
+            var opts = new EnumerationOptions { Timeout = TimeSpan.FromSeconds(5), ReturnImmediately = true, Rewindable = false };
+            using (var s = new ManagementObjectSearcher(@"root\StandardCimv2",
+                "SELECT Name FROM MSFT_NetConnectionProfile WHERE InterfaceIndex = " + ifIndex, opts))
+            using (var res = s.Get())
+                foreach (ManagementBaseObject o in res)
+                    using (o)
+                    {
+                        var n = o["Name"] as string;
+                        if (!string.IsNullOrEmpty(n)) return n;
+                    }
+        }
+        catch { }
+        return "";
     }
 
     static async Task<long> PingAsync(Ping p, IPAddress target)

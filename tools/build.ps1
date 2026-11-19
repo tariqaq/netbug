@@ -16,15 +16,16 @@ try {
         '/resource:snapshot.ps1,netbug.snapshot.ps1')
     if (Test-Path 'routers.local.txt') { $resources += '/resource:routers.local.txt,netbug.routers.txt' }
     else { Write-Warning 'tools\routers.local.txt not found: the Router MAC dropdown will only list the pinned and checked MACs' }
+    $refs = @('/r:System.IO.Compression.dll', '/r:System.Management.dll')
     # /out names the file; the assembly name stays netbug whatever the file is called (the updater checks it)
-    & $csc /nologo /target:winexe /optimize /out:$Out /r:System.IO.Compression.dll $resources netbug.cs
+    & $csc /nologo /target:winexe /optimize /out:$Out $refs $resources netbug.cs
     if ($LASTEXITCODE -ne 0) { throw "csc failed ($LASTEXITCODE)" }
     $name = [Reflection.AssemblyName]::GetAssemblyName($Out)
     if ($name.Name -ne 'netbug') {
         # csc takes the assembly name from the file name: build as netbug.exe in a temp folder, then move it
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ('netbug-build-' + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory $tmp | Out-Null
-        & $csc /nologo /target:winexe /optimize /out:(Join-Path $tmp 'netbug.exe') /r:System.IO.Compression.dll $resources netbug.cs
+        & $csc /nologo /target:winexe /optimize /out:(Join-Path $tmp 'netbug.exe') $refs $resources netbug.cs
         if ($LASTEXITCODE -ne 0) { throw "csc failed ($LASTEXITCODE)" }
         Move-Item (Join-Path $tmp 'netbug.exe') $Out -Force
         Remove-Item $tmp -Recurse -Force

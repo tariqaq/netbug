@@ -29,6 +29,7 @@ What the states mean:
 - **Lag**: the router itself answers slowly (15 ms+) or drops pings along with the internet.
 - **Cloudflare route degraded**: 1.1.1.1 is losing pings or running twice as slow as usual while Google is fine. Discord, Claude and other sites behind Cloudflare suffer, everything else works. It's your ISP's route to Cloudflare, not your network.
 - **VPN shown in red**: a VPN carries your traffic, so the internet readings measure the VPN, not your ISP.
+- **"Windows network name, SSID hidden"** next to Wi-Fi: Windows 11 24H2+ hides the Wi-Fi name from apps without location access, so netbug shows the name Windows gave the network instead. Usually the same, but it can be renamed or end in " 2".
 
 Other devices on the network can open the page at `http://<laptop-ip>:8787/` (read-only) only after you allow inbound TCP 8787 in Windows Firewall. They'd see your public IP, router MAC and process names.
 
@@ -58,8 +59,8 @@ Logs are in `C:\ProgramData\netbug\logs`, kept 30 days and capped at 500 MB.
 
 | File | Contents |
 |---|---|
-| `events.log` | The timeline: outages, lag, Cloudflare route, router MAC changes, ARP spoofing, interface and VPN changes, public IP and NAT changes, hourly health |
-| `netbug-<date>.csv` | One row every 5 s (every 1 s around problems) with every reading |
+| `events.log` | The timeline: outages, lag, Cloudflare route, router MAC changes, ARP spoofing, interface, Wi-Fi, network profile and VPN changes, public IP and NAT changes, hourly health |
+| `netbug-<date>.csv` | One row every 5 s (every 1 s around problems) with every reading. `ssid` is the Wi-Fi name from Windows' Wi-Fi API (empty without location access); `net_profile` is Windows' name for the network, on any adapter |
 | `snapshots\` | Per incident: full network state, a packet capture (`.etl`) and the ARP traffic from the 15 minutes before |
 
 **Export all logs** downloads one zip of everything. It isn't redacted (MACs, IPs, network names), so only send it to someone you trust.

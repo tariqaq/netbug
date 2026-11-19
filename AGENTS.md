@@ -18,6 +18,11 @@
 4. **`CHANGELOG.md`: log every repo or machine change.**
    - Newest first, grouped by date. Time from the system clock (`Get-Date -Format 'yyyy-MM-dd HH:mm'`, MYT UTC+08:00), never guessed.
    - Add the commit hash, tag machine-side changes **Machine:**, and include no PII.
+5. **Edit files only with the Edit/Write tools. VERY IMPORTANT.**
+   - Never edit or create repo files with shell commands: no `sed -i`, `awk`, `perl -pi`, Python/PowerShell one-offs, heredocs, `Set-Content`/`Out-File`, or `>` redirects.
+   - Read files with the Read tool and search with Grep/Glob, not `cat`/`grep` in a shell.
+   - Shell is for running things only: builds, git, `gh`, tests, and read-only log analysis scripts.
+   - Throwaway scripts go in the scratchpad, never in the repo.
 
 ## LOG ANALYSIS (every time the user asks to analyze logs)
 
@@ -27,6 +32,7 @@ Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). Th
    - If it's `dynamic` or missing (for example the dongle was renamed), **tell the user first** and give the re-pin command (incident report §8).
    - Apply nothing without the user's explicit OK.
 2. Search `events.log` for `ARP SPOOFING DETECTED` and `GATEWAY MAC CHANGED`, and report each with its time and MAC.
-3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway (or, for the router side, another MAC claiming the laptop's IP: snapshot capture and `<snapshot>.ring.txt`).
+3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway (or, for the router side, another MAC claiming the laptop's IP: snapshot capture and `<snapshot>.ring.txt`). Snapshot captures are `<snapshot>.etl` (since v1.0.8, no `.pkt.txt`): convert with `pktmon etl2txt <file>.etl --out <file>.txt` (needs admin) or read the snapshot `.txt`'s claim summary.
+4. Search `events.log` for `CLOUDFLARE ROUTE DEGRADED` and report each with its time, median and loss. Check the CSV's `via`/`vpn` columns first: hours while a VPN adapter carried the traffic measure the tunnel, not the ISP.
    - If it matches while pinned, the pin isn't enough: the router side is probably poisoned too. Report it and propose next steps; apply nothing without the user's OK.
    - If it doesn't match, look for the actual layer that broke.

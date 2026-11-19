@@ -14,7 +14,8 @@
      (polls /api/fix every 2 s and sends its actions with the token) and the Logs and updates panel
      (update check/install, and the full log export as a form post to /api/export); everyone else
      sees no controls. The page reloads itself when netbug has restarted (a new start time in
-     /api/state, or its token refused), so the controls always carry the running netbug's token. -->
+     /api/state, or its token refused), so the controls always carry the running netbug's token.
+     Other devices reach the page only once Windows Firewall allows inbound TCP 8787 (netbug adds no rule). -->
 <style>
 @font-face {
   font-family: "Inter";
@@ -297,7 +298,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     return s < 86400 * 2 ? dur(s) + ' ago' : 'on ' + new Date(at).toLocaleDateString();
   };
   const failNames = { no_iface: 'no network adapter', gw: 'gateway ping', internet: 'internet ping', dns: 'DNS',
-    udp: 'UDP', tcp: 'new TCP connections', udp_high: 'UDP port usage', lag: 'local lag' };
+    udp: 'UDP', tcp: 'new TCP connections', udp_high: 'UDP port usage', lag: 'local lag', cf_route: 'Cloudflare route' };
+  // fail codes that aren't an outage: shaded orange on the chart
+  const softFails = ['lag', 'gw', 'udp_high', 'cf_route'];
   const failText = f => f.split('|').filter(Boolean).map(x => failNames[x] || x).join(', ');
 
   function setReadout(id, v) {
@@ -331,6 +334,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       st = 'lag';
       head = 'Local network is lagging';
       sub = 'Gateway ping is high or dropping. Ongoing for ' + dur(state.now - s.lag) + '.';
+    } else if (s.cfRoute) {
+      st = 'lag';
+      head = 'Cloudflare route is degraded';
+      sub = '1.1.1.1 is losing pings or running at twice its usual time while Google is fine, so Discord, Claude and other Cloudflare-hosted services suffer. Ongoing for ' + dur(state.now - s.cfRoute) + '.';
     } else {
       head = 'Network is healthy';
       sub = s.fail ? 'One-off miss this second: ' + failText(s.fail) + '.'
@@ -362,9 +369,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const facts = [
       ['Interface', esc(s.iface || 'none') + (s.ifType ? '<span>' + esc(s.ifType === 'wifi' ? 'Wi-Fi' + (s.ssid ? ': ' + s.ssid : '') : s.ifType) + '</span>' : '')],
       ['Wired link', esc(s.link)],
-      ['VPN', esc(s.vpn || 'none') + (s.via && s.iface && s.via !== s.iface
+      ['VPN', esc(s.vpn || 'none') + (s.viaVpn
         ? '<span>Internet traffic goes through ' + esc(s.via) + ', so the internet readings measure the VPN tunnel</span>'
-        : (s.vpn ? '<span>Not carrying internet traffic</span>' : '')), !!(s.via && s.iface && s.via !== s.iface)],
+        : (s.vpn ? '<span>Not carrying internet traffic</span>' : '')), !!s.viaVpn],
       ['Local IP', esc(s.ip || '–')],
       ['Gateway', esc(s.gw || '–')],
       ['Gateway MAC', esc(s.gwMac || '–') + '<span>' +
@@ -405,12 +412,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
 
     const rows = [...hist.values()];
     const bw = Math.max(1, pw / SPAN);
-    // a failed second shades back to the previous sample: during an outage probes time out
-    // and samples arrive every 2-3 s, so fixed-width bands would leave stripes
+    // a failed second shades back to the previous sample, so a missing sample (a round that ran late)
+    // doesn't leave a stripe in the band
     let prevT = null;
     for (const r of rows) {
       if (r[7]) {
-        const lagOnly = r[7].split('|').every(f => f === 'lag' || f === 'gw' || f === 'udp_high');
+        const lagOnly = r[7].split('|').every(f => softFails.includes(f));
         const x0 = prevT !== null && r[0] - prevT <= 10 ? x(prevT) : x(r[0]) - bw;
         const a = Math.round(x0), b = Math.round(x(r[0]));   // whole pixels: no overlap seams
         ctx.fillStyle = lagOnly ? 'rgba(255,159,10,.32)' : 'rgba(255,69,58,.45)';
@@ -447,8 +454,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   const log = $('log');
   let follow = true, lastDay = '';
   const kind = m =>
-    /^(OUTAGE|\s*outage now|GATEWAY MAC CHANGED|ARP SPOOFING|\s*gateway is pinned)/.test(m) ? 'down' :
-    /^LAG/.test(m) ? 'lag' :
+    /^(OUTAGE|\s*outage now|GATEWAY MAC CHANGED|ARP SPOOFING|\s*gateway is pinned|netbug error|MAC announce failing|update failed|snapshot failed|snapshot .* stopped|ARP capture error|size cap error|install failed|router check failed|dashboard failed)/.test(m) ? 'down' :
+    /^(LAG|CLOUDFLARE ROUTE DEGRADED)/.test(m) ? 'lag' :
     /^health:/.test(m) ? 'quiet' : '';
 
   function addLines(lines) {
@@ -495,7 +502,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   };
 
   // ---------- polling ----------
+  // each poll waits for its previous request: a stuck netbug doesn't pile requests up
+  let stateBusy = false, eventsBusy = false;
   async function pollState() {
+    if (stateBusy) return;
+    stateBusy = true;
+    try { await pollStateOnce(); } finally { stateBusy = false; }
+  }
+  async function pollStateOnce() {
     try {
       const r = await fetch('/api/state?since=' + since, { cache: 'no-store' });
       state = await r.json();
@@ -510,6 +524,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     draw();
   }
   async function pollEvents() {
+    if (eventsBusy) return;
+    eventsBusy = true;
+    try { await pollEventsOnce(); } finally { eventsBusy = false; }
+  }
+  async function pollEventsOnce() {
     try {
       const r = await fetch('/api/events' + (offset >= 0 ? '?from=' + offset : ''), { cache: 'no-store' });
       const j = await r.json();
@@ -552,7 +571,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     putText($('fx-ann-note'), 'Tells the router this laptop’s real address about once a second (an ARP request asking for ' + (a.target || 'a neighbor of the router') +
       '), so if someone tells the router they are this laptop, it lasts about a second. The pin can’t block that kind of attack.' +
       (a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
-      (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen + ' ARP requests from this laptop seen on the wire.' : ''));
+      (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen +
+        ' ARP requests from this laptop seen on the wire' + (a.seenFrom ? ' in the ' + dur(a.seenAt - a.seenFrom) + ' before it' : '') + '.' : ''));
     $('fx-check').disabled = f.busy || !f.gw;
     put($('fx-cands'), res && res.cands ? res.cands.map(c =>
       '<li><span class="mac ' + (c.mac === res.chosen ? 'ok' : c.works ? '' : 'bad') + '">' + esc(c.mac) + '</span><span class="why">' + esc(c.verdict) +
@@ -577,7 +597,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     else { st = u.checkedAt ? 'Couldn’t check' : 'Not checked yet'; cls = u.checkedAt ? 'bad' : ''; }
     putText($('up-state'), st); $('up-state').className = 'fix-state ' + cls;
     const when = u.checkedAt ? ' Last checked ' + ago(u.checkedAt * 1000) + '.' : '';
-    putText($('up-sub'), 'This is netbug ' + f.version + '. It checks GitHub for a new release every 6 hours' +
+    putText($('up-sub'), 'This is netbug ' + f.version + '. It checks GitHub for a new release every 15 minutes' +
       (f.portable ? ' and installs it by itself (netbug restarts for a few seconds; the page reloads).' : '. This copy runs from its repo (a developer build), so it only reports a new release: update it with git pull and a rebuild.') + when +
       (u.busy ? ' Don’t close netbug.' : ''));
     const inst = $('up-install');

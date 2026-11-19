@@ -5,16 +5,22 @@
 # and runs until every probe is done, so it covers the problem while it is still going on.
 # netbug pauses its continuous ARP capture just before and saves its ARP from the 15 min before
 # as <name>.ring.txt (-NoCapture: netbug couldn't hand over pktmon, so no capture here).
+# -Gw / -Me: the gateway and this laptop's IP on netbug's active interface. Without them (run by hand),
+# the first adapter with a default gateway is used, which can be a VPN's.
+# The capture is kept as <name>.etl only (pktmon etl2txt <name>.etl --out <file> turns it into text).
 
-param([Parameter(Mandatory)][string]$Out, [switch]$NoCapture)
+param([Parameter(Mandatory)][string]$Out, [switch]$NoCapture, [string]$Gw, [string]$Me)
 
 $ErrorActionPreference = 'SilentlyContinue'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 $capture = $isAdmin -and -not $NoCapture
-$cfg = Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1
-$gw = $cfg.IPv4DefaultGateway.NextHop
-$me = @($cfg.IPv4Address.IPAddress)[0]
+if ($Gw -and $Me) { $gw = $Gw; $me = $Me }
+else {
+    $cfg = Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1
+    $gw = $cfg.IPv4DefaultGateway.NextHop
+    $me = @($cfg.IPv4Address.IPAddress)[0]
+}
 $etl = [IO.Path]::ChangeExtension($Out, '.etl')
 if ($capture) {
     pktmon stop 2>&1 | Out-Null
@@ -95,9 +101,7 @@ if ($capture) {
         pktmon stop | Out-Null
         pktmon filter remove | Out-Null
         "`n--- packet capture: ARP + traffic to/from gateway and 1.1.1.1 (pktmon), $($capStart.ToString('yyyy-MM-dd HH:mm:ss zzz')) to $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss zzz')) ---"
-        $pkt = [IO.Path]::ChangeExtension($Out, '.pkt.txt')
-        pktmon etl2txt $etl --out $pkt | Out-Null
-        "saved: $etl"
+        "saved: $etl (as text: pktmon etl2txt `"$etl`" --out <file>)"
         $ring = [IO.Path]::ChangeExtension($Out, '.ring.txt')
         if (Test-Path $ring) { "ARP from the minutes before (netbug's continuous capture): $ring" }
 
@@ -105,7 +109,8 @@ if ($capture) {
         # this laptop's IP. This laptop's own MAC claims its own IP with every ARP request it sends.
         $lines = & (Join-Path $PSScriptRoot 'arpwatch.ps1') -Etl $etl -Gw $gw -Me $me -NoDelete
         "ARP frames in the capture: $((@($lines | Where-Object { $_ -like 'frames *' }) -split ' ')[1])"
-        $own = (Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).NetAdapter.MacAddress
+        $ifIdx = @(Get-NetIPAddress -IPAddress $me -ErrorAction SilentlyContinue)[0].InterfaceIndex
+        $own = if ($ifIdx) { (Get-NetAdapter -InterfaceIndex $ifIdx).MacAddress } else { '' }
         "`n--- who claimed to be the gateway $gw in the capture (more than one MAC = ARP spoofing) ---"
         $g = @($lines | Where-Object { $_ -like 'gw *' })
         if ($g.Count) { foreach ($l in $g) { $p = $l -split ' '; "{0}  {1} frame(s), {2}-{3}" -f $p[1], $p[2], $p[3], $p[4] } } else { "nobody (no ARP for the gateway seen)" }

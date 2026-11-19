@@ -5,6 +5,36 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
+### 06:49: `PENDING` v1.0.8: audit fixes, Cloudflare route check, real-time ARP capture
+- `tools/netbug.cs` (`Version` 1.0.8):
+  - Restarts (an update, the health limit) go through the logon task: the old process starts `netbug.exe --relaunch <pid>`, which waits for it to exit and runs the task, so the new copy is covered by the task's restart-after-a-crash. Before, the restarted copy ran outside the task (seen after the 05:56 update: task `Ready` while netbug ran).
+  - Rounds no longer stretch during outages: the DNS query, TCP connect and gateway MAC/ARP read run in the background; a round uses results that arrive within 900 ms. CSV rows and chart points are stamped with the round's start (when the pings went out), not the time the row was written.
+  - `Event` and CSV writes never throw (a full disk or locked file lost the line but crashed the process from threads with no handler).
+  - Active interface: the non-VPN adapter Windows routes 1.1.1.1 through, else wired, else any with a gateway. The "a VPN carries it" event (and the dashboard's red VPN reading, new `viaVpn` in `/api/state`) only fire when that route goes through a VPN adapter, not any other adapter. The route lookup is folded into the interface scan (one adapter enumeration, not two).
+  - Schedules, the sleep-gap check, the 60 s snapshot limit, the fast-row window and auto-detect timing follow a monotonic clock (`GetTickCount64`), so a system time change can't freeze or bunch them.
+  - TCP probe: the host lookup no longer blocks the main loop (a failed lookup retries after 10 s), and `1.1.1.1:443` is tried when `github.com:443` fails: `tcp` fails only when both do.
+  - SSID from the WLAN API (`WlanQueryInterface`, by adapter GUID) instead of `netsh` on the main loop: no process, any Windows language, UTF-8 names.
+  - Snapshot: killed (and its capture stopped) if still running after 5 min; the 60 s limit is checked under a lock (two threads call it); `snapshot.ps1` gets `-Gw`/`-Me` from netbug.
+  - Shared `Random` only under a lock (DNS and STUN IDs from two threads).
+  - Outages count from the first bad second; `OUTAGE START [..] since HH:mm:ss`, `OUTAGE END after N s (from-to)`. Before, an outage was dated from its second bad second and could show "after 0 s".
+  - New Cloudflare route check: 1.1.1.1 losing 20%+ of its pings or its median at 2x its usual (10th percentile over 30 min) and +5 ms, over 30 s while 8.8.8.8 answers, logs `CLOUDFLARE ROUTE DEGRADED` and `Cloudflare route back to normal` (after 60 s good). Fail code `cf_route` (not an outage) gives 1 s rows meanwhile; `/api/state` has `cfRoute`.
+  - ARP ring: `pktmon` in real-time mode, read line by line (no `arpring-*.etl` files, no per-minute stop/start/etl2txt, no 1 s blind gap each minute). Leftover `arpring-*` files are deleted at start.
+  - Low items: three reused `Ping` objects; IP Helper tables re-read when they grow between the size query and the read; process names cached (10 min); ARP regexes built once per gateway/IP pair; NAT mapping changes judged per STUN server; public IP request with a 15 s timeout and no proxy, shown in the CSV/page only while under 15 min old; size cap logs only when it deleted something (or once when stuck); one size-cap run at a time.
+  - Updates: every 15 min (was 6 h) with the last ETag (an unchanged release is an empty 304); the download must match the SHA-256 GitHub lists for the asset.
+  - Router MAC dropdown (`/api/fix` `known`): also lists the pinned MAC ("pinned now") and the last check's MAC. The announce status has `seenFrom` (the period the last capture check covered).
+- `tools/dashboard.html`: Cloudflare-route status (orange) and chart shading; VPN reading uses `viaVpn`; announce text names the period; netbug's own error lines red, `CLOUDFLARE ROUTE DEGRADED` orange; update text says 15 min; polls wait for their previous request; comments on firewall access and the chart corrected.
+- `tools/snapshot.ps1`: `-Gw`/`-Me` parameters; the capture is kept as `.etl` only (no `.pkt.txt`, ~10x smaller); this laptop's MAC from the adapter holding `-Me`.
+- New `tools/build.ps1`: builds with the page, font, scripts and `routers.local.txt` (when present) embedded, always as assembly `netbug`. The v1.0.7 release was built without `routers.local.txt`, so its Router MAC dropdown was empty.
+- `README.md`, `AGENTS.md` (log analysis: `.etl` captures, `CLOUDFLARE ROUTE DEGRADED`, VPN hours; new hard rule 5: files are edited only with the Edit/Write tools): updated to match.
+- Checked: builds clean; both scripts parse. The release is checked live after the update.
+
+### 06:35: Machine: pktmon real-time test
+- **Machine:** two 40 s captures from an elevated PowerShell (UAC accepted by the user) at 06:30–06:32, right after netbug's ring rotations: pktmon `-m real-time` printed 140 ARP frames (this laptop's announce requests 1.06/s) against 110 for a file capture (1.01/s). Real-time loses nothing, so v1.0.8 uses it. netbug's own ARP capture was stopped during the two windows and restarted by its next rotation. Test files in the session scratchpad only.
+- The user connected Cloudflare WARP (GUI) at about 06:41 after a Cloudflare-route slowdown (06:10–06:11, 06:16–06:21: 1.1.1.1 ~23 ms with 30–60% ping loss while the gateway and 8.8.8.8 were fine). netbug's internet readings measure the WARP tunnel from then on.
+
+### 05:56: Machine: netbug 1.0.6 -> 1.0.7
+- **Machine:** the user installed v1.0.7 with **Install update now** at 05:56:49; it was running at 05:56:51. The installed exe is byte-identical to the release (SHA-256 `2311c249…`). Checked after: gateway ARP entry `static`, the new CSV columns (`iface_type,ssid,vpn,via`) filled, `active interface … (ethernet)` and `VPN adapters up` lines in `events.log`, no errors. The day's earlier CSV was kept as `netbug-2026-11-20-old-055651.csv` (header change). The restarted copy runs outside the logon task (fixed in v1.0.8).
+
 ### 05:53: `d00d803` v1.0.7
 - `tools/netbug.cs`: `Version` 1.0.7, the VPN / adapter type / Wi-Fi network logging of 05:44.
 - GitHub release `v1.0.7` with `netbug.exe` built from this commit. Copies from v1.0.4 on install it by themselves within 6 h.

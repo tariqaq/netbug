@@ -5,6 +5,9 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
+### 06:51: AGENTS.md: log-analysis step order
+- `AGENTS.md`: the "if it matches while pinned / doesn't match" bullets moved back under step 3 (the outage signature); `26c7652` had put the new Cloudflare step 4 between them.
+
 ### 06:49: `26c7652` v1.0.8: audit fixes, Cloudflare route check, real-time ARP capture
 - `tools/netbug.cs` (`Version` 1.0.8):
   - Restarts (an update, the health limit) go through the logon task: the old process starts `netbug.exe --relaunch <pid>`, which waits for it to exit and runs the task, so the new copy is covered by the task's restart-after-a-crash. Before, the restarted copy ran outside the task (seen after the 05:56 update: task `Ready` while netbug ran).

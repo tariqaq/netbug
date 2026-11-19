@@ -33,6 +33,6 @@ Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). Th
    - Apply nothing without the user's explicit OK.
 2. Search `events.log` for `ARP SPOOFING DETECTED` and `GATEWAY MAC CHANGED`, and report each with its time and MAC.
 3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway (or, for the router side, another MAC claiming the laptop's IP: snapshot capture and `<snapshot>.ring.txt`). Snapshot captures are `<snapshot>.etl` (since v1.0.8, no `.pkt.txt`): convert with `pktmon etl2txt <file>.etl --out <file>.txt` (needs admin) or read the snapshot `.txt`'s claim summary.
-4. Search `events.log` for `CLOUDFLARE ROUTE DEGRADED` and report each with its time, median and loss. Check the CSV's `via`/`vpn` columns first: hours while a VPN adapter carried the traffic measure the tunnel, not the ISP.
    - If it matches while pinned, the pin isn't enough: the router side is probably poisoned too. Report it and propose next steps; apply nothing without the user's OK.
    - If it doesn't match, look for the actual layer that broke.
+4. Search `events.log` for `CLOUDFLARE ROUTE DEGRADED` and report each with its time, median and loss. Check the CSV's `via`/`vpn` columns first: hours while a VPN adapter carried the traffic measure the tunnel, not the ISP.

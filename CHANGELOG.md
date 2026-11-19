@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
-### 06:49: `PENDING` v1.0.8: audit fixes, Cloudflare route check, real-time ARP capture
+### 06:49: `26c7652` v1.0.8: audit fixes, Cloudflare route check, real-time ARP capture
 - `tools/netbug.cs` (`Version` 1.0.8):
   - Restarts (an update, the health limit) go through the logon task: the old process starts `netbug.exe --relaunch <pid>`, which waits for it to exit and runs the task, so the new copy is covered by the task's restart-after-a-crash. Before, the restarted copy ran outside the task (seen after the 05:56 update: task `Ready` while netbug ran).
   - Rounds no longer stretch during outages: the DNS query, TCP connect and gateway MAC/ARP read run in the background; a round uses results that arrive within 900 ms. CSV rows and chart points are stamped with the round's start (when the pings went out), not the time the row was written.
@@ -26,7 +26,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - `tools/snapshot.ps1`: `-Gw`/`-Me` parameters; the capture is kept as `.etl` only (no `.pkt.txt`, ~10x smaller); this laptop's MAC from the adapter holding `-Me`.
 - New `tools/build.ps1`: builds with the page, font, scripts and `routers.local.txt` (when present) embedded, always as assembly `netbug`. The v1.0.7 release was built without `routers.local.txt`, so its Router MAC dropdown was empty.
 - `README.md`, `AGENTS.md` (log analysis: `.etl` captures, `CLOUDFLARE ROUTE DEGRADED`, VPN hours; new hard rule 5: files are edited only with the Edit/Write tools): updated to match.
-- Checked: builds clean; both scripts parse. The release is checked live after the update.
+- Checked: builds clean; both scripts parse; the exe has all five resources (`netbug.routers.txt` included). Released as v1.0.8 on GitHub; the asset's listed SHA-256 (`2364d307…`) matches the build. The release is checked live after the update.
 
 ### 06:35: Machine: pktmon real-time test
 - **Machine:** two 40 s captures from an elevated PowerShell (UAC accepted by the user) at 06:30–06:32, right after netbug's ring rotations: pktmon `-m real-time` printed 140 ARP frames (this laptop's announce requests 1.06/s) against 110 for a file capture (1.01/s). Real-time loses nothing, so v1.0.8 uses it. netbug's own ARP capture was stopped during the two windows and restarted by its next rotation. Test files in the session scratchpad only.

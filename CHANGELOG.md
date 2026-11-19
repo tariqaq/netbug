@@ -5,6 +5,9 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
+### 07:20: Machine: netbug 1.0.9 -> 1.0.10
+- **Machine:** the user installed v1.0.10 from the page at 07:18:49 (SHA-256 checked); running under the logon task (`Running`). MAC announce at ~1/s (51 in the first minute).
+
 ### 07:15: `278425b` v1.0.10: update progress bar, safer updater, README rewrite
 - `tools/netbug.cs` (`Version` 1.0.10), updater:
   - Download read in 64 KB blocks with progress (`updPct` 0-100, `pct` in `/api/fix` `update`); steps shown as one line: connecting, `Downloading netbug <tag>: x of y MB`, SHA-256 check, build check, replacing netbug.exe, restarting.

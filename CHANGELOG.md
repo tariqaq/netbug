@@ -5,10 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-20
 
-### 07:02: `PENDING` v1.0.9: known routers only on their own network
+### 07:02: `3b7d9eb` v1.0.9: known routers only on their own network
 - `tools/netbug.cs` (`Version` 1.0.9): a known router (built-in list) is offered in the Router MAC dropdown and tested by Check now only when it is present on the current network: the gateway's ARP entry is that MAC, or the ARP ring saw it answer for the gateway IP in the last 15 min (`KnownHere`). Before, a matching gateway IP was enough, so another network using the same private gateway address would have shown the hostel router's MAC. Check now adds the known routers after its 10 s listen. The list stays embedded in the exe.
 - `tools/dashboard.html`, `README.md`: dropdown and Check now text match; footprint states pktmon's real-time buffer (~515 MB private, flat).
-- Checked: builds clean, all five resources embedded.
+- Checked: builds clean, all five resources embedded. Released as v1.0.9; the asset's listed SHA-256 (`f8ebdcae…`) matches the build.
 
 ### 06:58: Machine: netbug 1.0.7 -> 1.0.8, WARP off
 - **Machine:** the user turned WARP off at about 06:55 (the internet died again on it); the 06:55:57–06:56:23 outage in `events.log` is that switch. Internet readings measure the ISP route again from 06:56.

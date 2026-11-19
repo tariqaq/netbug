@@ -3,6 +3,20 @@
 All times are the user's system time: Kuala Lumpur, MYT (UTC+08:00). Newest first.
 Entries cover repo changes (with commit hash) and changes made to the machine itself.
 
+## 2026-11-20
+
+### 05:44: `HASH` VPN, adapter type and Wi-Fi network in the logs; nightly Cloudflare table
+- `tools/netbug.cs` (not released yet; `Version` stays 1.0.6 until a release):
+  - With every interface scan it now notes the active interface's type (ethernet / wifi / mobile / ...), its Wi-Fi network (SSID, from `netsh wlan show interfaces`, re-read at most every 10 s), the VPN adapters that are up, and the adapter Windows routes 1.1.1.1 through (`GetBestInterface`).
+  - VPN adapters (PPP, tunnel, type 53 "proprietary virtual", or a known VPN name; not Windows' Teredo/6to4/ISATAP/IP-HTTPS tunnels) are never picked as the active interface any more. Before, a connected VPN adapter with a gateway could win on Wi-Fi.
+  - CSV: four new columns at the end, `iface_type,ssid,vpn,via`. The header changed, so a running day's CSV is moved to `netbug-<date>-old-<time>.csv` on the first start of the new build, as with any header change.
+  - `events.log`: `active interface` now names the type, plus new `Wi-Fi network: … -> …`, `VPN adapters up: … -> …`, and `internet traffic goes through '<adapter>', not the active interface …` / `… the active interface '<name>' again` when a VPN starts or stops carrying the internet traffic.
+  - Header comment updated.
+- `tools/dashboard.html`: the Interface reading shows the type and Wi-Fi network; a new VPN reading lists the VPN adapters and turns red while one carries the internet traffic. The last reading spans both columns on a phone only when the count is odd.
+- `README.md`: the checks table, the CSV and `events.log` rows, the dashboard list, and new **VPNs** and **Wi-Fi network** paragraphs (VPN hours measure the tunnel; SSIDs need location access since Windows 11 24H2).
+- `NETWORK_SCAN.md` §10d (gitignored original, `REDACTED_` copy regenerated): the Discord voice drops, the nightly table of how often `1.1.1.1` was slow (10-28 → 11-19), the 10-30 → 11-02 all-day reroute (~80–90 ms), and the open items waiting on the user (§12).
+- Checked: csc builds; the new helpers run on this laptop (Tailscale seen as a VPN not carrying traffic, `via` = `Ethernet 7`). The SSID path can only be checked on Wi-Fi.
+
 ## 2026-11-15
 
 ### 02:16: `db55aa2` attacker investigation handoff

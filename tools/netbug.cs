@@ -9,9 +9,13 @@
 // the last sample and is logged as a gap, not counted as an outage.
 // Background threads keep one long-lived TLS connection (HEAD every 15 s) and one
 // long-lived UDP socket doing STUN every 2 s (UDP RTT + NAT mapping).
+// With the interface scan it also notes the active interface's type (ethernet / wifi / ...), its Wi-Fi
+// network (SSID), the VPN adapters that are up (never picked as the active interface) and the adapter
+// Windows routes 1.1.1.1 through: another one than the active interface means a VPN carries the
+// internet traffic, so the internet probes then measure the tunnel, not the ISP route.
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
-// any failure. Outage/LAG start/end, link, interface, gateway MAC, public IP, NAT
-// mapping, TCP-connection deaths and UDP-usage changes go to events.log. An outage,
+// any failure. Outage/LAG start/end, link, interface, Wi-Fi network, VPN adapters, VPN routing,
+// gateway MAC, public IP, NAT mapping, TCP-connection deaths and UDP-usage changes go to events.log. An outage,
 // 5 s of lag, high UDP usage, a gateway MAC change or detected ARP spoofing triggers
 // snapshot.ps1, at most once per 60 s.
 // ARP spoofing defence: every 10 s the gateway's ARP entry type is read (static = pinned,
@@ -90,6 +94,9 @@ class NetBug
 
     [DllImport("iphlpapi.dll")]
     static extern int DeleteIpNetEntry2(IntPtr row);
+
+    [DllImport("iphlpapi.dll")]
+    static extern int GetBestInterface(uint destAddr, out uint bestIfIndex);
 
     [DllImport("iphlpapi.dll", SetLastError = true)]
     static extern IntPtr IcmpCreateFile();
@@ -178,7 +185,7 @@ class NetBug
     static DateTime dashMemAt = DateTime.MinValue;
 
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
-    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset";
+    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset,iface_type,ssid,vpn,via";
 
     static void Main(string[] args)
     {
@@ -514,6 +521,12 @@ class NetBug
     static NetworkInterface scanNi;
     static IPAddress scanIp, scanGw;
     static string scanName = "", scanLink = "absent";
+    // what the active interface is (ethernet / wifi / ...), its Wi-Fi network, the VPN adapters that are
+    // up, and the adapter Windows actually routes 1.1.1.1 through (another one than the active interface
+    // = a VPN is carrying the internet traffic, so the internet probes measure the tunnel)
+    static string scanType = "", scanSsid = "", scanVpn = "", scanVia = "", ssidIface = "";
+    static DateTime ssidAt = DateTime.MinValue;
+    static string lastSsid = null, lastVpn = null, lastViaKey = null;   // null = nothing logged yet
 
     static void Run()
     {
@@ -542,10 +555,18 @@ class NetBug
                 if (ifDirty || failStreak > 0 || tenS)
                 {
                     ifDirty = false;
-                    scanNi = PickInterface(out scanIp, out scanGw, out scanName, out scanLink);
+                    scanNi = PickInterface(out scanIp, out scanGw, out scanName, out scanLink, out scanVpn);
+                    scanType = scanNi == null ? "" : IfType(scanNi);
+                    scanVia = RouteVia(IPAddress.Parse("1.1.1.1"));
+                    // the SSID costs a netsh run: on a new interface, else at most every 10 s
+                    if (scanType != "wifi") scanSsid = "";
+                    else if (scanName != ssidIface || (DateTime.Now - ssidAt).TotalSeconds >= 10)
+                    {
+                        scanSsid = Ssid(scanName); ssidAt = DateTime.Now; ssidIface = scanName;
+                    }
                 }
                 IPAddress ip = scanIp, gw = scanGw;
-                string ifaceName = scanName, ethLink = scanLink;
+                string ifaceName = scanName, ethLink = scanLink, ifType = scanType, ssid = scanSsid, vpn = scanVpn, via = scanVia;
                 NetworkInterface ni = scanNi;
                 curNi = ni; curIp = ip; curGw = gw;
 
@@ -612,7 +633,25 @@ class NetBug
                 string failStr = string.Join("|", fails);
 
                 // ---- transitions ----
-                if (ifChanged) { Event(string.Format("active interface: '{0}' -> '{1}' ip={2} gw={3}", lastIface, ifaceName, ip, gw)); lastIface = ifaceName; }
+                if (ifChanged) { Event(string.Format("active interface: '{0}' -> '{1}' ({2}) ip={3} gw={4}", lastIface, ifaceName, ifType == "" ? "none" : ifType, ip, gw)); lastIface = ifaceName; }
+                if (ssid != lastSsid && (lastSsid != null || ssid != ""))
+                    Event(string.Format("Wi-Fi network: {0} -> {1}", string.IsNullOrEmpty(lastSsid) ? "none" : "'" + lastSsid + "'", ssid == "" ? "none" : "'" + ssid + "'"));
+                lastSsid = ssid;
+                if (vpn != lastVpn)
+                {
+                    Event(string.Format("VPN adapters up: {0} -> {1}", lastVpn == null ? "?" : lastVpn == "" ? "none" : lastVpn, vpn == "" ? "none" : vpn));
+                    lastVpn = vpn;
+                }
+                // logged only when the tunnel starts, ends or moves, not when the active interface changes
+                string viaKey = via != "" && ifaceName != "" && via != ifaceName ? via : "";
+                if (viaKey != lastViaKey)
+                {
+                    if (viaKey != "")
+                        Event(string.Format("internet traffic goes through '{0}', not the active interface '{1}': a VPN carries it, so the 1.1.1.1, 8.8.8.8, TCP and UDP probes measure the tunnel, not the ISP route", viaKey, ifaceName));
+                    else if (lastViaKey != null)
+                        Event(string.Format("internet traffic goes through the active interface '{0}' again", ifaceName));
+                    lastViaKey = viaKey;
+                }
                 if (ethLink != lastEthLink) { Event(string.Format("wired link: {0} -> {1}", lastEthLink == "" ? "?" : lastEthLink, ethLink)); lastEthLink = ethLink; }
                 // the entry type first: a new pin makes its MAC the trusted one before the MAC change is judged
                 if (gwArp != "" && gwArp != lastGwArp && !fixBusy)
@@ -704,7 +743,7 @@ class NetBug
                         rowAt.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac, gwArp,
                         gwMs.ToString(), cfMs.ToString(), gMs.ToString(), dnsMs.ToString(), tcpMs.ToString(),
                         udpMs.ToString(), udpMap, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubIp, failStr,
-                        rowAt.ToString("yyyy-MM-dd"), rowAt.ToString("zzz") }));
+                        rowAt.ToString("yyyy-MM-dd"), rowAt.ToString("zzz"), ifType, Csv(ssid), Csv(vpn), Csv(via) }));
                     lastRow = rowAt;
                 }
 
@@ -717,10 +756,11 @@ class NetBug
                     if (histCount < hist.Length) histCount++;
                 }
                 if (gwAlert != "" && (DateTime.Now - gwAlertAt).TotalMinutes >= 30) gwAlert = "";   // alert shows for 30 min
-                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14},\"gwArp\":{15},\"gwAlert\":{16},\"arpWatch\":{17}}}",
+                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14},\"gwArp\":{15},\"gwAlert\":{16},\"arpWatch\":{17},\"ifType\":{18},\"ssid\":{19},\"vpn\":{20},\"via\":{21}}}",
                     now, J(ifaceName), J(ethLink), J(ip == null ? "" : ip.ToString()), J(gw == null ? "" : gw.ToString()), J(gwMac),
                     txDelta, rxDelta, J(udpMap), udpTotal, J(udpTop), J(pubIp), J(failStr),
-                    inOutage ? Unix(outageStart) : 0, inLag ? Unix(lagStart) : 0, J(gwArp), J(gwAlert), J(arpWatch));
+                    inOutage ? Unix(outageStart) : 0, inLag ? Unix(lagStart) : 0, J(gwArp), J(gwAlert), J(arpWatch),
+                    J(ifType), J(ssid), J(vpn), J(via));
             }
             catch (Exception ex)
             {
@@ -757,18 +797,22 @@ class NetBug
             (to - from).TotalSeconds, Stamp(from), Stamp(to)));
     }
 
-    // Prefer a wired interface with a default gateway, else any up interface with one. The link state
-    // reported is that of the wired adapter last used (by adapter ID, so a pulled cable shows "down"), or
-    // "absent" when there is none.
-    static NetworkInterface PickInterface(out IPAddress ip, out IPAddress gw, out string name, out string ethLink)
+    // Prefer a wired interface with a default gateway, else any up interface with one. VPN adapters are
+    // never picked (the gateway, ARP pin and link are the physical network's); the ones that are up are
+    // returned in `vpn` ("name (description)", "; "-separated). The link state reported is that of the
+    // wired adapter last used (by adapter ID, so a pulled cable shows "down"), or "absent" when there is none.
+    static NetworkInterface PickInterface(out IPAddress ip, out IPAddress gw, out string name, out string ethLink, out string vpn)
     {
         ip = null; gw = null; name = ""; ethLink = "absent";
+        var vpns = new List<string>();
         NetworkInterface best = null; int bestScore = -1;
         foreach (var n in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (n.Id == wiredId) ethLink = n.OperationalStatus == OperationalStatus.Up ? "up" : "down";
             if (n.OperationalStatus != OperationalStatus.Up) continue;
-            if (n.NetworkInterfaceType == NetworkInterfaceType.Loopback || n.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+            if (n.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+            if (IsVpn(n)) { vpns.Add(n.Name == n.Description ? n.Name : n.Name + " (" + n.Description + ")"); continue; }
+            if (n.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;   // Windows' own IPv6 tunnels
             var props = n.GetIPProperties();
             var g = props.GatewayAddresses.Select(a => a.Address)
                 .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && !a.Equals(IPAddress.Any));
@@ -782,7 +826,65 @@ class NetBug
             }
         }
         if (best != null && bestScore == 2 && best.Id != wiredId) { wiredId = best.Id; ethLink = "up"; }
+        vpn = string.Join("; ", vpns);
         return best;
+    }
+
+    // A VPN or tunnel adapter: PPP, tunnel, "proprietary virtual" (type 53: WARP, Tailscale, ExpressVPN,
+    // WireGuard's wintun) or a known VPN name. Windows' own IPv6 transition tunnels (Teredo, 6to4, ISATAP,
+    // IP-HTTPS) and host-only/virtual-machine adapters are not VPNs.
+    static readonly string[] VpnWords = { "vpn", "warp", "tailscale", "wireguard", "wintun", "openvpn", "tap-windows",
+        "zerotier", "anyconnect", "globalprotect", "fortinet", "nordlynx", "proton" };
+    static readonly string[] NotVpnWords = { "teredo", "6to4", "isatap", "ip-https", "iphttps" };
+    static bool IsVpn(NetworkInterface n)
+    {
+        string d = (n.Name + " " + n.Description).ToLowerInvariant();
+        if (NotVpnWords.Any(w => d.Contains(w))) return false;
+        var t = n.NetworkInterfaceType;
+        if (t == NetworkInterfaceType.Ppp || t == NetworkInterfaceType.Tunnel || (int)t == 53) return true;
+        return VpnWords.Any(w => d.Contains(w));
+    }
+
+    static string IfType(NetworkInterface n)
+    {
+        switch (n.NetworkInterfaceType)
+        {
+            case NetworkInterfaceType.Ethernet: case NetworkInterfaceType.GigabitEthernet:
+            case NetworkInterfaceType.FastEthernetT: case NetworkInterfaceType.FastEthernetFx: return "ethernet";
+            case NetworkInterfaceType.Wireless80211: return "wifi";
+            case NetworkInterfaceType.Wwanpp: case NetworkInterfaceType.Wwanpp2: return "mobile";
+            default: return n.NetworkInterfaceType.ToString().ToLowerInvariant();
+        }
+    }
+
+    // The adapter Windows routes `dest` through right now (by the routing table, so a VPN that takes the
+    // default route shows up here), or "" when there is no route.
+    static string RouteVia(IPAddress dest)
+    {
+        uint idx;
+        if (GetBestInterface(BitConverter.ToUInt32(dest.GetAddressBytes(), 0), out idx) != 0) return "";
+        foreach (var n in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            try { var p = n.GetIPProperties().GetIPv4Properties(); if (p != null && p.Index == idx) return n.Name; }
+            catch { }   // adapters without IPv4 throw
+        }
+        return "#" + idx;
+    }
+
+    // The Wi-Fi network (SSID) the named adapter is connected to, from "netsh wlan show interfaces", or ""
+    // (not connected, or Windows hides it: since Windows 11 24H2 netsh needs location access for SSIDs).
+    static string Ssid(string ifName)
+    {
+        string cur = null;
+        foreach (var line in Run("netsh.exe", "wlan show interfaces").Split('\n'))
+        {
+            int c = line.IndexOf(':');
+            if (c < 0) continue;
+            string k = line.Substring(0, c).Trim(), v = line.Substring(c + 1).Trim();
+            if (k == "Name") cur = v;
+            else if (k == "SSID" && cur == ifName) return v;
+        }
+        return "";
     }
 
     static async Task<long> PingAsync(IPAddress target)

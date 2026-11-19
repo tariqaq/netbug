@@ -360,8 +360,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     // "svchost=14 NVIDIA Overlay=8" -> "svchost 14, NVIDIA Overlay 8" (names can contain spaces)
     const top = [...(s.udpTop || '').matchAll(/(\S.*?)=(\d+)/g)].map(m => m[1] + ' ' + m[2]).join(', ');
     const facts = [
-      ['Interface', esc(s.iface || 'none')],
+      ['Interface', esc(s.iface || 'none') + (s.ifType ? '<span>' + esc(s.ifType === 'wifi' ? 'Wi-Fi' + (s.ssid ? ': ' + s.ssid : '') : s.ifType) + '</span>' : '')],
       ['Wired link', esc(s.link)],
+      ['VPN', esc(s.vpn || 'none') + (s.via && s.iface && s.via !== s.iface
+        ? '<span>Internet traffic goes through ' + esc(s.via) + ', so the internet readings measure the VPN tunnel</span>'
+        : (s.vpn ? '<span>Not carrying internet traffic</span>' : '')), !!(s.via && s.iface && s.via !== s.iface)],
       ['Local IP', esc(s.ip || '–')],
       ['Gateway', esc(s.gw || '–')],
       ['Gateway MAC', esc(s.gwMac || '–') + '<span>' +
@@ -374,7 +377,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     ];
     // the last one (UDP ports + per-process list) is the longest: full width on phones
     put($('facts'), facts.map(([k, v, alert], i) =>
-      '<div class="fact' + (i === facts.length - 1 ? ' wide' : '') + '"><dt>' + k + ':</dt><dd' + (alert ? ' class="alert"' : '') + '>' + v + '</dd></div>').join(''));
+      '<div class="fact' + (i === facts.length - 1 && facts.length % 2 === 1 ? ' wide' : '') + '"><dt>' + k + ':</dt><dd' + (alert ? ' class="alert"' : '') + '>' + v + '</dd></div>').join(''));
   }
 
   // ---------- chart ----------

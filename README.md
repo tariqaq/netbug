@@ -196,7 +196,7 @@ If the gateway stops answering while pinned (for example the router was replaced
 | ⏱️ Every | 🔍 Check | 🎯 Catches |
 |---|---|---|
 | 1 s | Ping gateway, `1.1.1.1`, `8.8.8.8`; tx/rx packet counters | LAN lag, internet loss, one-way traffic |
-| On Windows network events, 1 s while failing, else 10 s | Active interface, link state of the wired adapter last used | Cable/link drops, hotspot switch |
+| On Windows network events, 1 s while failing, else 10 s | Active interface and its type (ethernet / wifi / ...), its Wi-Fi network (SSID, re-read at most every 10 s), link state of the wired adapter last used, VPN adapters that are up, and the adapter Windows routes 1.1.1.1 through | Cable/link drops, hotspot switch, a VPN (WARP, Tailscale exit node, ExpressVPN...) carrying the internet traffic |
 | 2 s (1 s after a failure) | DNS query to the router | Resolver stalls ("sites load forever") |
 | 2 s | STUN on one long-lived UDP socket (Cloudflare, then Google); after 3 failures in a row it opens a new socket once and resolves the servers again | UDP loss, **NAT mapping changes** (what kills voice/game sessions) |
 | 10 s (1 s after a failure) | TCP connect to `github.com:443` | New connections failing |
@@ -211,6 +211,10 @@ If the gateway stops answering while pinned (for example the router was replaced
 🚨 **Outage** = no interface, or both internet pings, DNS, TCP or UDP failing **2 seconds in a row**. Gateway-only ping loss doesn't count (the router rate-limits ICMP).
 
 The schedules above run by the clock, so slow probes don't stretch them. More than 30 s between two rounds (the laptop slept) is not an outage: a running outage ends at the last sample, `events.log` gets a `no samples for N s` line, and the packet counters start fresh (as they do when they go backwards after an adapter reset).
+
+🔒 **VPNs.** VPN adapters (WARP, Tailscale, ExpressVPN, WireGuard and similar) are never picked as the active interface: the gateway, the router pin and the link always belong to the physical network. While a VPN carries the internet traffic (the CSV's `via` differs from `iface`, and `events.log` says `internet traffic goes through '<adapter>'`), the 1.1.1.1, 8.8.8.8, TCP and UDP readings measure the tunnel, not the ISP route, so leave those hours out when judging the ISP. The gateway ping and DNS via the gateway still measure the local network. Tailscale shows up as an adapter that's up all the time, but it carries the internet traffic only with an exit node.
+
+📶 **Wi-Fi network.** The SSID comes from `netsh wlan show interfaces`. Since Windows 11 24H2, Windows shows SSIDs only to apps with location access, so the column stays empty when location services are off.
 
 ```mermaid
 flowchart TD
@@ -252,8 +256,8 @@ Everything goes to `logs\` (gitignored; `C:\ProgramData\netbug\logs` for a lone 
 
 | File | Contents |
 |---|---|
-| `netbug-<date>.csv` | One row per 5 s (per 1 s around failures): interface, link, IP, gateway + MAC + ARP entry type, ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures, then the date and UTC offset |
-| `events.log` | Timeline: `OUTAGE START/END`, `LAG`, `GATEWAY MAC CHANGED`, `ARP SPOOFING DETECTED`, link/interface/MAC/pin/public IP/NAT changes, TCP connection deaths, high UDP usage, hourly `health:` lines |
+| `netbug-<date>.csv` | One row per 5 s (per 1 s around failures): interface, link, IP, gateway + MAC + ARP entry type, ping/DNS/TCP/UDP times, NAT mapping, packet counters, UDP usage, public IP, failures, the date and UTC offset, then the interface type, Wi-Fi network (SSID), VPN adapters that are up, and the adapter carrying traffic to 1.1.1.1 (`via`) |
+| `events.log` | Timeline: `OUTAGE START/END`, `LAG`, `GATEWAY MAC CHANGED`, `ARP SPOOFING DETECTED`, link/interface/Wi-Fi network/VPN adapter/MAC/pin/public IP/NAT changes, a VPN starting or stopping to carry the internet traffic, TCP connection deaths, high UDP usage, hourly `health:` lines |
 | `snapshots\` | Per incident: adapters, NCSI, neighbors, ping/DNS/TCP probes, traceroute, UDP/TCP usage, system events, a `pktmon` capture taken while the probes run, who claimed the gateway or this laptop in it, and `<name>.ring.txt` (the ARP about the gateway or this laptop from the 15 min before) |
 | `netbug.settings` | The Auto-detect and Keep-the-router-updated switches |
 
@@ -275,7 +279,7 @@ Lines and rows from before v1.0.5 have no offset (they were all written in MYT, 
 - Status line: healthy, lagging (orange), down (red), **possible ARP spoofing** (red, 30 min after an alert), plus the last outage or lag
 - 5-minute chart of gateway, Cloudflare and UDP round-trip times, with outages and lag shaded
 - A lost Cloudflare ping is hidden while Google still answers: Cloudflare drops some pings on its own (rate limiting), so the readout keeps the last value and the line doesn't break. The CSV still logs it as `-1`.
-- Latest readings: interface, IPs, gateway MAC with pin status and the last ARP watch result, NAT mapping, packets, UDP ports
+- Latest readings: interface with its type and Wi-Fi network, VPN adapters (red while one carries the internet traffic), IPs, gateway MAC with pin status and the last ARP watch result, NAT mapping, packets, UDP ports
 - `events.log` live (alerts red, lag orange, hourly health lines cyan and hideable)
 - **Logs and updates** (on the laptop only):
   - the running version and the last update check

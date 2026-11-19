@@ -276,6 +276,44 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - "Replug gives connected, no internet": the spoofer re-poisons the fresh ARP entry.
 - Other residents are hit too, and it recovers by itself when the spoofer stops.
 
+## 10d. Cloudflare route slow at night (Discord voice drops, noted 2026-11-20)
+
+**Symptom (11-19 evening):** Discord voice kept cutting out for friends while Marvel Rivals stayed smooth. A Discord PTB diagnosis in another chat (`exports/mine/discord-connection-report.md`, gitignored) found the same thing on 11-20 02:14–02:33: gateway connects taking 15–19 s, the Singapore voice server timing out (`OP_HELLO`), resets on `updates.discord.com` (10054), a 25 s voice stall, and 0% loss to the router and `8.8.8.8` but 8% to `1.1.1.1` over the same 60 s.
+
+**Cause:** the hostel ISP's route to Cloudflare, not the laptop or the LAN. Discord's API, gateway, updates and voice are all on Cloudflare (`162.159.x`, `104.29.x`). The gateway and Google stayed clean the whole time, and the laptop's own traffic was low.
+
+**Nightly table from netbug** (share of CSV rows each hour where `1.1.1.1` was ≥60 ms or lost; Ethernet; "Google worst" = the worst hour for `8.8.8.8` ≥30 ms or lost that night):
+
+| Night of | 20:00 | 21:00 | 22:00 | 23:00 | 00:00 | 01:00 | Google worst |
+|---|---|---|---|---|---|---|---|
+| 10-28 | 3% | 71% | 54% | 20% | 8% | 22% | 1% |
+| 10-29 | 33% | 34% | 35% | 34% | 30% | 26% | 2% |
+| 10-30 | 100% | 100% | 100% | 100% | 99% | 63% | 1% |
+| 10-31 | 100% | 100% | 100% | 100% | 98% | 23% | 0% |
+| 11-01 | 100% | 100% | 100% | 100% | 85% | 6% | 1% |
+| 11-02 | 100% | 100% | 100% | 99% | 63% | 5% | 0% |
+| 11-03 | 3% | 2% | 3% | 3% | – | – | 1% |
+| 11-04 | 0% | 1% | 3% | 0% | 0% | 3% | 4% |
+| 11-05 | 0% | 3% | 4% | 8% | 6% | 0% | 0% |
+| 11-06 | 0% | 1% | 1% | 3% | 0% | 0% | 0% |
+| 11-07 | 1% | 0% | 1% | 1% | 26% | 0% | 1% |
+| 11-08 | 0% | 0% | 0% | 8% | 2% | 0% | 0% |
+| 11-09 | 0% | 2% | 1% | 2% | 0% | 0% | 0% |
+| 11-10 | 1% | 0% | 2% | 6% | 0% | 0% | 0% |
+| 11-11 | 2% | 0% | 7% | 46% | 37% | 16% | 0% |
+| 11-12 | 1% | 13% | 8% | 11% | 1% | 0% | 0% |
+| 11-13 | 1% | 10% | 8% | 1% | 1% | 0% | 1% |
+| 11-14 | 2% | 8% | 3% | 0% | 2% | 0% | 3% |
+| 11-15 | 0% | 3% | 0% | 0% | 0% | 0% | 0% |
+| 11-16 | 1% | 3% | 0% | 0% | 1% | 0% | 0% |
+| 11-17 | 2% | 14% | 2% | 1% | 1% | 7% | 0% |
+| 11-18 | 2% | 37% | 30% | 10% | 19% | 18% | 0% |
+| 11-19 | 2% | 25% | 38% | 34% | 4% | 0% | 0% |
+
+- **10-30 to 11-02 was a different fault:** `1.1.1.1` sat at about 80–90 ms **all day**, not just at night (daily median 51, 81, 43, 70 ms; normally 8–9 ms). The route to Cloudflare was going a long way round for four days, then went back to normal on 11-03.
+- **From 11-11, an evening pattern:** worst 21:00–00:00, building again from 11-17 (14%) to 11-18/11-19 (30–38%). Google never went above 4% on any night.
+- Readings taken while a VPN carries the traffic must be left out. netbug logs that from the next release (`via` column and `internet traffic goes through '<adapter>'` events).
+
 ## 11. Changes applied (2026-10-28, user-approved)
 
 - Ethernet 7: "Allow computer to turn off this device" → **Disabled**.
@@ -355,4 +393,5 @@ Reading: this is ARP cache poisoning of the gateway address, the pattern of NetC
 - ~~Make netbug treat a gateway MAC change as an alert of its own.~~ Done. netbug also shows the pin status and watches ARP continuously (§11).
 - **Open (user):** send `RCC_REPORT.md` to the hostel RCC. It covers finding `10.255.18.145` / `xx-xx-xx-xx-xx-xx` on the MikroTik and turning on ARP spoofing protection.
 - ~~Wait for the next drop and confirm the cause.~~ Confirmed at 15:28 (same device). Pin re-applied at 15:37.
+- **Waiting on the user (Discord / Cloudflare route, §10d):** test WARP during a bad evening; `pathping -n -q 50 1.1.1.1` and `pathping -n -q 50 8.8.8.8` during a bad evening to find the hop where the loss starts; try a fixed voice region; a proof pack for the hostel/ISP; optionally a netbug check timing a connection to Discord itself.
 - ~~See whether drops continue with the pin on.~~ They did: three short drops on 11-01 02:34–02:38 while pinned fit the router's side being poisoned. netbug now announces the laptop's MAC about once a second and captures ARP continuously (incident report §9). **Still open:** only the hostel can close the router side.

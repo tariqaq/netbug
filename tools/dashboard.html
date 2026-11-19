@@ -611,7 +611,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     putText($('up-err'), u.error || '');
   }
 
-  // "Router MAC": the known routers for this gateway (built into netbug) plus "Other MAC…" with a text box.
+  // "Router MAC": the known routers present on this network (built into netbug), the pinned MAC and the
+  // last check's MAC (netbug picks them), plus "Other MAC…" with a text box.
   // The options are rebuilt only when the list changes, so a choice survives the 2 s polls.
   let knownKey = null;
   function chosenMac() {

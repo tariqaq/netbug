@@ -49,7 +49,7 @@ pwsh -File tools\build.ps1
 
 This makes `tools\netbug.exe` (or the path given with `-Out`), with the dashboard page, font and scripts embedded in it. The assembly is always named `netbug`, whatever the file is called, because the updater checks the name.
 
-Known router MACs for the **Router MAC** dropdown: put them in `tools\routers.local.txt` (gitignored), one per line as `<gateway ip> <MAC> [label]`, with `#` for comments. `build.ps1` embeds the file when it exists and warns when it doesn't. The release exe is built with it. The dropdown also lists the pinned MAC and the MAC the last check found.
+Known router MACs for the **Router MAC** dropdown: put them in `tools\routers.local.txt` (gitignored), one per line as `<gateway ip> <MAC> [label]`, with `#` for comments. `build.ps1` embeds the file when it exists and warns when it doesn't. The release exe is built with it. A known router is listed (and tested by **Check now**) only on its own network: when the gateway's ARP entry is that MAC, or the ARP capture saw it answer for the gateway IP in the last 15 min. On another network with the same gateway IP it stays hidden. The list is still inside the exe, so hidden is not secret. The dropdown also lists the pinned MAC and the MAC the last check found.
 
 ### 2. Start it at every logon
 
@@ -166,8 +166,8 @@ The status at the top right of the panel:
 
 | Control | What it does |
 |---|---|
-| **Router MAC** + **Test and pin** | The dropdown lists the known routers built into the exe for the current gateway IP, the pinned MAC ("pinned now") and the MAC the last check found, plus **Other MAC…** to type one. **Test and pin** runs the Check now test on that one MAC, without the 10 s listen. It pins the MAC only if it passes; a failed test changes nothing, so use **Check now** then. The button reads **Already pinned** when that MAC is the pin. |
-| **Check now** | Finds the real router MAC. Candidates: the ARP entry, any pin, the known routers for this gateway IP, and every MAC that answers for the gateway IP during 10 s of the ARP capture (the laptop asks for the router meanwhile, unless pinned). Each is set briefly as a temporary static ARP entry: it's the real router when internet pings pass **and** a TTL-1 ping comes back "TTL expired" from the gateway IP itself. The entry is then put back. |
+| **Router MAC** + **Test and pin** | The dropdown lists the known routers built into the exe that are present on this network (see [Build](#1-build)), the pinned MAC ("pinned now") and the MAC the last check found, plus **Other MAC…** to type one. **Test and pin** runs the Check now test on that one MAC, without the 10 s listen. It pins the MAC only if it passes; a failed test changes nothing, so use **Check now** then. The button reads **Already pinned** when that MAC is the pin. |
+| **Check now** | Finds the real router MAC. Candidates: the ARP entry, any pin, the known routers present on this network, and every MAC that answers for the gateway IP during 10 s of the ARP capture (the laptop asks for the router meanwhile, unless pinned). Each is set briefly as a temporary static ARP entry: it's the real router when internet pings pass **and** a TTL-1 ping comes back "TTL expired" from the gateway IP itself. The entry is then put back. |
 | **Auto-detect the real router** | Runs a check now, every 30 min, when the gateway changes, and after a spoofing alert (at most every 5 min). It never changes a pin by itself. |
 | **Pin it permanently** | Pins the verified MAC (`netsh … store=persistent`), so Windows ignores fake "I am the router" replies, even after a restart. Turn it off before using the same adapter on another network with the same router address. |
 | **Keep the router updated** (on by default) | The pin only protects the laptop's own table. An attacker can still tell the *router* that the laptop's IP is their MAC. About once a second netbug makes Windows send a fresh ARP request (a broadcast carrying the laptop's real IP and MAC), so the router corrects a fake entry within about a second. The panel shows how many were sent, and how many the last capture check saw on the wire and over what period (normally the 5 min before it). |
@@ -302,7 +302,7 @@ The page makes no external requests, so it works while the internet is down. It 
 
 | | |
 |---|---|
-| 🧠 RAM | ~25–45 MB for netbug, plus one `pktmon` process for the ARP capture and the kernel memory pktmon uses while it runs |
+| 🧠 RAM | ~25–45 MB for netbug, plus the `pktmon` process of the ARP capture: about 515 MB of private memory, a fixed capture buffer that doesn't grow and that Windows mostly pages out (pktmon has no setting for it) |
 | ⚡ CPU | ~1% of one core, BelowNormal priority, locked to the 4 highest-numbered logical processors (child processes too), so games keep the rest |
 | 🌐 Network | ~0.75 KB/s plus one 42-byte ARP broadcast per second; nothing to game or voice servers. The update check adds about 12 KB per 15 min. The dashboard adds under 1 KB/s per open tab |
 | 💾 Disk | ~3–4 MB/day, more on days the Cloudflare route is degraded (1 s rows then) |

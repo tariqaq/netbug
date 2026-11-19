@@ -58,8 +58,8 @@
 // a repo copy only reports it. See "export and updates".
 //
 // Build: tools\build.ps1 (csc with the page, font, scripts and, when present, tools\routers.local.txt
-// embedded; the release exe is built with it). routers.local.txt, gitignored: known router MACs offered on
-// the page, see "router check and pin".
+// embedded; the release exe is built with it). routers.local.txt, gitignored: known router MACs, offered on
+// the page only on the network they belong to, see "router check and pin".
 
 using System;
 using System.Collections.Generic;
@@ -84,7 +84,7 @@ using System.IO.Compression;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.8";
+    public const string Version = "1.0.9";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -2257,8 +2257,8 @@ class NetBug
     // ---------------------------------------------------------------- router check and pin
     //
     // Check: finds the real router MAC for the current gateway IP. Candidates are the ARP table entry, a
-    // pinned entry, the known routers for this gateway IP (see below) and every MAC that answers for the
-    // gateway IP in 10 s of the ARP ring (the laptop asks
+    // pinned entry, every MAC that answers for the gateway IP in 10 s of the ARP ring, and the known routers
+    // present on this network (see below) (the laptop asks
     // for the router 3 times meanwhile, unless the entry is pinned, so the real router answers too). Each
     // candidate is then set for a moment as a temporary static ARP entry (active store only) and tested:
     // it is the real router when pings to 1.1.1.1/8.8.8.8 get through it AND a TTL-1 ping comes back
@@ -2278,10 +2278,28 @@ class NetBug
     class Candidate { public string Mac, From = "", Hop = "", Verdict = ""; public bool Works, Random; }
 
     // Known routers: "<gateway ip> <MAC> [label]" lines, one per line, # for comments, in the optional
-    // embedded resource netbug.routers.txt (built from the gitignored tools\routers.local.txt). The page
-    // offers the ones for the current gateway IP, and Check now tests them too.
+    // embedded resource netbug.routers.txt (built from the gitignored tools\routers.local.txt). A gateway IP
+    // alone doesn't identify a network (another network can use the same private address), so the page
+    // offers, and Check now tests, only the known routers that are present here: see KnownHere.
     class KnownRouter { public string Gw, Mac, Label; }
     static readonly List<KnownRouter> knownRouters = LoadKnownRouters();
+
+    // The known routers for gateway gw that are on this network: the ARP entry for the gateway is that MAC
+    // (arpMac), or the ARP ring saw that MAC answer for the gateway IP in the last 15 min (which still works
+    // while a poisoned entry names another MAC). On any other network they stay hidden.
+    static List<KnownRouter> KnownHere(IPAddress gw, IPAddress me, string arpMac)
+    {
+        if (gw == null || me == null) return new List<KnownRouter>();
+        string gwIp = gw.ToString();
+        var mine = knownRouters.Where(k => k.Gw == gwIp).ToList();
+        if (mine.Count == 0) return mine;
+        List<ArpFrame> frames;
+        lock (ringLock) frames = ring.ToList();
+        var claims = new List<Claim>();
+        Analyze(frames, gw, me, claims, new List<Claim>());   // the same IP pair as the ARP watch: its regexes are reused
+        return mine.Where(k => string.Equals(k.Mac, arpMac, StringComparison.OrdinalIgnoreCase)
+            || claims.Any(c => string.Equals(c.Mac, k.Mac, StringComparison.OrdinalIgnoreCase))).ToList();
+    }
 
     static List<KnownRouter> LoadKnownRouters()
     {
@@ -2393,10 +2411,9 @@ class NetBug
         int idx = IfIndex(ni);
         if (gw != null && idx >= 0) pinned = PersistentPin(idx, gw);
         bool verifiedHere = gw != null && verifiedMac != "" && verifiedGw == gw.ToString() && verifiedIf == idx;
-        // the Router MAC dropdown: the known routers for this gateway, then the pinned MAC and the MAC the
-        // last check found, when they aren't among them
-        var opts = gw == null ? new List<KeyValuePair<string, string>>() : knownRouters.Where(k => k.Gw == gw.ToString())
-            .Select(k => new KeyValuePair<string, string>(k.Mac, k.Label)).ToList();
+        // the Router MAC dropdown: the known routers present on this network, then the pinned MAC and the MAC
+        // the last check found, when they aren't among them
+        var opts = KnownHere(gw, curIp, gwMac).Select(k => new KeyValuePair<string, string>(k.Mac, k.Label)).ToList();
         if (pinned != "" && !opts.Any(o => o.Key == pinned)) opts.Add(new KeyValuePair<string, string>(pinned, "pinned now"));
         if (verifiedHere && !opts.Any(o => o.Key == verifiedMac)) opts.Add(new KeyValuePair<string, string>(verifiedMac, "found by the last check"));
         string known = string.Join(",", opts.Select(o => string.Format("{{\"mac\":{0},\"label\":{1}}}", J(o.Key), J(o.Value))));
@@ -2497,10 +2514,9 @@ class NetBug
             if (only != null) add(only, "chosen on the page");
             else
             {
-                string arpType = ArpEntryType(gw, ni);
-                add(Arp(gw, ip), "ARP table (" + (arpType == "" ? "?" : arpType) + ")");
+                string arpType = ArpEntryType(gw, ni), arpMac = Arp(gw, ip);
+                add(arpMac, "ARP table (" + (arpType == "" ? "?" : arpType) + ")");
                 add(pinned, "pinned");
-                foreach (var k in knownRouters.Where(k => k.Gw == gwIp)) add(k.Mac, "known router" + (k.Label == "" ? "" : " (" + k.Label + ")"));
 
                 // the ring captures all the time: ask for the router again so the real one answers too (a pinned
                 // entry is never asked about), then pause the ring once so pktmon hands over what it buffered
@@ -2515,6 +2531,8 @@ class NetBug
                 var claims = new List<Claim>();
                 Analyze(heard, gw, ip, claims, new List<Claim>());
                 foreach (var c in claims) add(c.Mac, string.Format("answered as the router {0}x", c.N));
+                // after the listen, so a known router that just answered counts as present
+                foreach (var k in KnownHere(gw, ip, arpMac)) add(k.Mac, "known router" + (k.Label == "" ? "" : " (" + k.Label + ")"));
             }
 
             var cf = IPAddress.Parse("1.1.1.1"); var g = IPAddress.Parse("8.8.8.8");

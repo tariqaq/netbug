@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 02:40: `HASH` v1.0.18: second audit fixes
+### 02:40: `27f512e` v1.0.18: second audit fixes
 From a second full read of the repo. `tools/netbug.cs` (`Version` 1.0.18):
 - **Logic:**
   - Moving between two networks with the same gateway IP (e.g. two `192.168.1.1` routers) raised `GATEWAY MAC CHANGED` (red for 30 min, snapshot) and later `ARP SPOOFING DETECTED` against the new router: the trusted MAC was kept per gateway IP only. Now each network has a generation (`CheckNetwork`: another adapter, gateway IP, or Wi-Fi name / network profile within 60 s of a Windows network event; an ARP attack changes none of these). The trusted MAC, the last check's verified MAC, the ARP history and the Cloudflare usual time belong to one generation; a gateway MAC read started on the previous network is dropped.
@@ -21,7 +21,7 @@ From a second full read of the repo. `tools/netbug.cs` (`Version` 1.0.18):
 - **Small bugs:** DNS/TCP/UDP showed and logged `0` before their first reading (start-up, leaving minimal mode): now `NotYet` (empty in the CSV, "–" on the page). Overlapping update checks no longer end "Checking…" early (`updChecks` counter); the release tag, URL and SHA-256 are stored together. The active interface, IP and gateway are published as one object (`cur`), so other threads never mix old and new. In minimal mode 8.8.8.8 gets only what's left of the second after a failed 1.1.1.1 ping (both are asked together while it keeps failing), so rounds stay 1 s.
 - **Text:** `events.log` moves to `events-<time>.log` at 20 MB (it was never trimmed, though README said 30 days / 500 MB); README and AGENTS say which CSV readings repeat or are empty in minimal mode, and explain `router_check` and the per-network trust.
 - `tools/dashboard.html`: `router_check` fail name (orange), "–" for no reading yet, Check now / Test and pin / Install / Uninstall disabled when netbug would refuse them, chart legend.
-- Checked: builds clean; the page script passes `node --check`. Not run live before release (this shell isn't elevated); a build that can't start is rolled back by the updater.
+- Checked: builds clean; the page script passes `node --check`. Not run live before release (this shell isn't elevated); a build that can't start is rolled back by the updater. Released as v1.0.18; the asset's listed SHA-256 (`99e1de1f…`) matches the build.
 
 ### 02:21: `2374fc9` stale comments and docs
 A full pass over every comment, the page text, README and AGENTS against the code. No behavior change; the two changed strings ship with the next release.

@@ -91,7 +91,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.12";
+    public const string Version = "1.0.13";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);

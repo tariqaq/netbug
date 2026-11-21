@@ -217,7 +217,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   <section class="fix" id="fix" hidden aria-live="polite">
     <div class="fix-head"><h2>Router protection:</h2><span class="fix-state" id="fx-state"></span></div>
     <p class="fix-sub" id="fx-sub"></p>
-    <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small>Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. It never changes a pin by itself.</small></span></label>
+    <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small id="fx-auto-note">Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. It never changes a pin by itself.</small></span></label>
     <label class="sw"><input type="checkbox" id="fx-pin" disabled><span><b>Pin it permanently</b><small id="fx-pin-note">Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop.</small></span></label>
     <label class="sw"><input type="checkbox" id="fx-ann"><span><b>Keep the router updated</b><small id="fx-ann-note">Tells the router this laptop’s real address about once a second.</small></span></label>
     <div class="known">
@@ -617,15 +617,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     putText($('fx-state'), st); $('fx-state').className = 'fix-state ' + cls;
     putText($('fx-sub'), sub);
     $('fx-auto').checked = f.auto;
+    // minimal mode pauses the auto-detect, the MAC announce and slows the update check (see netbug.cs "minimal mode")
+    const minOn = !!(state && state.sample && state.sample.minimal);
+    putText($('fx-auto-note'), (minOn ? 'Paused while minimal mode is on. ' : '') +
+      'Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. It never changes a pin by itself.');
     const pin = $('fx-pin');
     pin.checked = !!f.pinned;
     pin.disabled = f.busy || !f.gw || (!f.pinned && !f.verified);
     putText($('fx-pin-note'), (!f.pinned && !f.verified ? 'Run a check first. ' : '') + 'Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop. Turn it off before plugging this adapter into another network that uses the same router address (' + (f.gw || '–') + ').');
     const a = f.announce;
     $('fx-ann').checked = a.on;
-    putText($('fx-ann-note'), 'Tells the router this laptop’s real address about once a second (an ARP request asking for ' + (a.target || 'a neighbor of the router') +
+    putText($('fx-ann-note'), (minOn ? 'Paused while minimal mode is on: nothing is sent. ' : '') +
+      'Tells the router this laptop’s real address about once a second (an ARP request asking for ' + (a.target || 'a neighbor of the router') +
       '), so if someone tells the router they are this laptop, it lasts about a second. The pin can’t block that kind of attack.' +
-      (a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
+      (minOn ? '' : a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
       (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen +
         ' ARP requests from this laptop seen on the wire' + (a.seenFrom ? ' in the ' + dur(a.seenAt - a.seenFrom) + ' before it' : '') + '.' : ''));
     $('fx-check').disabled = f.busy || !f.gw;
@@ -639,7 +644,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     renderTools();
   }
 
-  // "Logs and updates": version, the 15-minute GitHub release check, install (with a progress bar and the
+  // "Logs and updates": version, the GitHub release check (15 min, 6 h in minimal mode), install (with a progress bar and the
   // current step while it runs), and the full log export
   let exportUntil = 0;
   function renderTools() {
@@ -666,7 +671,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     else { st = u.checkedAt ? 'Couldn’t check' : 'Not checked yet'; cls = u.checkedAt ? 'bad' : ''; }
     putText($('up-state'), st); $('up-state').className = 'fix-state ' + cls;
     const when = u.checkedAt ? ' Last checked ' + ago(u.checkedAt * 1000) + '.' : '';
-    putText($('up-sub'), 'This is netbug ' + f.version + '. It checks GitHub for a new release every 15 minutes' +
+    const minOn = !!(state && state.sample && state.sample.minimal);
+    putText($('up-sub'), 'This is netbug ' + f.version + '. It checks GitHub for a new release ' + (minOn ? 'every 6 hours (minimal mode)' : 'every 15 minutes') +
       (f.portable ? ' and installs it by itself (netbug restarts for a few seconds; the page reloads).' : '. This copy runs from its repo (a developer build), so it only reports a new release: update it with git pull and a rebuild.') + when +
       (u.busy ? ' Don’t close netbug.' : ''));
     const inst = $('up-install');

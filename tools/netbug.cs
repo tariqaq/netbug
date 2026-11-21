@@ -91,7 +91,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.15";
+    public const string Version = "1.0.16";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -780,7 +780,7 @@ class NetBug
                         if (cfBad) { cfBad = false; Event(string.Format("Cloudflare route check paused by minimal mode (degraded since {0:HH:mm:ss})", cfBadStart)); }
                         cfWinCount = 0;
                         arpWatch = "off (minimal mode)";
-                        Task.Run(() => { lock (pktmonLock) if (minimal && ringProc != null) Run("pktmon.exe", "stop"); });   // RingLoop waits while minimal
+                        StopRingForMinimal();
                     }
                     else
                     {
@@ -790,6 +790,9 @@ class NetBug
                         nextDns = mono; nextPubIp = mono + 5; nextArpWatch = mono + 300;
                     }
                 }
+                // a capture can still be running: started just before minimal mode went on (at start-up), or a
+                // stop sent while pktmon was still starting did nothing. Retried every 10 s.
+                else if (minimal && tenS && ringProc != null) StopRingForMinimal();
 
                 // the background probes start with the pings; a failed DNS query or TCP connect is re-checked
                 // as soon as the last one has finished (in minimal mode a failed DNS query every 10 s)
@@ -1589,6 +1592,27 @@ class NetBug
         if (!ringIdle.WaitOne(30000)) { var p = ringProc; try { if (p != null) p.Kill(); } catch { } ringIdle.WaitOne(5000); }
     }
     static void RingResume() { ringPaused = false; }
+
+    // Minimal mode: stops the ring capture in the background (RingLoop starts none while minimal). A pktmon
+    // that is still running 10 s after "pktmon stop" is killed. One at a time.
+    static int ringStopping;
+    static void StopRingForMinimal()
+    {
+        if (Interlocked.Exchange(ref ringStopping, 1) == 1) return;
+        Task.Run(() =>
+        {
+            try
+            {
+                lock (pktmonLock)
+                {
+                    if (!minimal || ringProc == null) return;
+                    Run("pktmon.exe", "stop");
+                    if (!ringIdle.WaitOne(10000)) { var p = ringProc; try { if (p != null) p.Kill(); } catch { } }
+                }
+            }
+            finally { ringStopping = 0; }
+        });
+    }
 
     // The ring frames newer than ringCheckedTo (and marks them judged).
     static List<ArpFrame> RingTake()

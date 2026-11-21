@@ -5,6 +5,10 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 02:05: v1.0.16: minimal mode really stops pktmon at start-up
+- `tools/netbug.cs` (`Version` 1.0.16): at start-up the ARP capture thread could start `pktmon` just before the first round turned minimal mode on, and the one `pktmon stop` sent then (while pktmon was still starting) did nothing: the capture kept its ~515 MB. `StopRingForMinimal` now stops it in the background, kills a pktmon still running 10 s after the stop, and is retried every 10 s while minimal mode is on and a capture runs.
+- **Machine:** v1.0.15 installed itself at 02:00:25 (automatic, its first check 2 min after start); `auto=0` stayed off. A pktmon (PID 2736, 515 MB private, started 02:00:29) was running in minimal mode: the bug above.
+
 ### 01:59: `47c3148` v1.0.15: auto-detect no longer switches itself on
 - `tools/netbug.cs` (`Version` 1.0.15):
   - Bug from v1.0.12: `LoadSettings` matched `auto=1` anywhere in `netbug.settings`, so the new `minimal_auto=1` line turned **Auto-detect the real router** on at every start although the file said `auto=0`. Settings are now read as whole `key=value` lines. (Minimal mode kept it from running on the tether meanwhile.)

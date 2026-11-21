@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 01:43: v1.0.12: minimal mode for mobile data
+### 01:43: `691015c` v1.0.12: minimal mode for mobile data
 - `tools/netbug.cs` (`Version` 1.0.12), new "minimal mode" section:
   - On by the page's switch, or by itself (switch on by default) when the active interface is a phone's USB tether (RNDIS / NCM / Apple description) or a mobile broadband adapter. Both switches saved in `netbug.settings` (`minimal=`, `minimal_auto=`).
   - On the internet only: 1.1.1.1 every 2 s (every second while it fails, plus 8.8.8.8 to confirm a failure), DNS every 60 s (10 s while failing), public IP every 30 min, update check every 6 h. The gateway ping stays every second.
@@ -17,7 +17,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 - `tools/snapshot.ps1`: `-Minimal` skips the capture, pings, DNS, TCP tests and tracert.
 - `tools/dashboard.html`: Minimal mode panel for everyone (state with the reason, both switches); readouts show "off" for what isn't measured.
 - `README.md`: Minimal mode section, dashboard table, updates, CSV, footprint, control API.
-- Checked: builds clean; `snapshot.ps1` parses; the phone tether here (`SAMSUNG Mobile USB Remote NDIS Network Device`) matches the tether check. Not yet run live.
+- Checked: builds clean; `snapshot.ps1` parses; the phone tether here (`SAMSUNG Mobile USB Remote NDIS Network Device`) matches the tether check. Not yet run live. Released as v1.0.12; the asset's listed SHA-256 (`0a3f981f…`) matches the build.
 
 ## 2026-11-20
 

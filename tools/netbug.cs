@@ -37,6 +37,10 @@
 // MAC announce: about once a second this laptop sends an ARP request (sender = its own IP and MAC),
 // so a router told a fake MAC for this laptop learns the real one again within a second. See the
 // "MAC announce" section.
+// Minimal mode (a page switch, on by itself on a phone's USB tether or a mobile broadband adapter): on the
+// internet only a 1.1.1.1 ping every 2 s, DNS every 60 s, the public IP every 30 min and the update check
+// every 6 h; TCP, TLS, UDP, the 8.8.8.8 ping, the Cloudflare route check, MAC announce, ARP capture and
+// the automatic router check stop. See the "minimal mode" section.
 // logs/ is kept under 30 days and 500 MB (netbug.settings is left out).
 // An hourly health line is written, and past 200 MB private memory / 5000 handles / 100 threads netbug
 // restarts itself through its logon task (see Restart).
@@ -87,7 +91,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.11";
+    public const string Version = "1.0.12";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -242,7 +246,7 @@ class NetBug
     static DateTime dashMemAt = DateTime.MinValue;
 
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
-    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset,iface_type,ssid,vpn,via,net_profile";
+    const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset,iface_type,ssid,vpn,via,net_profile,minimal";
 
     static void Main(string[] args)
     {
@@ -591,8 +595,9 @@ class NetBug
                 res.CopyTo(file);
     }
 
-    // The page's "auto-detect" (off by default) and "keep the router updated" (on by default) switches,
-    // kept across restarts in logs/netbug.settings.
+    // The page's "auto-detect" (off by default), "keep the router updated" (on by default), "minimal mode"
+    // (off by default) and "minimal mode on a phone tether" (on by default) switches, kept across restarts
+    // in logs/netbug.settings.
     static void LoadSettings()
     {
         try
@@ -600,13 +605,69 @@ class NetBug
             string f = Path.Combine(logDir, "netbug.settings"), s = File.Exists(f) ? File.ReadAllText(f) : "";
             autoDetect = s.Contains("auto=1");
             announce = !s.Contains("announce=0");
+            minimalOn = s.Contains("minimal=1");
+            minimalAuto = !s.Contains("minimal_auto=0");
         }
         catch { }
     }
 
     static void SaveSettings()
     {
-        try { File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\nannounce=" + (announce ? "1" : "0") + "\r\n"); } catch { }
+        try
+        {
+            File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\nannounce=" + (announce ? "1" : "0") +
+                "\r\nminimal=" + (minimalOn ? "1" : "0") + "\r\nminimal_auto=" + (minimalAuto ? "1" : "0") + "\r\n");
+        }
+        catch { }
+    }
+
+    // ---------------------------------------------------------------- minimal mode
+    //
+    // For mobile data (a phone tether, a 4G/5G modem), where every extra flow costs more than on a wired
+    // LAN. While it's on, netbug sends on the internet only: a ping to 1.1.1.1 every 2 s (every second while
+    // it fails, and a ping to 8.8.8.8 to tell an outage from a Cloudflare-only miss), a DNS query every 60 s
+    // (every 10 s while failing), the public IP every 30 min and the update check every 6 h. The gateway ping
+    // stays every second (it goes to the phone, not over the air). Off: the TCP connect, the persistent TLS
+    // connection, the UDP/STUN probe, the regular 8.8.8.8 ping and with it the Cloudflare route check, the
+    // MAC announce, the ARP capture (pktmon is stopped, freeing its buffer), the automatic router check, and
+    // a snapshot's network probes and capture. Rounds without a ping use the last answer (like the background
+    // probes); the CSV leaves what wasn't measured empty, the page shows "off".
+    // On when the page's "Minimal mode" switch is on, or when "On a phone tether" is on (the default) and the
+    // active interface is a phone's USB tether (RNDIS / NCM / Apple) or a mobile broadband adapter. Anyone who
+    // can open the page may flip both switches (POST /api/minimal with an X-Netbug-Minimal header: other
+    // websites can't send that header to it, see MinimalApi).
+    static volatile bool minimal, minimalOn, minimalAuto = true;
+    static volatile string minimalWhy = "";   // why it's on: "phone tether '<adapter>'", "switched on on the page", or ""
+
+    static readonly string[] TetherWords = { "remote ndis", "rndis", "usbncm", "usb ncm", "apple mobile device ethernet", "ios usb ethernet" };
+    static bool IsTether(NetworkInterface n)
+    {
+        if (n == null) return false;
+        if (n.NetworkInterfaceType == NetworkInterfaceType.Wwanpp || n.NetworkInterfaceType == NetworkInterfaceType.Wwanpp2) return true;
+        string d = (n.Description ?? "").ToLowerInvariant();
+        return TetherWords.Any(w => d.Contains(w));
+    }
+
+    // POST /api/minimal?on=0|1 and/or ?auto=0|1, from any device that can open the page. The request must
+    // carry the X-Netbug-Minimal header: a custom header makes a browser ask first (CORS preflight), which
+    // netbug never allows, so another website open in a browser can't flip it.
+    static string MinimalApi(HttpListenerContext ctx)
+    {
+        if (ctx.Request.HttpMethod != "POST") { ctx.Response.StatusCode = 405; return "{}"; }
+        if (ctx.Request.Headers["X-Netbug-Minimal"] != "1") { ctx.Response.StatusCode = 403; return "{}"; }
+        string on = ctx.Request.QueryString["on"], auto = ctx.Request.QueryString["auto"], from = ctx.Request.RemoteEndPoint == null ? "?" : ctx.Request.RemoteEndPoint.Address.ToString();
+        if (on == "0" || on == "1")
+        {
+            minimalOn = on == "1";
+            Event(string.Format("minimal mode switch {0} (from {1})", minimalOn ? "on" : "off", from));
+        }
+        if (auto == "0" || auto == "1")
+        {
+            minimalAuto = auto == "1";
+            Event(string.Format("minimal mode on a phone tether: {0} (from {1})", minimalAuto ? "on" : "off", from));
+        }
+        SaveSettings();
+        return string.Format("{{\"on\":{0},\"auto\":{1}}}", minimalOn ? "true" : "false", minimalAuto ? "true" : "false");
     }
 
     static volatile bool ifDirty = true;
@@ -625,6 +686,10 @@ class NetBug
     static Task<string> profTask;
     static string netProfile = "", profIface = "", lastProfile = null;
     static double profAt = double.MinValue;
+
+    // minimal mode's 1.1.1.1 schedule: rounds since it went on, and the last answer (used by rounds without a ping)
+    static int minTick;
+    static long lastMinCf;
 
     // no background probe of that kind in flight or waiting to be read (a finished one is read, then set to null)
     static bool Idle(Task t) { return t == null; }
@@ -690,26 +755,58 @@ class NetBug
                     profTask = idx < 0 ? Task.FromResult("") : Task.Run(() => NetProfile(idx));
                 }
 
+                // minimal mode (see "minimal mode"): by the switch, or on a phone tether
+                bool teth = IsTether(ni);
+                bool minNow = minimalOn || (minimalAuto && teth);
+                minimalWhy = !minNow ? "" : minimalOn ? "switched on on the page" : "phone tether '" + ifaceName + "'";
+                if (minNow != minimal)
+                {
+                    minimal = minNow;
+                    if (minNow)
+                    {
+                        Event("minimal mode on (" + minimalWhy + "): on the internet only a 1.1.1.1 ping every 2 s, DNS every 60 s, the public IP every 30 min and the update check every 6 h; " +
+                            "TCP, TLS, UDP/STUN, the 8.8.8.8 ping, the Cloudflare route check, the MAC announce, the ARP capture and the automatic router check are off");
+                        minTick = 0; lastMinCf = 0;
+                        if (cfBad) { cfBad = false; Event(string.Format("Cloudflare route check paused by minimal mode (degraded since {0:HH:mm:ss})", cfBadStart)); }
+                        cfWinCount = 0;
+                        arpWatch = "off (minimal mode)";
+                        Task.Run(() => { lock (pktmonLock) if (minimal && ringProc != null) Run("pktmon.exe", "stop"); });   // RingLoop waits while minimal
+                    }
+                    else
+                    {
+                        Event("minimal mode off: all checks back on");
+                        tcpMs = 0; udpMs = 0; arpWatch = "";
+                        lastMapBy.Clear(); lastUdpMap = "";   // the UDP probe opens a new socket: a new port isn't a NAT change
+                        nextDns = mono; nextPubIp = mono + 5; nextArpWatch = mono + 300;
+                    }
+                }
+
                 // the background probes start with the pings; a failed DNS query or TCP connect is re-checked
-                // as soon as the last one has finished
-                if ((Due(ref nextDns, 2, mono) || dnsMs < 0) && Idle(dnsTask))
+                // as soon as the last one has finished (in minimal mode a failed DNS query every 10 s)
+                if ((Due(ref nextDns, minimal ? 60 : 2, mono) || (dnsMs < 0 && (!minimal || tenS))) && Idle(dnsTask))
                 {
                     var server = gw;
                     dnsTask = server == null ? Task.FromResult(-1) : Task.Run(() => DnsProbe(server));
                 }
-                if ((tenS || tcpMs < 0) && Idle(tcpTask)) tcpTask = Task.Run(() => TcpProbe());
+                if (!minimal && (tenS || tcpMs < 0) && Idle(tcpTask)) tcpTask = Task.Run(() => TcpProbe());
                 if ((tenS || gwMac == "") && Idle(arpTask) && gw != null && ip != null && ni != null)   // "" = not read yet for this interface
                 {
                     IPAddress agw = gw, aip = ip; NetworkInterface ani = ni;
                     arpTask = Task.Run(() => new[] { Arp(agw, aip), ArpEntryType(agw, ani), agw.ToString() });
                 }
 
+                // minimal mode: 1.1.1.1 every other round (every round while it fails), 8.8.8.8 only after
+                // 1.1.1.1 failed; a round without a 1.1.1.1 ping uses the last answer, -2 = 8.8.8.8 not pinged
+                bool doCf = !minimal || lastMinCf < 0 || minTick++ % 2 == 0;
                 var pGw = gw != null ? PingAsync(pingGw, gw) : Task.FromResult(-1L);
-                var pCf = PingAsync(pingCf, CfIp);
-                var pG = PingAsync(pingG, GIp);
+                var pCf = doCf ? PingAsync(pingCf, CfIp) : Task.FromResult(lastMinCf);
+                var pG = !minimal ? PingAsync(pingG, GIp) : Task.FromResult(-2L);
                 if (tenS) UdpUsage(out udpTotal, out udpTop);
                 Task.WaitAll(pGw, pCf, pG);
                 long gwMs = pGw.Result, cfMs = pCf.Result, gMs = pG.Result;
+                if (minimal && doCf && cfMs < 0) gMs = PingAsync(pingG, GIp).Result;
+                bool cfMeasured = doCf, gMeasured = gMs != -2;
+                if (minimal) lastMinCf = cfMs;
 
                 // a background probe that answers within 900 ms of the round's start is used in this round,
                 // a slower one in a later round: the round itself never takes longer for it
@@ -728,13 +825,13 @@ class NetBug
                 }
                 if (gw == null) { gwMac = ""; gwArp = ""; }
 
-                if (Due(ref nextArpWatch, 300, mono) && gw != null && ip != null) ArpWatchStart(gw, ip, TrustedFor(gw));
-                if (autoDetect && gw != null && mono - t0 >= 20 && !fixBusy)
+                if (!minimal && Due(ref nextArpWatch, 300, mono) && gw != null && ip != null) ArpWatchStart(gw, ip, TrustedFor(gw));
+                if (autoDetect && !minimal && gw != null && mono - t0 >= 20 && !fixBusy)
                 {
                     double since = mono - lastDetect;
                     if (gw.ToString() != lastDetectGw || since >= 1800 || (autoKick && since >= 300)) StartDetect("auto");
                 }
-                if (Due(ref nextPubIp, 300, mono)) RefreshPublicIp();
+                if (Due(ref nextPubIp, minimal ? 1800 : 300, mono)) RefreshPublicIp();
                 if (Due(ref nextSizeCap, 600, mono)) EnforceSizeCap();
                 if (Due(ref nextHealth, 600, mono)) Health(healthRuns++ % 6 == 0);   // checked every 10 min, logged hourly
 
@@ -754,7 +851,7 @@ class NetBug
                 if (gw != null && gwMs < 0) fails.Add("gw");
                 if (cfMs < 0 && gMs < 0) fails.Add("internet");
                 if (dnsMs < 0) fails.Add("dns");
-                if (udpMs < 0) fails.Add("udp");
+                if (!minimal && udpMs < 0) fails.Add("udp");
                 string map = udpMap;
                 if (map != "" && map != lastUdpMap)
                 {
@@ -767,9 +864,9 @@ class NetBug
                     lastMapBy[tag] = MapAddr(map);
                     lastUdpMap = map;
                 }
-                if (tcpMs < 0) fails.Add("tcp");
+                if (!minimal && tcpMs < 0) fails.Add("tcp");
                 if (udpTotal >= UdpWarnThreshold) fails.Add("udp_high");
-                if (CfRoute(cfMs, gMs, mono)) fails.Add("cf_route");
+                if (!minimal && CfRoute(cfMs, gMs, mono)) fails.Add("cf_route");
                 string failStr = string.Join("|", fails);
 
                 // ---- transitions ----
@@ -832,7 +929,7 @@ class NetBug
 
                 // LAN lag: the gateway is normally 0-1 ms away, so a slow or lost gateway ping
                 // together with a slow/lost internet ping means the local segment is choking
-                bool lagNow = ni != null && (gwMs >= LagGwMs || (gwMs < 0 && (cfMs < 0 || gMs < 0)));
+                bool lagNow = ni != null && (gwMs >= LagGwMs || (gwMs < 0 && (cfMs == -1 || gMs == -1)));   // -2 = not pinged
                 if (lagNow)
                 {
                     if (!inLag) { inLag = true; lagStart = DateTime.Now; lagMaxGw = 0; lagLoss = 0; lagSamples = 0; lagSnapped = false; }
@@ -888,16 +985,17 @@ class NetBug
 
                 // ---- csv row ----
                 // stamped with the round's start, when the pings went out; the public IP only while it's
-                // fresh (refreshed in the last 15 min)
-                string pubShown = mono - pubIpAt <= 900 ? pubIp : "";
+                // fresh (refreshed in the last 15 min, 45 min in minimal mode). In minimal mode what this round
+                // didn't measure is left empty.
+                string pubShown = mono - pubIpAt <= (minimal ? 2700 : 900) ? pubIp : "";
                 bool fast = mono < fastUntil;
                 if (fast || mono - lastRow >= 5)
                 {
                     Row(string.Join(",", new string[] {
                         loopStart.ToString("HH:mm:ss"), Csv(ifaceName), ethLink, ip == null ? "" : ip.ToString(), gw == null ? "" : gw.ToString(), gwMac, gwArp,
-                        gwMs.ToString(), cfMs.ToString(), gMs.ToString(), dnsMs.ToString(), tcpMs.ToString(),
-                        udpMs.ToString(), map, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubShown, failStr,
-                        loopStart.ToString("yyyy-MM-dd"), loopStart.ToString("zzz"), ifType, Csv(ssid), Csv(vpn), Csv(via), Csv(prof) }));
+                        gwMs.ToString(), cfMeasured ? cfMs.ToString() : "", gMeasured ? gMs.ToString() : "", dnsMs.ToString(), minimal ? "" : tcpMs.ToString(),
+                        minimal ? "" : udpMs.ToString(), map, txDelta.ToString(), rxDelta.ToString(), udpTotal.ToString(), Csv(udpTop), pubShown, failStr,
+                        loopStart.ToString("yyyy-MM-dd"), loopStart.ToString("zzz"), ifType, Csv(ssid), Csv(vpn), Csv(via), Csv(prof), minimal ? "1" : "0" }));
                     lastRow = mono;
                 }
 
@@ -905,16 +1003,18 @@ class NetBug
                 long now = Unix(loopStart);
                 lock (hist)
                 {
-                    hist[histPos] = string.Format("[{0},{1},{2},{3},{4},{5},{6},{7}]", now, gwMs, cfMs, gMs, udpMs, dnsMs, tcpMs, J(failStr));
+                    // -2 = not measured (minimal mode): the page shows "off"
+                    hist[histPos] = string.Format("[{0},{1},{2},{3},{4},{5},{6},{7}]", now, gwMs, cfMs, gMs, minimal ? -2 : udpMs, dnsMs, minimal ? -2 : tcpMs, J(failStr));
                     histPos = (histPos + 1) % hist.Length;
                     if (histCount < hist.Length) histCount++;
                 }
                 if (gwAlert != "" && (DateTime.Now - gwAlertAt).TotalMinutes >= 30) gwAlert = "";   // alert shows for 30 min
-                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14},\"gwArp\":{15},\"gwAlert\":{16},\"arpWatch\":{17},\"ifType\":{18},\"ssid\":{19},\"vpn\":{20},\"via\":{21},\"viaVpn\":{22},\"cfRoute\":{23},\"netProfile\":{24}}}",
+                sampleJson = string.Format("{{\"t\":{0},\"iface\":{1},\"link\":{2},\"ip\":{3},\"gw\":{4},\"gwMac\":{5},\"tx\":{6},\"rx\":{7},\"udpMap\":{8},\"udpTotal\":{9},\"udpTop\":{10},\"pubIp\":{11},\"fail\":{12},\"outage\":{13},\"lag\":{14},\"gwArp\":{15},\"gwAlert\":{16},\"arpWatch\":{17},\"ifType\":{18},\"ssid\":{19},\"vpn\":{20},\"via\":{21},\"viaVpn\":{22},\"cfRoute\":{23},\"netProfile\":{24},\"minimal\":{25},\"minimalWhy\":{26},\"minimalOn\":{27},\"minimalAuto\":{28}}}",
                     now, J(ifaceName), J(ethLink), J(ip == null ? "" : ip.ToString()), J(gw == null ? "" : gw.ToString()), J(gwMac),
                     txDelta, rxDelta, J(map), udpTotal, J(udpTop), J(pubShown), J(failStr),
                     inOutage ? Unix(outageStart) : 0, inLag ? Unix(lagStart) : 0, J(gwArp), J(gwAlert), J(arpWatch),
-                    J(ifType), J(ssid), J(vpn), J(via), viaVpn ? "true" : "false", cfBad ? Unix(cfBadStart) : 0, J(prof));
+                    J(ifType), J(ssid), J(vpn), J(via), viaVpn ? "true" : "false", cfBad ? Unix(cfBadStart) : 0, J(prof),
+                    minimal ? "true" : "false", J(minimalWhy), minimalOn ? "true" : "false", minimalAuto ? "true" : "false");
             }
             catch (Exception ex)
             {
@@ -1232,15 +1332,17 @@ class NetBug
     // Keeps one long-lived TLS connection open and sends a HEAD request on it every 15 s,
     // like Discord/Claude/game sessions do. Logs how and when the connection dies: a clean
     // server close (FIN), a reset (RST, often a middlebox killing the flow) or a silent stall.
+    // Minimal mode closes it (not logged) and opens none until it ends.
     static void PersistentTcpLoop()
     {
         const string host = "www.google.com";
         byte[] req = Encoding.ASCII.GetBytes("HEAD / HTTP/1.1\r\nHost: " + host + "\r\nConnection: keep-alive\r\n\r\n");
         while (true)
         {
+            if (minimal) { Thread.Sleep(1000); continue; }   // no connection in minimal mode
             var opened = DateTime.Now;
             int requests = 0;
-            string reason;
+            string reason = null;   // stays null when minimal mode closed the connection
             try
             {
                 using (var tcp = new TcpClient())
@@ -1268,7 +1370,8 @@ class NetBug
                                 Event(string.Format("persistent TCP: slow reply {0} ms on a {1:N0} s old connection", sw.ElapsedMilliseconds, (DateTime.Now - opened).TotalSeconds));
                             if (head.ToString().IndexOf("Connection: close", StringComparison.OrdinalIgnoreCase) >= 0)
                                 throw new EndOfStreamException("server asked to close");
-                            Thread.Sleep(15000);
+                            for (int i = 0; i < 15 && !minimal; i++) Thread.Sleep(1000);
+                            if (minimal) break;
                         }
                     }
                 }
@@ -1281,6 +1384,7 @@ class NetBug
                 else if (ex is IOException && ex.Message.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0) reason = "TIMEOUT (no reply 5 s)";
                 else reason = ex.GetType().Name + ": " + ex.Message;
             }
+            if (reason == null) continue;   // closed for minimal mode, not a failure
             double life = (DateTime.Now - opened).TotalSeconds;
             // Repeated reconnect failures (e.g. every 5 s while the cable is out) collapse into one
             // line. Google closes old keep-alive connections itself, so a clean server close after
@@ -1369,6 +1473,7 @@ class NetBug
     // snapshot judges and saves the ARP from right up to the moment it started (<snapshot>.ring.txt), and
     // the router check pauses the ring for a moment to get its last seconds (pktmon may hold back a few
     // lines of output while it runs). If something else stops pktmon, RingLoop starts it again after 1 s.
+    // Minimal mode stops pktmon and starts none (no ARP watch, which a phone tether doesn't need) until it ends.
     // A claim of the gateway IP by any MAC other than the trusted gateway MAC, or of this laptop's IP by
     // any MAC other than this laptop's, is ARP SPOOFING DETECTED. The second kind is aimed at the router
     // (it then sends this laptop's traffic to that MAC); the pin can't stop it, the MAC announce makes it
@@ -1398,11 +1503,11 @@ class NetBug
         {
             try
             {
-                while (ringPaused) Thread.Sleep(500);
+                while (ringPaused || minimal) Thread.Sleep(500);   // minimal mode: no capture (see "minimal mode")
                 Process p;
                 lock (pktmonLock)
                 {
-                    if (ringPaused) continue;
+                    if (ringPaused || minimal) continue;
                     Run("pktmon.exe", "stop"); Run("pktmon.exe", "filter remove"); Run("pktmon.exe", "filter add arp -d ARP");
                     p = Process.Start(new ProcessStartInfo("pktmon.exe", "start --capture --comp nics --pkt-size 64 -m real-time")
                         { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true });
@@ -1608,7 +1713,7 @@ class NetBug
     // is a broadcast whose sender is this laptop's IP and MAC, and routers update an existing entry from any ARP they
     // hear from that IP (RFC 826; Linux-based routers after a 1 s lock time), so a fake entry for this
     // laptop lasts about a second. Which neighbor is asked doesn't matter. When nobody has that address,
-    // one call sends a request about every second for ~3 s.
+    // one call sends a request about every second for ~3 s. Nothing is sent in minimal mode.
 
     static volatile bool announce = true;
     static int announceSent;   // ARP resolutions started since netbug started
@@ -1625,7 +1730,7 @@ class NetBug
             {
                 NetworkInterface ni = curNi; IPAddress ip = curIp, gw = curGw;
                 int idx = IfIndex(ni);
-                IPAddress t = announce && ip != null && gw != null && idx >= 0 ? AnnounceTarget(ni, ip, gw) : null;
+                IPAddress t = announce && !minimal && ip != null && gw != null && idx >= 0 ? AnnounceTarget(ni, ip, gw) : null;
                 if (t != null)
                 {
                     for (int i = 0; i < 88; i += 4) Marshal.WriteInt32(row, i, 0);
@@ -1708,8 +1813,8 @@ class NetBug
         return name;
     }
 
-    // The public IP, every 5 min in the background (15 s timeout, no proxy). pubIpAt is when it last
-    // answered: the CSV and the page show it only while that's under 15 min old.
+    // The public IP, every 5 min (30 min in minimal mode) in the background (15 s timeout, no proxy). pubIpAt
+    // is when it last answered: the CSV and the page show it only while that's under 15 min (45 min) old.
     static double pubIpAt = double.MinValue;
     static void RefreshPublicIp()
     {
@@ -1733,7 +1838,8 @@ class NetBug
     // had buffered): its new frames are judged, and the last 15 min about the gateway or this laptop are
     // saved as <snapshot>.ring.txt. snapshot.ps1 then captures while it probes, on netbug's gateway and IP,
     // and the ring is resumed when it is done. A snapshot still running after 5 min is killed and its
-    // capture stopped.
+    // capture stopped. In minimal mode there is no ring and snapshot.ps1 runs with -NoCapture -Minimal
+    // (the laptop's own network state only, no probes).
     static void Snapshot(string reason)
     {
         if (fixBusy) return;   // a router check breaks the link on purpose
@@ -1747,9 +1853,10 @@ class NetBug
         string outFile = Path.Combine(snapDir, DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + "_" + reason + ".txt");
         IPAddress gw = curGw, me = curIp;
         string expect = TrustedFor(gw);
+        bool lite = minimal;   // minimal mode: no capture and no network probes, only the laptop's own state
         Task.Run(() =>
         {
-            bool havePktmon = Monitor.TryEnter(pktmonLock, 20000);
+            bool havePktmon = !lite && Monitor.TryEnter(pktmonLock, 20000);
             try
             {
                 if (havePktmon)
@@ -1765,8 +1872,8 @@ class NetBug
                     }
                 }
                 var psi = new ProcessStartInfo("powershell.exe",
-                    string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Out \"{1}\"{2}{3}", script, outFile,
-                        havePktmon ? "" : " -NoCapture", gw != null && me != null ? " -Gw " + gw + " -Me " + me : ""))
+                    string.Format("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{0}\" -Out \"{1}\"{2}{3}{4}", script, outFile,
+                        havePktmon ? "" : " -NoCapture", gw != null && me != null ? " -Gw " + gw + " -Me " + me : "", lite ? " -Minimal" : ""))
                 { CreateNoWindow = true, UseShellExecute = false };
                 using (var p = Process.Start(psi))
                 {
@@ -1864,7 +1971,8 @@ class NetBug
     // Runs on its own thread so a dead UDP path (up to 2 x 1.5 s timeouts) never slows the 1 s main loop.
     // After StunResetAfter failed probes in a row it opens a new socket (a new local port, so a new NAT
     // mapping) and resolves the servers again, so one dead mapping can't fail the probe until a restart.
-    // It does that once per failure streak: a real UDP outage still shows as failing.
+    // It does that once per failure streak: a real UDP outage still shows as failing. Minimal mode closes
+    // the socket and sends nothing until it ends.
     const int StunResetAfter = 3;
     static void StunLoop()
     {
@@ -1872,6 +1980,13 @@ class NetBug
         bool resetDone = false;
         while (true)
         {
+            if (minimal)   // no UDP probe in minimal mode: the socket is closed, a new one opens afterwards
+            {
+                if (stunSock != null) { stunSock.Close(); stunSock = null; }
+                udpMs = 0; udpMap = ""; failRun = 0; resetDone = false;
+                Thread.Sleep(1000);
+                continue;
+            }
             var sw = Stopwatch.StartNew();
             string m;
             int ms = StunProbe(out m);
@@ -2000,6 +2115,7 @@ class NetBug
     {
         string path = ctx.Request.Url.AbsolutePath, body, type = "application/json";
         if (path.StartsWith("/api/fix", StringComparison.Ordinal)) body = FixApi(ctx, path);
+        else if (path == "/api/minimal") body = MinimalApi(ctx);
         else if (ctx.Request.HttpMethod != "GET") { ctx.Response.StatusCode = 405; body = "{}"; }
         else if (path == "/")
         {
@@ -2058,7 +2174,7 @@ class NetBug
     // under netbug-logs/, the in-memory ARP ring (arp-ring-memory.txt, the last 15 min), the latest sample
     // and Router protection status (state.json) and EXPORT_MANIFEST.txt. Nothing is redacted. Files are
     // read while netbug keeps writing them (shared read). One export at a time.
-    // Updates: 2 min after start and then every 15 min, and on the page's "Check for updates", netbug reads
+    // Updates: 2 min after start and then every 15 min (6 h in minimal mode), and on the page's "Check for updates", netbug reads
     // the latest GitHub release of Repo (about 12 KB; GitHub allows 60 such reads an hour per public IP
     // without an account, shared by everyone behind it). It sends the last reply's ETag, so an unchanged
     // release comes back as an empty 304. A higher tag than Version with a netbug.exe asset is an update.
@@ -2101,7 +2217,10 @@ class NetBug
                     Event("netbug " + updLatest + " is out (this is " + Version + "). This copy runs from its repo: git pull and rebuild to update.");
                 }
             }
-            Thread.Sleep(TimeSpan.FromMinutes(15));
+            // every 15 min, every 6 h in minimal mode (looked at every minute, so leaving minimal mode
+            // brings the 15 min back)
+            double checkedAt = Mono();
+            while (Mono() - checkedAt < (minimal ? 21600 : 900)) Thread.Sleep(60000);
         }
     }
 

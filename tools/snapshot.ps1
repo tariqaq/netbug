@@ -8,13 +8,15 @@
 # -Gw / -Me: the gateway and this laptop's IP on netbug's active interface. Without them (run by hand),
 # the first adapter with a default gateway is used, which can be a VPN's.
 # The capture is kept as <name>.etl only (pktmon etl2txt <name>.etl --out <file> turns it into text).
+# -Minimal (netbug's minimal mode, for mobile data): no capture and no network probes (pings, DNS, TCP,
+# tracert), only the laptop's own state.
 
-param([Parameter(Mandatory)][string]$Out, [switch]$NoCapture, [string]$Gw, [string]$Me)
+param([Parameter(Mandatory)][string]$Out, [switch]$NoCapture, [string]$Gw, [string]$Me, [switch]$Minimal)
 
 $ErrorActionPreference = 'SilentlyContinue'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
-$capture = $isAdmin -and -not $NoCapture
+$capture = $isAdmin -and -not $NoCapture -and -not $Minimal
 if ($Gw -and $Me) { $gw = $Gw; $me = $Me }
 else {
     $cfg = Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1
@@ -61,6 +63,7 @@ if ($capture) {
             $x.ReceivedPacketErrors, $x.ReceivedDiscardedPackets, $x.OutboundPacketErrors, $x.OutboundDiscardedPackets
     }
 
+    if ($Minimal) { "`n--- probes and tracert: skipped (netbug's minimal mode) ---" } else {
     "`n--- probes ---"
     "gateway $gw"
     # ping.exe, not Test-Connection: -TimeoutSeconds doesn't exist in Windows PowerShell 5.1
@@ -78,6 +81,7 @@ if ($capture) {
 
     "`n--- tracert 1.1.1.1 ---"
     tracert -d -w 700 -h 6 1.1.1.1
+    }
 
     "`n--- UDP endpoints per process ---"
     $udp = Get-NetUDPEndpoint

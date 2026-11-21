@@ -13,7 +13,8 @@
      On the laptop itself netbug fills in the token above, which shows the Router protection panel
      (polls /api/fix every 2 s and sends its actions with the token) and the Logs and updates panel
      (update check/install, and the full log export as a form post to /api/export); everyone else
-     sees no controls. The page reloads itself when netbug has restarted (a new start time in
+     sees no controls except the Minimal mode switches, which work from any device that can open the
+     page (POST /api/minimal with an X-Netbug-Minimal header). The page reloads itself when netbug has restarted (a new start time in
      /api/state, or its token refused), so the controls always carry the running netbug's token.
      Other devices reach the page only once Windows Firewall allows inbound TCP 8787 (netbug adds no rule). -->
 <style>
@@ -206,6 +207,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     <p class="sub" id="sub">Waiting for the first reading.</p>
   </section>
 
+  <section class="fix" id="min" aria-live="polite">
+    <div class="fix-head"><h2>Minimal mode:</h2><span class="fix-state" id="mn-state"></span></div>
+    <label class="sw"><input type="checkbox" id="mn-on"><span><b>Minimal mode</b><small>For mobile data. Cuts netbug’s own traffic by about 90%: only a 1.1.1.1 ping every 2 s and a DNS check every minute go over the internet. TCP, TLS, UDP, Google, the Cloudflare route check, the ARP watch, the router check and the MAC announce stop.</small></span></label>
+    <label class="sw"><input type="checkbox" id="mn-auto"><span><b>On by itself on a phone tether</b><small>When the internet comes through a phone’s USB tethering or a mobile broadband adapter. Back to full checks on any other network. A phone’s Wi-Fi hotspot can’t be told apart: use the switch above.</small></span></label>
+    <div class="fix-err" id="mn-err"></div>
+  </section>
+
   <section class="fix" id="fix" hidden aria-live="polite">
     <div class="fix-head"><h2>Router protection:</h2><span class="fix-state" id="fx-state"></span></div>
     <p class="fix-sub" id="fx-sub"></p>
@@ -315,11 +323,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   const softFails = ['lag', 'gw', 'udp_high', 'cf_route'];
   const failText = f => f.split('|').filter(Boolean).map(x => failNames[x] || x).join(', ');
 
-  function setReadout(id, v) {
-    const el = $(id), lost = v === null || v === undefined;
+  // -2 = not measured (minimal mode): "off"
+  function setReadout(id, v, raw) {
+    const el = $(id), off = raw === -2, lost = !off && (v === null || v === undefined);
     const cls = lost ? 'v bad' : 'v';
     if (el.className !== cls) el.className = cls;
-    put(el, lost ? 'lost' : v + '<small>ms</small>');
+    put(el, off ? 'off' : lost ? 'lost' : v + '<small>ms</small>');
   }
 
   // ---------- status ----------
@@ -371,9 +380,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     if (!s) return;
     const last = [...hist.values()].pop();
     if (last) {
-      setReadout('r-gw', ms(last[1])); setReadout('r-cf', cfShown(last)); setReadout('r-g', ms(last[3]));
-      setReadout('r-udp', ms(last[4])); setReadout('r-dns', ms(last[5])); setReadout('r-tcp', ms(last[6]));
+      setReadout('r-gw', ms(last[1])); setReadout('r-cf', cfShown(last)); setReadout('r-g', ms(last[3]), last[3]);
+      setReadout('r-udp', ms(last[4]), last[4]); setReadout('r-dns', ms(last[5])); setReadout('r-tcp', ms(last[6]), last[6]);
     }
+    renderMinimal(s);
     // "cf=1.2.3.4:5678" -> address + which STUN server saw it
     const nat = s.udpMap ? esc(s.udpMap.replace(/^\w+=/, '')) + '<span>seen by ' + (s.udpMap.startsWith('cf=') ? 'Cloudflare' : 'Google') + ' STUN</span>' : '–';
     // "svchost=14 NVIDIA Overlay=8" -> "svchost 14, NVIDIA Overlay 8" (names can contain spaces)
@@ -551,6 +561,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       if (j.lines.length) { addLines(j.lines); renderStatus(); }
     } catch (e) { }
   }
+
+  // ---------- minimal mode (any device that can open the page) ----------
+  // POST /api/minimal with the X-Netbug-Minimal header (other websites can't send it). The switches
+  // follow netbug's state, except for 3 s after a click so a poll in flight doesn't flip them back.
+  let minHold = 0;
+  function renderMinimal(s) {
+    const on = !!s.minimal;
+    putText($('mn-state'), on ? 'On' + (s.minimalWhy ? ' (' + s.minimalWhy + ')' : '') : 'Off');
+    $('mn-state').className = 'fix-state' + (on ? ' ok' : '');
+    if (Date.now() > minHold) { $('mn-on').checked = !!s.minimalOn; $('mn-auto').checked = !!s.minimalAuto; }
+  }
+  async function minCall(q) {
+    minHold = Date.now() + 3000;
+    putText($('mn-err'), '');
+    try {
+      const r = await fetch('/api/minimal?' + q, { method: 'POST', cache: 'no-store', headers: { 'X-Netbug-Minimal': '1' } });
+      if (!r.ok) putText($('mn-err'), 'netbug refused the change (HTTP ' + r.status + ').');
+    } catch (e) { putText($('mn-err'), 'netbug isn’t answering.'); }
+  }
+  $('mn-on').onchange = e => minCall('on=' + (e.target.checked ? 1 : 0));
+  $('mn-auto').onchange = e => minCall('auto=' + (e.target.checked ? 1 : 0));
 
   // ---------- router protection (only on the laptop itself) ----------
   const token = document.querySelector('meta[name="netbug-token"]').content;

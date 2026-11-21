@@ -3,6 +3,22 @@
 All times are the user's system time: Kuala Lumpur, MYT (UTC+08:00). Newest first.
 Entries cover repo changes (with commit hash) and changes made to the machine itself.
 
+## 2026-11-22
+
+### 01:43: v1.0.12: minimal mode for mobile data
+- `tools/netbug.cs` (`Version` 1.0.12), new "minimal mode" section:
+  - On by the page's switch, or by itself (switch on by default) when the active interface is a phone's USB tether (RNDIS / NCM / Apple description) or a mobile broadband adapter. Both switches saved in `netbug.settings` (`minimal=`, `minimal_auto=`).
+  - On the internet only: 1.1.1.1 every 2 s (every second while it fails, plus 8.8.8.8 to confirm a failure), DNS every 60 s (10 s while failing), public IP every 30 min, update check every 6 h. The gateway ping stays every second.
+  - Off: TCP connect, persistent TLS connection (closed), UDP/STUN (socket closed; on leaving, the new socket's port isn't logged as a NAT change), the regular 8.8.8.8 ping and the Cloudflare route check (a running degradation is ended with a "paused" line), MAC announce, the ARP capture (`pktmon` stopped, its ~515 MB freed), the automatic router check, snapshot capture and probes.
+  - `events.log`: `minimal mode on (<why>)` / `minimal mode off`, and every switch change with the requesting device's IP.
+  - `POST /api/minimal?on=&auto=` from any device that can open the page; needs the `X-Netbug-Minimal` header, so other websites can't flip it (CORS preflight never allowed).
+  - CSV: new last column `minimal` (header changed: the running day's CSV is moved to `-old-<time>.csv`); unmeasured `cf_ms`/`g_ms`/`tcp_ms`/`udp_ms` are empty. `/api/state` gains `minimal`, `minimalWhy`, `minimalOn`, `minimalAuto`; unmeasured chart values are -2.
+  - The lag check counts only real ping losses (-1), not unmeasured values.
+- `tools/snapshot.ps1`: `-Minimal` skips the capture, pings, DNS, TCP tests and tracert.
+- `tools/dashboard.html`: Minimal mode panel for everyone (state with the reason, both switches); readouts show "off" for what isn't measured.
+- `README.md`: Minimal mode section, dashboard table, updates, CSV, footprint, control API.
+- Checked: builds clean; `snapshot.ps1` parses; the phone tether here (`SAMSUNG Mobile USB Remote NDIS Network Device`) matches the tether check. Not yet run live.
+
 ## 2026-11-20
 
 ### 07:34: `ffdd42a` video sources off GitHub

@@ -20,6 +20,7 @@ netbug installs itself to `C:\ProgramData\netbug`, starts at every logon, and re
 | Chart | Last 5 minutes of gateway, Cloudflare and UDP times. Red bands are outages, orange bands are lag or a slow Cloudflare route. |
 | Readings | Interface and Wi-Fi network, VPN, IPs, router MAC and whether it's pinned, packets, UDP ports |
 | Event log | Everything netbug noticed. Red = outages, attacks and netbug errors; orange = lag. |
+| Minimal mode | Cut netbug's own traffic for mobile data (any device that can open the page) |
 | Router protection | Pin the real router (laptop only) |
 | Logs and updates | Version, updates, export of all logs (laptop only) |
 
@@ -32,6 +33,15 @@ What the states mean:
 - **"Windows network name, SSID hidden"** next to Wi-Fi: Windows 11 24H2+ hides the Wi-Fi name from apps without location access, so netbug shows the name Windows gave the network instead. Usually the same, but it can be renamed or end in " 2".
 
 Other devices on the network can open the page at `http://<laptop-ip>:8787/` (read-only) only after you allow inbound TCP 8787 in Windows Firewall. They'd see your public IP, router MAC and process names.
+
+## Minimal mode
+
+For mobile data (a phone's USB tethering, a 4G/5G modem), where extra connections hurt more than on a wired LAN. It cuts netbug's internet traffic by about 90%:
+
+- Kept: a ping to 1.1.1.1 every 2 s (Google only to confirm a failure), the phone/router ping every second (it never leaves the cable), DNS every minute, the public IP every 30 min, the update check every 6 h. Outages are still logged.
+- Stopped: the TCP, TLS and UDP checks, the regular Google ping and the Cloudflare route check, the ARP watch, the router check, the MAC announce, and the network tests in outage snapshots. Their readings show "off".
+
+It turns on by itself when the internet comes through a phone's USB tether or a mobile broadband adapter (switch **On by itself on a phone tether**, on by default) and off again on any other network. A phone's Wi-Fi hotspot looks like any Wi-Fi: use the **Minimal mode** switch. Both switches work from any device that can open the page, and each change is logged with the device's IP.
 
 ## Router protection
 
@@ -49,7 +59,7 @@ If the router is replaced, the pin goes stale and the internet stops working. Th
 
 ## Updates
 
-netbug checks GitHub every 15 minutes and installs new releases by itself. **Install update now** under **Logs and updates** does it at once and shows a progress bar and the current step. netbug restarts for a few seconds and the page reloads.
+netbug checks GitHub every 15 minutes (every 6 hours in minimal mode) and installs new releases by itself. **Install update now** under **Logs and updates** does it at once and shows a progress bar and the current step. netbug restarts for a few seconds and the page reloads.
 
 The download must match the SHA-256 GitHub lists and be a real netbug build, or it's thrown away. The previous version is kept as `netbug.old.exe`. If an update fails, the page says why and netbug keeps running. Automatic retries wait an hour.
 
@@ -60,7 +70,7 @@ Logs are in `C:\ProgramData\netbug\logs`, kept 30 days and capped at 500 MB.
 | File | Contents |
 |---|---|
 | `events.log` | The timeline: outages, lag, Cloudflare route, router MAC changes, ARP spoofing, interface, Wi-Fi, network profile and VPN changes, public IP and NAT changes, hourly health |
-| `netbug-<date>.csv` | One row every 5 s (every 1 s around problems) with every reading. `ssid` is the Wi-Fi name from Windows' Wi-Fi API (empty without location access); `net_profile` is Windows' name for the network, on any adapter |
+| `netbug-<date>.csv` | One row every 5 s (every 1 s around problems) with every reading. `ssid` is the Wi-Fi name from Windows' Wi-Fi API (empty without location access); `net_profile` is Windows' name for the network, on any adapter; `minimal` is 1 in minimal mode, where readings that weren't measured are empty |
 | `snapshots\` | Per incident: full network state, a packet capture (`.etl`) and the ARP traffic from the 15 minutes before |
 
 **Export all logs** downloads one zip of everything. It isn't redacted (MACs, IPs, network names), so only send it to someone you trust.
@@ -71,7 +81,7 @@ Click **Uninstall netbug** on the page (twice), or run `netbug.exe --uninstall`.
 
 ## Footprint
 
-About 1% of one CPU core at low priority, ~30–45 MB of RAM, plus ~515 MB for the `pktmon` packet capture (a fixed buffer, mostly paged out). Network use is under 1 KB/s. Disk: a few MB a day.
+About 1% of one CPU core at low priority, ~30–45 MB of RAM, plus ~515 MB for the `pktmon` packet capture (a fixed buffer, mostly paged out). Network use is under 1 KB/s (about 0.1 KB/s in minimal mode, which also stops `pktmon`). Disk: a few MB a day.
 
 ---
 
@@ -105,7 +115,7 @@ Start-ScheduledTask netbug
   - an ARP-only `pktmon` capture that flags any other device claiming the router's or the laptop's IP (`ARP SPOOFING DETECTED`)
 - **Interface:** the network adapter carrying the traffic. VPN adapters are never picked, but logged when they carry the traffic.
 - **Restarts:** updates and health restarts (past 200 MB, 5000 handles or 100 threads) go through the logon task.
-- **Control API:** `/api/fix…` accepts requests only from the laptop itself, with the page's per-run token.
+- **Control API:** `/api/fix…` accepts requests only from the laptop itself, with the page's per-run token. `/api/minimal` (the minimal mode switches) accepts any device, but only with an `X-Netbug-Minimal` header, which other websites can't send.
 
 Every timestamp carries the date and UTC offset (`2026-11-04 08:01:02 +08:00`). A snapshot capture opens as text with `pktmon etl2txt <file>.etl --out <file>.txt` (admin).
 

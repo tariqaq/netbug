@@ -26,7 +26,7 @@
 
 ## LOG ANALYSIS (every time the user asks to analyze logs)
 
-Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). The repo's `logs\` stops at 11-04 07:55.
+Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). The repo's `logs\` stops at 11-04 07:55. Older `events.log` lines may be in `events-<time>.log` (rotated at 20 MB, since v1.0.18).
 
 1. **Check the gateway ARP pin.** It was re-applied on 2026-10-28 15:37 after the 15:28 attack confirmed the cause (incident report §11). Expect `gw_arp=static` on hostel Ethernet.
    - If it's `dynamic` or missing (for example the dongle was renamed), **tell the user first** and give the re-pin command (incident report §8).
@@ -35,6 +35,7 @@ Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). Th
 3. For each outage, say whether it matches the 05:34 ARP-spoofing signature: gateway MAC changes to another MAC, all pings/DNS/TCP/UDP die, tx up and rx about 0, the snapshot capture shows another MAC claiming the gateway (or, for the router side, another MAC claiming the laptop's IP: snapshot capture and `<snapshot>.ring.txt`). Snapshot captures are `<snapshot>.etl` (since v1.0.8, no `.pkt.txt`): convert with `pktmon etl2txt <file>.etl --out <file>.txt` (needs admin) or read the snapshot `.txt`'s claim summary.
    - If it matches while pinned, the pin isn't enough: the router side is probably poisoned too. Report it and propose next steps; apply nothing without the user's OK.
    - If it doesn't match, look for the actual layer that broke.
+   - Rows whose `fail` includes `router_check` are a router check cutting the connection on purpose (`router check (...)` in `events.log`): not an outage, never the attacker.
    - Snapshots taken in minimal mode have no capture, no `.ring.txt` and no probes or tracert (the `.txt` says "skipped (netbug's minimal mode)"): only the laptop's own state.
 4. Search `events.log` for `CLOUDFLARE ROUTE DEGRADED` and report each with its time, median and loss. Check the CSV's `via`/`vpn` columns first: hours while a VPN adapter carried the traffic measure the tunnel, not the ISP.
-   - Rows with `minimal`=1 (minimal mode, e.g. a phone tether) have no Cloudflare route check, and `g_ms`/`tcp_ms`/`udp_ms` are empty (not measured). `minimal mode on/off` lines in `events.log` mark those hours.
+   - Rows with `minimal`=1 (minimal mode, e.g. a phone tether) have no Cloudflare route check. `tcp_ms`/`udp_ms` are empty, `cf_ms` is empty on rows without a 1.1.1.1 ping (every other second while it answers), `g_ms` is filled only while 1.1.1.1 fails, and `dns_ms` repeats its last result (one query a minute, every second while failing). `minimal mode on/off` lines in `events.log` mark those hours.

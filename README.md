@@ -26,7 +26,7 @@ netbug installs itself to `C:\ProgramData\netbug`, starts at every logon, and re
 
 What the states mean:
 
-- **Outage**: no internet for 2 seconds or more (both test pings, DNS, TCP or UDP failing). netbug saves a snapshot of the network state.
+- **Outage**: no internet for 2 seconds or more (both test pings, DNS, TCP or UDP failing). netbug saves a snapshot of the network state. The seconds of a router check (which cuts the connection on purpose) are tagged `router_check` and never count.
 - **Lag**: the router itself answers slowly (15 ms+) or drops pings along with the internet.
 - **Cloudflare route degraded**: 1.1.1.1 is losing pings or running twice as slow as usual while Google is fine. Discord and other sites behind Cloudflare suffer, everything else works. It's your ISP's route to Cloudflare, not your network.
 - **VPN shown in red**: a VPN carries your traffic, so the internet readings measure the VPN, not your ISP.
@@ -39,7 +39,7 @@ Other devices on the network can open the page at `http://<laptop-ip>:8787/` (re
 For mobile data (a phone's USB tethering, a 4G/5G modem), where extra connections hurt more than on a wired LAN. It cuts netbug's internet traffic by about 90%:
 
 - Kept: a ping to 1.1.1.1 every 2 s (Google only to confirm a failure), the phone/router ping every second (it never leaves the cable), DNS every minute (every second while it fails), the public IP every 30 min, the update check every 6 h. Outages are still logged.
-- Stopped: the TCP, TLS and UDP checks, the regular Google ping and the Cloudflare route check, the ARP watch, the automatic router check, the MAC announce, and the network tests in outage snapshots. Their readings show "off".
+- Stopped: the TCP, TLS and UDP checks, the regular Google ping and the Cloudflare route check, the ARP watch, the automatic router check, the MAC announce, and the network tests in outage snapshots (which are taken at most every 10 min). Their readings show "off". **Check now** is off too (it listens to the ARP watch); **Test and pin** still works.
 
 It turns on by itself when the internet comes through a phone's USB tether or a mobile broadband adapter (switch **On by itself on a phone tether**, on by default), stays on for 60 s if the tether drops out, and turns off on any other network. On a tether, **Check now** and **Test and pin** are off whatever the mode: each test cuts the connection, and the phone is the router. A phone's Wi-Fi hotspot looks like any Wi-Fi: use the **Minimal mode** switch. Both switches work from any device that can open the page, and each change is logged with the device's IP.
 
@@ -52,6 +52,10 @@ The attack: another device tells your laptop "I'm the router" and swallows your 
 3. Leave **Keep the router updated** on. The pin protects only your laptop; this also corrects the router about once a second if someone lies to it about you.
 
 The dropdown only lists a built-in router when it's actually on your current network, plus whatever you've pinned and the last check's result.
+
+netbug trusts the first router MAC it sees on each network (or the pinned or proven one) and raises **GATEWAY MAC CHANGED** if another MAC takes over. Moving to another network that happens to use the same router address (common at home: `192.168.1.1`) isn't an alarm: another adapter, router address, Wi-Fi name or Windows network name starts a fresh trust. Coming back to a network you left is "new" again, so pin the routers you rely on.
+
+A check is never cut short: **Install update now** and **Uninstall** wait for it, and if netbug is stopped mid-check anyway, the next start puts the router's address entry back.
 
 **Auto-detect the real router** is off by default: it runs checks by itself, and each one cuts the connection for a few seconds. It never runs on a phone tether or in minimal mode.
 
@@ -67,12 +71,12 @@ The download must match the SHA-256 GitHub lists and be a real netbug build, or 
 
 ## Logs
 
-Logs are in `C:\ProgramData\netbug\logs`, kept 30 days and capped at 500 MB.
+Logs are in `C:\ProgramData\netbug\logs`, kept 30 days and capped at 500 MB. `events.log` itself stays (it's written all the time): at 20 MB it moves to `events-<time>.log`, and those parts follow the 30-day and 500 MB rules.
 
 | File | Contents |
 |---|---|
 | `events.log` | The timeline: outages, lag, Cloudflare route, router MAC changes, ARP spoofing, interface, Wi-Fi, network profile and VPN changes, public IP and NAT changes, minimal mode on/off and switch changes, hourly health |
-| `netbug-<date>.csv` | One row every 5 s (every 1 s around problems) with every reading. `ssid` is the Wi-Fi name from Windows' Wi-Fi API (empty without location access); `net_profile` is Windows' name for the network, on any adapter; `minimal` is 1 in minimal mode, where readings that weren't measured are empty |
+| `netbug-<date>.csv` | One row every 5 s (every 1 s around outage-type failures, lag and router checks) with every reading. `dns_ms` and `tcp_ms` hold their background check's latest result. `ssid` is the Wi-Fi name from Windows' Wi-Fi API (empty without location access); `net_profile` is Windows' name for the network, on any adapter; `minimal` is 1 in minimal mode, where readings that weren't measured are empty (as are readings with no result yet) |
 | `snapshots\` | Per incident: full network state, a packet capture (`.etl`) and the ARP traffic from the 15 minutes before |
 
 **Export all logs** downloads one zip of everything. It isn't redacted (MACs, IPs, network names), so only send it to someone you trust.
@@ -110,11 +114,11 @@ Start-ScheduledTask netbug
 
 ### How it works
 
-- **Every second:** pings to the gateway, 1.1.1.1 and 8.8.8.8, plus packet counters. DNS (every 2 s), a TCP connect (every 10 s) and the router MAC (every 10 s) run in the background so a slow probe never delays a round. A failed DNS or TCP check is retried the next second. The public IP is read every 5 min.
+- **Every second:** pings to the gateway, 1.1.1.1 and 8.8.8.8, plus packet counters. DNS (every 2 s; asks the gateway, else the adapter's own DNS servers), a TCP connect (every 10 s) and the router MAC (every 10 s) run in the background so a slow probe never delays a round. A failed DNS or TCP check is retried the next second. The public IP is read every 5 min.
 - **Always** (except in minimal mode, which stops all four and pings 1.1.1.1 every 2 s instead):
   - one TLS connection (checked every 15 s)
   - a UDP socket doing STUN every 2 s (UDP time and NAT mapping)
-  - an ARP-only `pktmon` capture that flags any other device claiming the router's or the laptop's IP (`ARP SPOOFING DETECTED`), judged every 5 min and before each snapshot
+  - an ARP-only `pktmon` capture that flags any other device claiming the router's or the laptop's IP (`ARP SPOOFING DETECTED`), judged every 5 min and before each snapshot; only its last 15 min count, and a new network clears it
   - the MAC announce: an ARP request about once a second, so the router keeps this laptop's real MAC (**Keep the router updated**)
 - **Interface:** the network adapter carrying the traffic. VPN adapters are never picked, but logged when they carry the traffic.
 - **Restarts:** updates and health restarts (past 200 MB, 5000 handles or 100 threads) go through the logon task.

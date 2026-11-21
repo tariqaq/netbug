@@ -217,9 +217,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   <section class="fix" id="fix" hidden aria-live="polite">
     <div class="fix-head"><h2>Router protection:</h2><span class="fix-state" id="fx-state"></span></div>
     <p class="fix-sub" id="fx-sub"></p>
-    <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small id="fx-auto-note">Off by default. Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. Never runs on a phone tether. It never changes a pin by itself.</small></span></label>
-    <label class="sw"><input type="checkbox" id="fx-pin" disabled><span><b>Pin it permanently</b><small id="fx-pin-note">Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop.</small></span></label>
-    <label class="sw"><input type="checkbox" id="fx-ann"><span><b>Keep the router updated</b><small id="fx-ann-note">Tells the router this laptop’s real address about once a second.</small></span></label>
+    <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small id="fx-auto-note"></small></span></label>
+    <label class="sw"><input type="checkbox" id="fx-pin" disabled><span><b>Pin it permanently</b><small id="fx-pin-note"></small></span></label>
+    <label class="sw"><input type="checkbox" id="fx-ann"><span><b>Keep the router updated</b><small id="fx-ann-note"></small></span></label>
     <div class="known">
       <b>Router MAC</b>
       <small>Pick a known router or type a MAC. <em>Test and pin</em> tests it first (if it’s wrong, the connection drops for a few seconds) and pins it only if it’s the real router. If it fails, use <em>Check now</em>.</small>
@@ -254,7 +254,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   <div class="trace">
     <canvas id="chart" aria-label="Gateway, Cloudflare and UDP round-trip times over the last 5 minutes"></canvas>
   </div>
-  <div class="axis"><span>5 min ago</span><span class="mid"><b>Red:</b> outage. <b>Orange:</b> lag or slow Cloudflare route</span><span>Now</span></div>
+  <div class="axis"><span>5 min ago</span><span class="mid"><b>Red:</b> outage. <b>Orange:</b> lag, slow Cloudflare route or a router check</span><span>Now</span></div>
 
   <div class="readouts">
     <div class="readout"><div class="k"><i style="background:var(--gw)"></i>Gateway:</div><div class="v" id="r-gw">–</div></div>
@@ -318,17 +318,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     return s < 86400 * 2 ? dur(s) + ' ago' : 'on ' + new Date(at).toLocaleDateString();
   };
   const failNames = { no_iface: 'no network adapter', gw: 'gateway ping', internet: 'internet ping', dns: 'DNS',
-    udp: 'UDP', tcp: 'new TCP connections', udp_high: 'UDP port usage', lag: 'local lag', cf_route: 'Cloudflare route' };
+    udp: 'UDP', tcp: 'new TCP connections', udp_high: 'UDP port usage', lag: 'local lag', cf_route: 'Cloudflare route',
+    router_check: 'router check (cuts the connection on purpose)' };
   // fail codes that aren't an outage: shaded orange on the chart
-  const softFails = ['lag', 'gw', 'udp_high', 'cf_route'];
+  const softFails = ['lag', 'gw', 'udp_high', 'cf_route', 'router_check'];
   const failText = f => f.split('|').filter(Boolean).map(x => failNames[x] || x).join(', ');
 
-  // -2 = not measured (minimal mode): "off"
+  // -2 = not measured (minimal mode): "off"; -3 = no reading yet (start-up, leaving minimal mode): "–"
   function setReadout(id, v, raw) {
-    const el = $(id), off = raw === -2, lost = !off && (v === null || v === undefined);
+    const el = $(id), off = raw === -2, none = raw === -3, lost = !off && !none && (v === null || v === undefined);
     const cls = lost ? 'v bad' : 'v';
     if (el.className !== cls) el.className = cls;
-    put(el, off ? 'off' : lost ? 'lost' : v + '<small>ms</small>');
+    put(el, off ? 'off' : none ? '–' : lost ? 'lost' : v + '<small>ms</small>');
   }
 
   // ---------- status ----------
@@ -361,7 +362,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       sub = '1.1.1.1 is losing pings or running at twice its usual time while Google is fine, so Discord and other Cloudflare-hosted services suffer. Ongoing for ' + dur(state.now - s.cfRoute) + '.';
     } else {
       head = 'Network is healthy';
-      sub = s.fail ? 'One-off miss this second: ' + failText(s.fail) + '.'
+      sub = /(^|\|)router_check(\||$)/.test(s.fail) ? 'A router check is running: the connection drops for a few seconds on purpose.'
+          : s.fail ? 'One-off miss this second: ' + failText(s.fail) + '.'
           : lastProblem ? 'Last problem: ' + lastProblem.what + ', ' + ago(lastProblem.at) + '.'
           : 'No outages or lag in the recent log.';
     }
@@ -381,7 +383,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const last = [...hist.values()].pop();
     if (last) {
       setReadout('r-gw', ms(last[1])); setReadout('r-cf', cfShown(last)); setReadout('r-g', ms(last[3]), last[3]);
-      setReadout('r-udp', ms(last[4]), last[4]); setReadout('r-dns', ms(last[5])); setReadout('r-tcp', ms(last[6]), last[6]);
+      setReadout('r-udp', ms(last[4]), last[4]); setReadout('r-dns', ms(last[5]), last[5]); setReadout('r-tcp', ms(last[6]), last[6]);
     }
     renderMinimal(s);
     // "cf=1.2.3.4:5678" -> address + which STUN server saw it
@@ -614,8 +616,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     else if (f.pinned) { st = 'Protected'; cls = 'ok'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ' on ' + f.iface + '. Fake router replies are ignored.'; }
     else if (f.verified) { st = 'Not pinned'; cls = 'warn'; sub = 'The real router ' + f.gw + ' is ' + f.verified + '. Turn on the pin to protect this laptop.'; }
     else { st = 'Not pinned'; cls = 'warn'; sub = 'Router ' + f.gw + ' on ' + f.iface + ' is currently ' + (f.arpMac || 'unknown') + ' (' + (f.arpType || 'not in the ARP table') + '). Run a check to find the real one, or test a router MAC below.'; }
-    // netbug refuses router tests on a phone tether (see TetherNoCheck in netbug.cs)
+    // what netbug refuses right now (see TetherNoCheck, MinimalNoCheck and StartDetect in netbug.cs)
     if (f.tether && !f.busy) sub += ' On a phone tether, Check now and Test and pin are off: each test cuts the connection, and the phone itself is the router.';
+    else if (f.minimal && !f.busy) sub += ' In minimal mode, Check now is off (it needs the ARP capture, which is off); Test and pin still works.';
+    if (f.snapshot && !f.busy) sub += ' A snapshot is being taken: router tests wait until it’s done.';
     putText($('fx-state'), st); $('fx-state').className = 'fix-state ' + cls;
     putText($('fx-sub'), sub);
     $('fx-auto').checked = f.auto;
@@ -635,12 +639,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       (minOn ? '' : a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
       (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen +
         ' ARP requests from this laptop seen on the wire' + (a.seenFrom ? ' in the ' + dur(a.seenAt - a.seenFrom) + ' before it' : '') + '.' : ''));
-    $('fx-check').disabled = f.busy || !f.gw || f.tether;
+    $('fx-check').disabled = f.busy || !f.gw || f.tether || f.minimal || f.snapshot;
     put($('fx-cands'), res && res.cands ? res.cands.map(c =>
       '<li><span class="mac ' + (c.mac === res.chosen ? 'ok' : c.works ? '' : 'bad') + '">' + esc(c.mac) + '</span><span class="why">' + esc(c.verdict) +
       (c.random ? '. Random-style address, unusual for a router' : '') + '.</span><span class="src">Seen as: ' + esc(c.from) + '</span></li>').join('') +
       (res.note ? '<li><span></span><span class="why">' + esc(res.note) + '</span></li>' : '') : '');
     $('fx-uninst').hidden = !f.portable;   // a lone exe installed in %ProgramData%; the repo copy uses --uninstall
+    $('fx-uninst').disabled = f.busy;      // not during a router check: it must put the router's entry back first
     renderKnown();
     putText($('fx-err'), f.error || '');
     renderTools();
@@ -679,7 +684,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       (u.busy ? ' Don’t close netbug.' : ''));
     const inst = $('up-install');
     inst.hidden = !(u.available && f.portable);
-    inst.disabled = u.busy;
+    inst.disabled = u.busy || f.busy;   // not during a router check (netbug refuses it too)
     putText(inst, 'Install ' + (u.latest || 'update') + ' now');
     $('up-check').disabled = u.busy || u.checking;
     const busyEx = f.exporting || Date.now() < exportUntil;
@@ -710,7 +715,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     }
     $('fx-mac').hidden = sel.value !== 'other';
     const mac = chosenMac(), already = !!mac && f.pinned === mac;
-    $('fx-try').disabled = f.busy || !f.gw || !mac || already || f.tether;
+    $('fx-try').disabled = f.busy || !f.gw || !mac || already || f.tether || f.snapshot;
     putText($('fx-try'), already ? 'Already pinned' : 'Test and pin');
   }
   if (fixOn) {

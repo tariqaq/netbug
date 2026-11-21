@@ -5,6 +5,24 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 02:40: `HASH` v1.0.18: second audit fixes
+From a second full read of the repo. `tools/netbug.cs` (`Version` 1.0.18):
+- **Logic:**
+  - Moving between two networks with the same gateway IP (e.g. two `192.168.1.1` routers) raised `GATEWAY MAC CHANGED` (red for 30 min, snapshot) and later `ARP SPOOFING DETECTED` against the new router: the trusted MAC was kept per gateway IP only. Now each network has a generation (`CheckNetwork`: another adapter, gateway IP, or Wi-Fi name / network profile within 60 s of a Windows network event; an ARP attack changes none of these). The trusted MAC, the last check's verified MAC, the ARP history and the Cloudflare usual time belong to one generation; a gateway MAC read started on the previous network is dropped.
+  - Install update now, Uninstall and the health restart could exit during a router check, leaving a test MAC as a static ARP entry (no internet until a reboot, and the next netbug trusted it). They now wait for the check (`WaitForCheck`; no new check starts meanwhile); the page greys both buttons during a check. While MACs are tested, the original entry is noted in `logs\netbug.arptest`; the next start or `--uninstall` puts it back (`RestoreArpTest`).
+  - The ARP history was trimmed only when new frames arrived, so after minimal mode or a quiet spell, hours-old frames were judged by the ARP watch and counted by the Router MAC list. Every reader now takes only the last 15 min (`RingRecent`, `RingTake`); a new network clears it.
+  - Check now during a snapshot heard nothing (the snapshot pauses the capture) and the snapshot's probes measured the swapped entries. No check starts while a snapshot runs (`snapRunning`, under `fixLock`); the page says so and greys the buttons.
+- **Design:**
+  - DNS check: the gateway first, then the adapter's own DNS servers (last good one first), so a router that doesn't answer DNS isn't a permanent outage.
+  - Check now is refused in minimal mode (the ARP capture it listens to is off); Test and pin still works. The page says why.
+  - A router check's seconds are tagged `router_check` in `fail`, never start or end an outage, and aren't lag; the page shows "A router check is running".
+  - Minimal-mode snapshots at most every 10 min.
+- **Efficiency:** the network profile (WMI) is read on a new interface or a Windows network event, else every 5 min (was every 10 s). CSV rows go to 1 s only for outage-type failures, lag and router checks (not gateway-only loss, high UDP use or a slow Cloudflare route). The persistent pin (`netsh`) is cached 5 min, emptied on pin, unpin and any entry-type change. `Run()` is split (`TrackOutage`, `CheckNetwork`, `JudgeGateway`, `UpdateMinimal`); the page JSON is built by name (`Jw`) instead of 29 positional slots; the delete-at-reboot code is shared; the Router protection notes are written only by the script.
+- **Small bugs:** DNS/TCP/UDP showed and logged `0` before their first reading (start-up, leaving minimal mode): now `NotYet` (empty in the CSV, "–" on the page). Overlapping update checks no longer end "Checking…" early (`updChecks` counter); the release tag, URL and SHA-256 are stored together. The active interface, IP and gateway are published as one object (`cur`), so other threads never mix old and new. In minimal mode 8.8.8.8 gets only what's left of the second after a failed 1.1.1.1 ping (both are asked together while it keeps failing), so rounds stay 1 s.
+- **Text:** `events.log` moves to `events-<time>.log` at 20 MB (it was never trimmed, though README said 30 days / 500 MB); README and AGENTS say which CSV readings repeat or are empty in minimal mode, and explain `router_check` and the per-network trust.
+- `tools/dashboard.html`: `router_check` fail name (orange), "–" for no reading yet, Check now / Test and pin / Install / Uninstall disabled when netbug would refuse them, chart legend.
+- Checked: builds clean; the page script passes `node --check`. Not run live before release (this shell isn't elevated); a build that can't start is rolled back by the updater.
+
 ### 02:21: `2374fc9` stale comments and docs
 A full pass over every comment, the page text, README and AGENTS against the code. No behavior change; the two changed strings ship with the next release.
 - `tools/netbug.cs`: header: minimal mode's 60 s tether hold, 8.8.8.8 still pinged when 1.1.1.1 fails, the update check every 6 h in minimal mode, router tests refused on a tether, the Cloudflare usual time learned on each network. `DashboardLoop` comment lists `POST /api/minimal`. The ARP watch comment no longer says only a phone tether turns the capture off (the manual switch does too); the router check comment's order is fixed. The `minimal mode on` event says "the regular 8.8.8.8 ping (now only when 1.1.1.1 fails)"; the tether refusal reads "Off on a phone tether: ...".

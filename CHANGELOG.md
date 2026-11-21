@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 02:21: `HASH` stale comments and docs
+### 02:21: `2374fc9` stale comments and docs
 A full pass over every comment, the page text, README and AGENTS against the code. No behavior change; the two changed strings ship with the next release.
 - `tools/netbug.cs`: header: minimal mode's 60 s tether hold, 8.8.8.8 still pinged when 1.1.1.1 fails, the update check every 6 h in minimal mode, router tests refused on a tether, the Cloudflare usual time learned on each network. `DashboardLoop` comment lists `POST /api/minimal`. The ARP watch comment no longer says only a phone tether turns the capture off (the manual switch does too); the router check comment's order is fixed. The `minimal mode on` event says "the regular 8.8.8.8 ping (now only when 1.1.1.1 fails)"; the tether refusal reads "Off on a phone tether: ...".
 - `tools/dashboard.html`: chart legend "Orange: lag or slow Cloudflare route" (it said only "local lag"); Minimal mode text says Google is still asked when 1.1.1.1 fails.

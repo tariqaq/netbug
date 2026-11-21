@@ -209,7 +209,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
 
   <section class="fix" id="min" aria-live="polite">
     <div class="fix-head"><h2>Minimal mode:</h2><span class="fix-state" id="mn-state"></span></div>
-    <label class="sw"><input type="checkbox" id="mn-on"><span><b>Minimal mode</b><small>For mobile data. Cuts netbug’s own traffic by about 90%: over the internet only a 1.1.1.1 ping every 2 s, a DNS check every minute, the public IP every 30 minutes and the update check every 6 hours. TCP, TLS, UDP, Google, the Cloudflare route check, the ARP watch, the automatic router check and the MAC announce stop.</small></span></label>
+    <label class="sw"><input type="checkbox" id="mn-on"><span><b>Minimal mode</b><small>For mobile data. Cuts netbug’s own traffic by about 90%: over the internet only a 1.1.1.1 ping every 2 s, a DNS check every minute, the public IP every 30 minutes and the update check every 6 hours (Google only when 1.1.1.1 fails). TCP, TLS, UDP, the regular Google ping, the Cloudflare route check, the ARP watch, the automatic router check and the MAC announce stop.</small></span></label>
     <label class="sw"><input type="checkbox" id="mn-auto"><span><b>On by itself on a phone tether</b><small>When the internet comes through a phone’s USB tethering or a mobile broadband adapter. Stays on for 60 s if the tether drops out, then back to full checks on any other network. A phone’s Wi-Fi hotspot can’t be told apart: use the switch above.</small></span></label>
     <div class="fix-err" id="mn-err"></div>
   </section>
@@ -254,7 +254,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   <div class="trace">
     <canvas id="chart" aria-label="Gateway, Cloudflare and UDP round-trip times over the last 5 minutes"></canvas>
   </div>
-  <div class="axis"><span>5 min ago</span><span class="mid"><b>Red:</b> outage. <b>Orange:</b> local lag</span><span>Now</span></div>
+  <div class="axis"><span>5 min ago</span><span class="mid"><b>Red:</b> outage. <b>Orange:</b> lag or slow Cloudflare route</span><span>Now</span></div>
 
   <div class="readouts">
     <div class="readout"><div class="k"><i style="background:var(--gw)"></i>Gateway:</div><div class="v" id="r-gw">–</div></div>

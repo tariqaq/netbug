@@ -18,9 +18,9 @@
 // hides that (no location access). The active interface is the non-VPN adapter Windows
 // routes 1.1.1.1 through, else a wired one, else any one with a gateway; when that route goes through a
 // VPN adapter, the internet probes measure the tunnel, not the ISP route (logged).
-// Cloudflare route check: 1.1.1.1 losing pings or running at twice its usual time for 30 s while 8.8.8.8
-// is fine is logged as CLOUDFLARE ROUTE DEGRADED (Discord and other Cloudflare-hosted services
-// suffer then); it isn't an outage.
+// Cloudflare route check: 1.1.1.1 losing pings or running at twice its usual time (learned again on each
+// network) for 30 s while 8.8.8.8 is fine is logged as CLOUDFLARE ROUTE DEGRADED (Discord and other
+// Cloudflare-hosted services suffer then); it isn't an outage.
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
 // any failure. Outage/LAG start/end, Cloudflare route, link, interface, Wi-Fi network, network profile, VPN adapters, VPN
 // routing, gateway MAC, public IP, NAT mapping, TCP-connection deaths and UDP-usage changes go to
@@ -37,10 +37,11 @@
 // MAC announce: about once a second this laptop sends an ARP request (sender = its own IP and MAC),
 // so a router told a fake MAC for this laptop learns the real one again within a second. See the
 // "MAC announce" section.
-// Minimal mode (a page switch, on by itself on a phone's USB tether or a mobile broadband adapter): on the
-// internet only a 1.1.1.1 ping every 2 s, DNS every 60 s, the public IP every 30 min and the update check
-// every 6 h; TCP, TLS, UDP, the 8.8.8.8 ping, the Cloudflare route check, MAC announce, ARP capture and
-// the automatic router check stop. See the "minimal mode" section.
+// Minimal mode (a page switch, on by itself on a phone's USB tether or a mobile broadband adapter, kept
+// on for 60 s when the tether drops out): on the internet only a 1.1.1.1 ping every 2 s (8.8.8.8 only
+// when it fails), DNS every 60 s, the public IP every 30 min and the update check every 6 h; TCP, TLS,
+// UDP, the regular 8.8.8.8 ping, the Cloudflare route check, MAC announce, ARP capture and the automatic
+// router check stop. See the "minimal mode" section.
 // logs/ is kept under 30 days and 500 MB (netbug.settings is left out).
 // An hourly health line is written, and past 200 MB private memory / 5000 handles / 100 threads netbug
 // restarts itself through its logon task (see Restart).
@@ -49,7 +50,8 @@
 // netbug adds no Windows Firewall rule, so other devices reach it only once one allows inbound TCP 8787.
 // Router check and pin (the dashboard's "Router protection" panel, for the person at this laptop
 // only): finds the real router MAC by testing every MAC that claims the gateway IP (or tests one known
-// or typed MAC), and can pin it as a permanent ARP entry. See the "router check and pin" section.
+// or typed MAC), and can pin it as a permanent ARP entry. Refused on a phone tether. See the "router
+// check and pin" section.
 //
 // Started without admin rights (a double-click), netbug asks for UAC, starts an elevated copy and
 // opens the dashboard in the default browser. The first elevated start sets up the "netbug" logon task
@@ -59,9 +61,10 @@
 // netbug.exe --uninstall removes the task and the router pin (and, for a lone exe, its program files in
 // %ProgramData%\netbug). The logs always stay.
 // Export and updates (the page's "Logs and updates" panel, this laptop only): one zip of everything in
-// logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 15 min (and on
-// the page's button) netbug asks GitHub for the latest release; a lone exe installs a newer one by itself
-// (the page shows a progress bar and the current step), a repo copy only reports it. See "export and updates".
+// logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 15 min (6 h in
+// minimal mode, and on the page's button) netbug asks GitHub for the latest release; a lone exe installs a
+// newer one by itself (the page shows a progress bar and the current step), a repo copy only reports it.
+// See "export and updates".
 //
 // Build: tools\build.ps1 (csc with the page, font, scripts and, when present, tools\routers.local.txt
 // embedded; the release exe is built with it). routers.local.txt, gitignored: known router MACs, offered on
@@ -802,7 +805,7 @@ class NetBug
                     if (minNow)
                     {
                         Event("minimal mode on (" + minimalWhy + "): on the internet only a 1.1.1.1 ping every 2 s, DNS every 60 s, the public IP every 30 min and the update check every 6 h; " +
-                            "TCP, TLS, UDP/STUN, the 8.8.8.8 ping, the Cloudflare route check, the MAC announce, the ARP capture and the automatic router check are off");
+                            "TCP, TLS, UDP/STUN, the regular 8.8.8.8 ping (now only when 1.1.1.1 fails), the Cloudflare route check, the MAC announce, the ARP capture and the automatic router check are off");
                         minTick = 0; lastMinCf = 0;
                         if (cfBad) Event(string.Format("Cloudflare route check paused by minimal mode (degraded since {0:HH:mm:ss})", cfBadStart));
                         CfReset();
@@ -1519,14 +1522,14 @@ class NetBug
     //
     // The ring: an ARP-only pktmon capture (all NICs) runs all the time in real-time mode: one pktmon
     // process prints each frame, RingLoop reads its output line by line and keeps the ARP frames of the
-    // last 15 min in memory (trimmed in batches, so up to 30 s more). No capture files, no gap. Every 5 min the frames not judged yet are checked;
-    // the router check reads its 10 s from the ring too. pktmon runs one capture at a time, so a snapshot
+    // last 15 min in memory (trimmed in batches, so up to 30 s more). No capture files, no gap. Every 5 min
+    // the frames not judged yet are checked; the router check reads its 10 s from the ring too. pktmon runs one capture at a time, so a snapshot
     // (its own capture of ARP + gateway + 1.1.1.1 traffic while its probes run) pauses the ring under
     // pktmonLock and resumes it afterwards. A pause stops pktmon and waits for the rest of its output, so a
     // snapshot judges and saves the ARP from right up to the moment it started (<snapshot>.ring.txt), and
     // the router check pauses the ring for a moment to get its last seconds (pktmon may hold back a few
     // lines of output while it runs). If something else stops pktmon, RingLoop starts it again after 1 s.
-    // Minimal mode stops pktmon and starts none (no ARP watch, which a phone tether doesn't need) until it ends.
+    // Minimal mode stops pktmon and starts none (no ARP watch) until it ends.
     // A claim of the gateway IP by any MAC other than the trusted gateway MAC, or of this laptop's IP by
     // any MAC other than this laptop's, is ARP SPOOFING DETECTED. The second kind is aimed at the router
     // (it then sends this laptop's traffic to that MAC); the pin can't stop it, the MAC announce makes it
@@ -2153,7 +2156,7 @@ class NetBug
     // year), /api/state the latest sample + chart history (?since=<unix s>
     // returns only newer samples) + netbug's version, /api/events new events.log lines (?from=<byte offset>, or the
     // last 64 KB when omitted). /api/fix* is the router check and pin plus the update check/install (see
-    // FixApi). One request at a time on this thread, except POST /api/export (see "export and updates"),
+    // FixApi); POST /api/minimal the minimal mode switches (see MinimalApi). One request at a time on this thread, except POST /api/export (see "export and updates"),
     // which streams on its own; the page polls only while it is visible. The "+" prefix (all
     // interfaces, Tailscale included) needs admin, which netbug always has. Other devices see the page read-only:
     // only a request from this laptop gets the control token (see LocalHost), so they get no Router protection,
@@ -2552,9 +2555,9 @@ class NetBug
     // ---------------------------------------------------------------- router check and pin
     //
     // Check: finds the real router MAC for the current gateway IP. Candidates are the ARP table entry, a
-    // pinned entry, every MAC that answers for the gateway IP in 10 s of the ARP ring, and the known routers
-    // present on this network (see below) (the laptop asks
-    // for the router 3 times meanwhile, unless the entry is pinned, so the real router answers too). Each
+    // pinned entry, every MAC that answers for the gateway IP in 10 s of the ARP ring (the laptop asks for
+    // the router 3 times meanwhile, unless the entry is pinned, so the real router answers too), and the
+    // known routers present on this network (see below). Each
     // candidate is then set for a moment as a temporary static ARP entry (active store only) and tested:
     // it is the real router when pings to 1.1.1.1/8.8.8.8 get through it AND a TTL-1 ping comes back
     // "TTL expired" from the gateway IP itself. A blackholing impostor passes nothing; a device in the
@@ -2718,7 +2721,7 @@ class NetBug
 
     // Check now and Test and pin are refused on a phone tether: each test cuts the connection, the phone is
     // the router and nobody else is on that link to spoof it
-    const string TetherNoCheck = "Not on a phone tether: a check cuts the connection for a few seconds, and the phone itself is the router.";
+    const string TetherNoCheck = "Off on a phone tether: a check cuts the connection for a few seconds, and the phone itself is the router.";
 
     static string FixStatus(string error)
     {

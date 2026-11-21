@@ -5,6 +5,26 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 02:16: v1.0.17: audit fixes
+From a full read of the repo. `tools/netbug.cs` (`Version` 1.0.17):
+- **Logic:**
+  - Minimal mode retried a failed DNS query only every 10 s while the failure counted every second, so one lost reply on 4G became an outage of up to ~10 s (likely the `[dns]` outage at 01:52:34). It's retried the next second again, as in normal mode.
+  - The Cloudflare route check's usual time carried over between networks (and over a restart during a degradation): a slower network then looked degraded for up to ~30 min, a faster one hid real trouble. It's learned again on every new interface or gateway (`CfReset`); a running degradation ends with `Cloudflare route check restarted: the network changed`.
+  - The UDP probe's first seconds counted as an outage at start-up (e.g. 11-20 16:27:18). UDP failures count only 10 s after start-up, a new interface or leaving minimal mode.
+- **Design:**
+  - A tether that drops out with no other network taking over keeps minimal mode on for 60 s (`phone tether, <adapter> (gone, waiting 60 s)`), so a blip doesn't restart pktmon and reopen every probe on a shaky link.
+  - Check now and Test and pin are refused on a phone tether (each test cuts the connection; the phone is the router). `/api/fix` gains `tether`; the page disables both buttons and says why.
+  - Update checks run one at a time (`updCheckLock`): the 15-minute loop and the page's button could write the cached reply and ETag at once.
+- **Efficiency:**
+  - `KnownHere` keeps its answer 30 s (it scanned the whole ARP ring with the regexes on every 2 s Router protection poll); Check now still asks fresh.
+  - The ARP ring is trimmed in batches (oldest 30 s past the cut, or 1000 over the cap), not on every frame.
+  - `UDP NAT mapping changed` is no longer logged when the interface changes (another network has another public ip:port).
+- **Text:** "Discord, Claude and other Cloudflare-hosted services" → "Discord and other ..." in the event line, the page and the README (claude.ai is on Anthropic's own network, `160.79.104.10`, not Cloudflare).
+- `tools/dashboard.html`: Minimal mode text lists the public IP and update checks and the 60 s hold; tether note and disabled buttons in Router protection.
+- `README.md`: minimal mode (60 s hold, no router tests on a tether), "How it works" notes what minimal mode stops. `AGENTS.md` LOG ANALYSIS step 4: the `minimal` column.
+- Checked: builds clean; the page script passes `node --check`.
+- **Machine:** v1.0.16 installed from the page at 02:06:22; no pktmon running in minimal mode since.
+
 ### 02:05: `890f7fa` v1.0.16: minimal mode really stops pktmon at start-up
 - `tools/netbug.cs` (`Version` 1.0.16): at start-up the ARP capture thread could start `pktmon` just before the first round turned minimal mode on, and the one `pktmon stop` sent then (while pktmon was still starting) did nothing: the capture kept its ~515 MB. `StopRingForMinimal` now stops it in the background, kills a pktmon still running 10 s after the stop, and is retried every 10 s while minimal mode is on and a capture runs. Builds clean; released as v1.0.16, the asset's listed SHA-256 (`383a85fe…`) matches the build.
 - **Machine:** v1.0.15 installed itself at 02:00:25 (automatic, its first check 2 min after start); `auto=0` stayed off. A pktmon (PID 2736, 515 MB private, started 02:00:29) was running in minimal mode: the bug above.

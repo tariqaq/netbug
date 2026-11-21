@@ -28,7 +28,7 @@ What the states mean:
 
 - **Outage**: no internet for 2 seconds or more (both test pings, DNS, TCP or UDP failing). netbug saves a snapshot of the network state.
 - **Lag**: the router itself answers slowly (15 ms+) or drops pings along with the internet.
-- **Cloudflare route degraded**: 1.1.1.1 is losing pings or running twice as slow as usual while Google is fine. Discord, Claude and other sites behind Cloudflare suffer, everything else works. It's your ISP's route to Cloudflare, not your network.
+- **Cloudflare route degraded**: 1.1.1.1 is losing pings or running twice as slow as usual while Google is fine. Discord and other sites behind Cloudflare suffer, everything else works. It's your ISP's route to Cloudflare, not your network.
 - **VPN shown in red**: a VPN carries your traffic, so the internet readings measure the VPN, not your ISP.
 - **"Windows network name, SSID hidden"** next to Wi-Fi: Windows 11 24H2+ hides the Wi-Fi name from apps without location access, so netbug shows the name Windows gave the network instead. Usually the same, but it can be renamed or end in " 2".
 
@@ -39,9 +39,9 @@ Other devices on the network can open the page at `http://<laptop-ip>:8787/` (re
 For mobile data (a phone's USB tethering, a 4G/5G modem), where extra connections hurt more than on a wired LAN. It cuts netbug's internet traffic by about 90%:
 
 - Kept: a ping to 1.1.1.1 every 2 s (Google only to confirm a failure), the phone/router ping every second (it never leaves the cable), DNS every minute, the public IP every 30 min, the update check every 6 h. Outages are still logged.
-- Stopped: the TCP, TLS and UDP checks, the regular Google ping and the Cloudflare route check, the ARP watch, the router check, the MAC announce, and the network tests in outage snapshots. Their readings show "off".
+- Stopped: the TCP, TLS and UDP checks, the regular Google ping and the Cloudflare route check, the ARP watch, the automatic router check, the MAC announce, and the network tests in outage snapshots. Their readings show "off".
 
-It turns on by itself when the internet comes through a phone's USB tether or a mobile broadband adapter (switch **On by itself on a phone tether**, on by default) and off again on any other network. A phone's Wi-Fi hotspot looks like any Wi-Fi: use the **Minimal mode** switch. Both switches work from any device that can open the page, and each change is logged with the device's IP.
+It turns on by itself when the internet comes through a phone's USB tether or a mobile broadband adapter (switch **On by itself on a phone tether**, on by default), stays on for 60 s if the tether drops out, and turns off on any other network. On a tether, **Check now** and **Test and pin** are off whatever the mode: each test cuts the connection, and the phone is the router. A phone's Wi-Fi hotspot looks like any Wi-Fi: use the **Minimal mode** switch. Both switches work from any device that can open the page, and each change is logged with the device's IP.
 
 ## Router protection
 
@@ -111,7 +111,7 @@ Start-ScheduledTask netbug
 ### How it works
 
 - **Every second:** pings to the gateway, 1.1.1.1 and 8.8.8.8, plus packet counters. DNS (every 2 s), a TCP connect (every 10 s) and the router MAC (every 10 s) run in the background so a slow probe never delays a round.
-- **Always:**
+- **Always** (except in minimal mode, which stops all three and pings 1.1.1.1 every 2 s instead):
   - one TLS connection (checked every 15 s)
   - a UDP socket doing STUN every 2 s (UDP time and NAT mapping)
   - an ARP-only `pktmon` capture that flags any other device claiming the router's or the laptop's IP (`ARP SPOOFING DETECTED`)

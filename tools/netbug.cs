@@ -19,7 +19,7 @@
 // routes 1.1.1.1 through, else a wired one, else any one with a gateway; when that route goes through a
 // VPN adapter, the internet probes measure the tunnel, not the ISP route (logged).
 // Cloudflare route check: 1.1.1.1 losing pings or running at twice its usual time for 30 s while 8.8.8.8
-// is fine is logged as CLOUDFLARE ROUTE DEGRADED (Discord, Claude and other Cloudflare-hosted services
+// is fine is logged as CLOUDFLARE ROUTE DEGRADED (Discord and other Cloudflare-hosted services
 // suffer then); it isn't an outage.
 // Writes a CSV row every 5 s while healthy and every 1 s during (and 60 s after)
 // any failure. Outage/LAG start/end, Cloudflare route, link, interface, Wi-Fi network, network profile, VPN adapters, VPN
@@ -91,7 +91,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.16";
+    public const string Version = "1.0.17";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -635,14 +635,15 @@ class NetBug
     // For mobile data (a phone tether, a 4G/5G modem), where every extra flow costs more than on a wired
     // LAN. While it's on, netbug sends on the internet only: a ping to 1.1.1.1 every 2 s (every second while
     // it fails, and a ping to 8.8.8.8 to tell an outage from a Cloudflare-only miss), a DNS query every 60 s
-    // (every 10 s while failing), the public IP every 30 min and the update check every 6 h. The gateway ping
+    // (every second while failing), the public IP every 30 min and the update check every 6 h. The gateway ping
     // stays every second (it goes to the phone, not over the air). Off: the TCP connect, the persistent TLS
     // connection, the UDP/STUN probe, the regular 8.8.8.8 ping and with it the Cloudflare route check, the
     // MAC announce, the ARP capture (pktmon is stopped, freeing its buffer), the automatic router check, and
     // a snapshot's network probes and capture. Rounds without a ping use the last answer (like the background
     // probes); the CSV leaves what wasn't measured empty, the page shows "off".
     // On when the page's "Minimal mode" switch is on, or when "On a phone tether" is on (the default) and the
-    // active interface is a phone's USB tether (RNDIS / NCM / Apple) or a mobile broadband adapter. Anyone who
+    // active interface is a phone's USB tether (RNDIS / NCM / Apple) or a mobile broadband adapter (kept on
+    // for 60 s when the tether drops out and no other network takes over). Anyone who
     // can open the page may flip both switches (POST /api/minimal with an X-Netbug-Minimal header: other
     // websites can't send that header to it, see MinimalApi).
     static volatile bool minimal, minimalOn, minimalAuto = true;
@@ -699,6 +700,13 @@ class NetBug
     // minimal mode's 1.1.1.1 schedule: rounds since it went on, and the last answer (used by rounds without a ping)
     static int minTick;
     static long lastMinCf;
+    // when a phone tether was last the active interface, and its name (minimal mode's 60 s hold)
+    static double lastTetherAt = double.MinValue;
+    static string lastTetherName = "";
+    // UDP failures count only from here (Mono): 10 s after start-up, a new interface or leaving minimal mode
+    static double udpGraceUntil = Mono() + 10;
+    // the network the Cloudflare route check's usual time was learned on ("<interface>|<gateway>")
+    static string lastCfNet;
 
     // no background probe of that kind in flight or waiting to be read (a finished one is read, then set to null)
     static bool Idle(Task t) { return t == null; }
@@ -747,7 +755,21 @@ class NetBug
                 // a new interface: its gateway entry is read now (the old one's MAC no longer applies), and its
                 // packet counters start fresh
                 bool ifChanged = ifaceName != lastIface;
-                if (ifChanged) { lastTx = -1; gwMac = ""; gwArp = ""; }
+                if (ifChanged)
+                {
+                    lastTx = -1; gwMac = ""; gwArp = "";
+                    lastMapBy.Clear(); lastUdpMap = "";   // another network has another public ip:port: not a NAT change
+                    udpGraceUntil = mono + 10;            // the UDP probe needs a moment on a new network (and at start-up)
+                }
+                // a new network (interface or gateway): the Cloudflare route check learns its usual time again,
+                // so one network's 1.1.1.1 time isn't judged against another's
+                string cfNet = ifaceName + "|" + (gw == null ? "" : gw.ToString());
+                if (cfNet != lastCfNet)
+                {
+                    if (cfBad && lastCfNet != null) Event(string.Format("Cloudflare route check restarted: the network changed (degraded since {0:HH:mm:ss})", cfBadStart));
+                    CfReset();
+                    lastCfNet = cfNet;
+                }
 
                 // the network profile name: on a new interface, else every 10 s; a result for an interface
                 // that is no longer the active one is dropped
@@ -764,11 +786,16 @@ class NetBug
                     profTask = idx < 0 ? Task.FromResult("") : Task.Run(() => NetProfile(idx));
                 }
 
-                // minimal mode (see "minimal mode"): by the switch, or on a phone tether
+                // minimal mode (see "minimal mode"): by the switch, or on a phone tether. A tether that drops out
+                // with no other network taking over keeps it on for 60 s, so a blip doesn't restart pktmon and
+                // reopen every probe on a shaky link.
                 bool teth = IsTether(ni);
-                bool minNow = minimalOn || (minimalAuto && teth);
-                bool byTether = minimalAuto && teth;
-                minimalWhy = !minNow ? "" : (minimalOn ? "manual switch" : "") + (minimalOn && byTether ? " + " : "") + (byTether ? "phone tether, " + ifaceName : "");
+                if (teth) { lastTetherAt = mono; lastTetherName = ifaceName; }
+                bool tetherHold = !teth && ni == null && minimal && mono - lastTetherAt < 60;
+                bool byTether = minimalAuto && (teth || tetherHold);
+                bool minNow = minimalOn || byTether;
+                minimalWhy = !minNow ? "" : (minimalOn ? "manual switch" : "") + (minimalOn && byTether ? " + " : "") +
+                    (byTether ? "phone tether, " + (teth ? ifaceName : lastTetherName + " (gone, waiting 60 s)") : "");
                 if (minNow != minimal)
                 {
                     minimal = minNow;
@@ -777,8 +804,8 @@ class NetBug
                         Event("minimal mode on (" + minimalWhy + "): on the internet only a 1.1.1.1 ping every 2 s, DNS every 60 s, the public IP every 30 min and the update check every 6 h; " +
                             "TCP, TLS, UDP/STUN, the 8.8.8.8 ping, the Cloudflare route check, the MAC announce, the ARP capture and the automatic router check are off");
                         minTick = 0; lastMinCf = 0;
-                        if (cfBad) { cfBad = false; Event(string.Format("Cloudflare route check paused by minimal mode (degraded since {0:HH:mm:ss})", cfBadStart)); }
-                        cfWinCount = 0;
+                        if (cfBad) Event(string.Format("Cloudflare route check paused by minimal mode (degraded since {0:HH:mm:ss})", cfBadStart));
+                        CfReset();
                         arpWatch = "off (minimal mode)";
                         StopRingForMinimal();
                     }
@@ -786,6 +813,7 @@ class NetBug
                     {
                         Event("minimal mode off: all checks back on");
                         tcpMs = 0; udpMs = 0; arpWatch = "";
+                        udpGraceUntil = mono + 10;   // the UDP probe's new socket gets 10 s before a failure counts
                         lastMapBy.Clear(); lastUdpMap = "";   // the UDP probe opens a new socket: a new port isn't a NAT change
                         nextDns = mono; nextPubIp = mono + 5; nextArpWatch = mono + 300;
                     }
@@ -795,8 +823,9 @@ class NetBug
                 else if (minimal && tenS && ringProc != null) StopRingForMinimal();
 
                 // the background probes start with the pings; a failed DNS query or TCP connect is re-checked
-                // as soon as the last one has finished (in minimal mode a failed DNS query every 10 s)
-                if ((Due(ref nextDns, minimal ? 60 : 2, mono) || (dnsMs < 0 && (!minimal || tenS))) && Idle(dnsTask))
+                // as soon as the last one has finished (in minimal mode too, so one lost DNS reply isn't an
+                // outage: the next second's query decides)
+                if ((Due(ref nextDns, minimal ? 60 : 2, mono) || dnsMs < 0) && Idle(dnsTask))
                 {
                     var server = gw;
                     dnsTask = server == null ? Task.FromResult(-1) : Task.Run(() => DnsProbe(server));
@@ -866,7 +895,7 @@ class NetBug
                 if (gw != null && gwMs < 0) fails.Add("gw");
                 if (cfMs < 0 && gMs < 0) fails.Add("internet");
                 if (dnsMs < 0) fails.Add("dns");
-                if (!minimal && udpMs < 0) fails.Add("udp");
+                if (!minimal && udpMs < 0 && mono >= udpGraceUntil) fails.Add("udp");   // not in the first 10 s of the probe (start-up, leaving minimal mode)
                 string map = udpMap;
                 if (map != "" && map != lastUdpMap)
                 {
@@ -1265,7 +1294,8 @@ class NetBug
     // Cloudflare route check, once per round. Over the last 30 rounds (~30 s), with 8.8.8.8 answering in at
     // least 27 of them: 1.1.1.1 lost 20% or more of the pings sent while Google answered, or its median is at
     // least twice its usual time and 5 ms more (usual = the 10th percentile of its answers over the last
-    // 30 min, refreshed every minute) -> CLOUDFLARE ROUTE DEGRADED. Back to normal after 60 s without that.
+    // 30 min, refreshed every minute, learned again on every new network: see CfReset) -> CLOUDFLARE ROUTE
+    // DEGRADED. Back to normal after 60 s without that.
     // Returns whether the route counts as degraded now (the round's "cf_route" fail; not an outage).
     static bool CfRoute(long cfMs, long gMs, double mono)
     {
@@ -1305,7 +1335,7 @@ class NetBug
             if (!cfBad)
             {
                 cfBad = true; cfBadStart = DateTime.Now; cfBadWorstMed = med; cfBadWorstLoss = loss;
-                Event(string.Format("CLOUDFLARE ROUTE DEGRADED: 1.1.1.1 median {0} ms (usual {1} ms), {2}% of its pings lost over the last 30 s, while 8.8.8.8 answers ({3} ms): Discord, Claude and other Cloudflare-hosted services suffer",
+                Event(string.Format("CLOUDFLARE ROUTE DEGRADED: 1.1.1.1 median {0} ms (usual {1} ms), {2}% of its pings lost over the last 30 s, while 8.8.8.8 answers ({3} ms): Discord and other Cloudflare-hosted services suffer",
                     med < 0 ? "-" : med.ToString(), cfBase, loss, Median(gAns)));
             }
             cfBadWorstMed = Math.Max(cfBadWorstMed, med); cfBadWorstLoss = Math.Max(cfBadWorstLoss, loss);
@@ -1321,6 +1351,14 @@ class NetBug
             }
         }
         return cfBad;
+    }
+
+    // Forgets the Cloudflare route check's window, usual time and a running degradation (a new network, or
+    // minimal mode starting, which stops feeding it). It learns again over the next minutes.
+    static void CfReset()
+    {
+        cfBad = false; cfWinCount = 0; cfWinPos = 0; cfHistCount = 0; cfHistPos = 0; cfBase = -1; cfBaseAt = double.MinValue;
+        cfGoodSince = double.MinValue;
     }
 
     static int Median(List<int> v)
@@ -1345,7 +1383,7 @@ class NetBug
     }
 
     // Keeps one long-lived TLS connection open and sends a HEAD request on it every 15 s,
-    // like Discord/Claude/game sessions do. Logs how and when the connection dies: a clean
+    // like Discord, chat and game sessions do. Logs how and when the connection dies: a clean
     // server close (FIN), a reset (RST, often a middlebox killing the flow) or a silent stall.
     // Minimal mode closes it (not logged) and opens none until it ends.
     static void PersistentTcpLoop()
@@ -1481,7 +1519,7 @@ class NetBug
     //
     // The ring: an ARP-only pktmon capture (all NICs) runs all the time in real-time mode: one pktmon
     // process prints each frame, RingLoop reads its output line by line and keeps the ARP frames of the
-    // last 15 min in memory. No capture files, no gap. Every 5 min the frames not judged yet are checked;
+    // last 15 min in memory (trimmed in batches, so up to 30 s more). No capture files, no gap. Every 5 min the frames not judged yet are checked;
     // the router check reads its 10 s from the ring too. pktmon runs one capture at a time, so a snapshot
     // (its own capture of ARP + gateway + 1.1.1.1 traffic while its probes run) pauses the ring under
     // pktmonLock and resumes it afterwards. A pause stops pktmon and waits for the rest of its output, so a
@@ -1563,10 +1601,15 @@ class NetBug
                 lock (ringLock)
                 {
                     ring.Add(f);
+                    // trimmed in batches (frames older than 15 min, beyond 50000) once the oldest is 30 s past
+                    // the cut or 1000 frames over, not on every frame: each trim moves the whole list
                     var cut = DateTime.Now.AddMinutes(-15);
-                    int old = 0;
-                    while (old < ring.Count && (ring[old].T < cut || ring.Count - old > 50000)) old++;
-                    if (old > 0) ring.RemoveRange(0, old);
+                    if (ring[0].T < cut.AddSeconds(-30) || ring.Count > 51000)
+                    {
+                        int old = 0;
+                        while (old < ring.Count && (ring[old].T < cut || ring.Count - old > 50000)) old++;
+                        if (old > 0) ring.RemoveRange(0, old);
+                    }
                 }
             }
             else
@@ -2266,7 +2309,14 @@ class NetBug
         return updUrl != "" && System.Version.TryParse(updLatest, out v) && v > System.Version.Parse(Version);
     }
 
+    // One check at a time (the 15-minute loop and the page's button share the cached reply and its ETag).
+    static readonly object updCheckLock = new object();
     static void CheckUpdate()
+    {
+        lock (updCheckLock) CheckUpdateNow();
+    }
+
+    static void CheckUpdateNow()
     {
         try
         {
@@ -2516,7 +2566,7 @@ class NetBug
     // without the 10 s listen; it is pinned only when it passes. A failed test changes nothing.
     // Auto-detect (the page's switch, off by default) runs a check by itself: on a new gateway, every 30 min
     // and 5 min after spoofing is seen. Never in minimal mode or on a phone tether, where the check would cut
-    // the phone's connection for nothing.
+    // the phone's connection for nothing; on a tether Check now and Test and pin are refused too.
     // Control: GET /api/fix (status, with the version and update state) and POST
     // /api/fix/{check,trypin,pin,unpin,auto,announce,update/check,update/install,uninstall}, only from this laptop
     // (loopback, Host localhost/127.0.0.1, against DNS rebinding) with the per-run token the page was
@@ -2534,19 +2584,28 @@ class NetBug
 
     // The known routers for gateway gw that are on this network: the ARP entry for the gateway is that MAC
     // (arpMac), or the ARP ring saw that MAC answer for the gateway IP in the last 15 min (which still works
-    // while a poisoned entry names another MAC). On any other network they stay hidden.
-    static List<KnownRouter> KnownHere(IPAddress gw, IPAddress me, string arpMac)
+    // while a poisoned entry names another MAC). On any other network they stay hidden. The answer is kept
+    // for 30 s (the page asks every 2 s and each answer scans the whole ring); `fresh` skips that (a check).
+    static readonly object knownLock = new object();
+    static string knownKey = "";
+    static List<KnownRouter> knownCache = new List<KnownRouter>();
+    static double knownAt = double.MinValue;
+    static List<KnownRouter> KnownHere(IPAddress gw, IPAddress me, string arpMac, bool fresh = false)
     {
         if (gw == null || me == null) return new List<KnownRouter>();
         string gwIp = gw.ToString();
         var mine = knownRouters.Where(k => k.Gw == gwIp).ToList();
         if (mine.Count == 0) return mine;
+        string key = gwIp + " " + me + " " + arpMac;
+        lock (knownLock) if (!fresh && key == knownKey && Mono() - knownAt < 30) return knownCache.ToList();
         List<ArpFrame> frames;
         lock (ringLock) frames = ring.ToList();
         var claims = new List<Claim>();
         Analyze(frames, gw, me, claims, new List<Claim>());   // the same IP pair as the ARP watch: its regexes are reused
-        return mine.Where(k => string.Equals(k.Mac, arpMac, StringComparison.OrdinalIgnoreCase)
+        var here = mine.Where(k => string.Equals(k.Mac, arpMac, StringComparison.OrdinalIgnoreCase)
             || claims.Any(c => string.Equals(c.Mac, k.Mac, StringComparison.OrdinalIgnoreCase))).ToList();
+        lock (knownLock) { knownKey = key; knownCache = here; knownAt = Mono(); }
+        return here.ToList();
     }
 
     static List<KnownRouter> LoadKnownRouters()
@@ -2610,12 +2669,17 @@ class NetBug
         if (method != "POST") { ctx.Response.StatusCode = 405; return "{}"; }
         switch (path)
         {
-            case "/api/fix/check": if (fixBusy) error = "A check is already running."; else StartDetect("manual"); break;
+            case "/api/fix/check":
+                if (IsTether(curNi)) error = TetherNoCheck;
+                else if (fixBusy) error = "A check is already running.";
+                else StartDetect("manual");
+                break;
             case "/api/fix/pin": error = Pin(); break;
             case "/api/fix/trypin":
             {
                 string mac = NormalizeMac(ctx.Request.QueryString["mac"]);
-                if (mac == "") error = "That isn't a router MAC address (format: AA-BB-CC-DD-EE-FF).";
+                if (IsTether(curNi)) error = TetherNoCheck;
+                else if (mac == "") error = "That isn't a router MAC address (format: AA-BB-CC-DD-EE-FF).";
                 else if (fixBusy) error = "A check is already running.";
                 else StartDetect("test and pin " + mac, mac);
                 break;
@@ -2652,6 +2716,10 @@ class NetBug
         return FixStatus(error);
     }
 
+    // Check now and Test and pin are refused on a phone tether: each test cuts the connection, the phone is
+    // the router and nobody else is on that link to spoof it
+    const string TetherNoCheck = "Not on a phone tether: a check cuts the connection for a few seconds, and the phone itself is the router.";
+
     static string FixStatus(string error)
     {
         var ni = curNi; var gw = curGw;
@@ -2671,9 +2739,9 @@ class NetBug
         string upd = string.Format("{{\"latest\":{0},\"available\":{1},\"checkedAt\":{2},\"checking\":{3},\"busy\":{4},\"step\":{5},\"pct\":{6},\"error\":{7}}}",
             J(updLatest), UpdateAvailable() ? "true" : "false", updCheckedAt == DateTime.MinValue ? 0 : Unix(updCheckedAt),
             updChecking ? "true" : "false", updBusy ? "true" : "false", J(updStep), updPct, J(updError));
-        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12},\"known\":[{13}],\"version\":{14},\"update\":{15},\"exporting\":{16}}}",
+        return string.Format("{{\"busy\":{0},\"step\":{1},\"auto\":{2},\"portable\":{3},\"iface\":{4},\"gw\":{5},\"arpMac\":{6},\"arpType\":{7},\"pinned\":{8},\"verified\":{9},\"result\":{10},\"error\":{11},\"announce\":{12},\"known\":[{13}],\"version\":{14},\"update\":{15},\"exporting\":{16},\"tether\":{17}}}",
             fixBusy ? "true" : "false", J(fixStep), autoDetect ? "true" : "false", portable ? "true" : "false", J(iface), J(gw == null ? "" : gw.ToString()),
-            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann, known, J(Version), upd, exporting == 1 ? "true" : "false");
+            J(gwMac), J(gwArp), J(pinned), J(verifiedHere ? verifiedMac : ""), fixJson, J(error), ann, known, J(Version), upd, exporting == 1 ? "true" : "false", IsTether(ni) ? "true" : "false");
     }
 
     static int IfIndex(NetworkInterface ni)
@@ -2780,7 +2848,7 @@ class NetBug
                 Analyze(heard, gw, ip, claims, new List<Claim>());
                 foreach (var c in claims) add(c.Mac, string.Format("answered as the router {0}x", c.N));
                 // after the listen, so a known router that just answered counts as present
-                foreach (var k in KnownHere(gw, ip, arpMac)) add(k.Mac, "known router" + (k.Label == "" ? "" : " (" + k.Label + ")"));
+                foreach (var k in KnownHere(gw, ip, arpMac, true)) add(k.Mac, "known router" + (k.Label == "" ? "" : " (" + k.Label + ")"));
             }
 
             var cf = IPAddress.Parse("1.1.1.1"); var g = IPAddress.Parse("8.8.8.8");

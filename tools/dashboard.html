@@ -209,8 +209,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
 
   <section class="fix" id="min" aria-live="polite">
     <div class="fix-head"><h2>Minimal mode:</h2><span class="fix-state" id="mn-state"></span></div>
-    <label class="sw"><input type="checkbox" id="mn-on"><span><b>Minimal mode</b><small>For mobile data. Cuts netbug’s own traffic by about 90%: only a 1.1.1.1 ping every 2 s and a DNS check every minute go over the internet. TCP, TLS, UDP, Google, the Cloudflare route check, the ARP watch, the router check and the MAC announce stop.</small></span></label>
-    <label class="sw"><input type="checkbox" id="mn-auto"><span><b>On by itself on a phone tether</b><small>When the internet comes through a phone’s USB tethering or a mobile broadband adapter. Back to full checks on any other network. A phone’s Wi-Fi hotspot can’t be told apart: use the switch above.</small></span></label>
+    <label class="sw"><input type="checkbox" id="mn-on"><span><b>Minimal mode</b><small>For mobile data. Cuts netbug’s own traffic by about 90%: over the internet only a 1.1.1.1 ping every 2 s, a DNS check every minute, the public IP every 30 minutes and the update check every 6 hours. TCP, TLS, UDP, Google, the Cloudflare route check, the ARP watch, the automatic router check and the MAC announce stop.</small></span></label>
+    <label class="sw"><input type="checkbox" id="mn-auto"><span><b>On by itself on a phone tether</b><small>When the internet comes through a phone’s USB tethering or a mobile broadband adapter. Stays on for 60 s if the tether drops out, then back to full checks on any other network. A phone’s Wi-Fi hotspot can’t be told apart: use the switch above.</small></span></label>
     <div class="fix-err" id="mn-err"></div>
   </section>
 
@@ -358,7 +358,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     } else if (s.cfRoute) {
       st = 'lag';
       head = 'Cloudflare route is degraded';
-      sub = '1.1.1.1 is losing pings or running at twice its usual time while Google is fine, so Discord, Claude and other Cloudflare-hosted services suffer. Ongoing for ' + dur(state.now - s.cfRoute) + '.';
+      sub = '1.1.1.1 is losing pings or running at twice its usual time while Google is fine, so Discord and other Cloudflare-hosted services suffer. Ongoing for ' + dur(state.now - s.cfRoute) + '.';
     } else {
       head = 'Network is healthy';
       sub = s.fail ? 'One-off miss this second: ' + failText(s.fail) + '.'
@@ -614,6 +614,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     else if (f.pinned) { st = 'Protected'; cls = 'ok'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ' on ' + f.iface + '. Fake router replies are ignored.'; }
     else if (f.verified) { st = 'Not pinned'; cls = 'warn'; sub = 'The real router ' + f.gw + ' is ' + f.verified + '. Turn on the pin to protect this laptop.'; }
     else { st = 'Not pinned'; cls = 'warn'; sub = 'Router ' + f.gw + ' on ' + f.iface + ' is currently ' + (f.arpMac || 'unknown') + ' (' + (f.arpType || 'not in the ARP table') + '). Run a check to find the real one, or test a router MAC below.'; }
+    // netbug refuses router tests on a phone tether (see TetherNoCheck in netbug.cs)
+    if (f.tether && !f.busy) sub += ' On a phone tether, Check now and Test and pin are off: each test cuts the connection, and the phone itself is the router.';
     putText($('fx-state'), st); $('fx-state').className = 'fix-state ' + cls;
     putText($('fx-sub'), sub);
     $('fx-auto').checked = f.auto;
@@ -633,7 +635,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       (minOn ? '' : a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
       (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen +
         ' ARP requests from this laptop seen on the wire' + (a.seenFrom ? ' in the ' + dur(a.seenAt - a.seenFrom) + ' before it' : '') + '.' : ''));
-    $('fx-check').disabled = f.busy || !f.gw;
+    $('fx-check').disabled = f.busy || !f.gw || f.tether;
     put($('fx-cands'), res && res.cands ? res.cands.map(c =>
       '<li><span class="mac ' + (c.mac === res.chosen ? 'ok' : c.works ? '' : 'bad') + '">' + esc(c.mac) + '</span><span class="why">' + esc(c.verdict) +
       (c.random ? '. Random-style address, unusual for a router' : '') + '.</span><span class="src">Seen as: ' + esc(c.from) + '</span></li>').join('') +
@@ -708,7 +710,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     }
     $('fx-mac').hidden = sel.value !== 'other';
     const mac = chosenMac(), already = !!mac && f.pinned === mac;
-    $('fx-try').disabled = f.busy || !f.gw || !mac || already;
+    $('fx-try').disabled = f.busy || !f.gw || !mac || already || f.tether;
     putText($('fx-try'), already ? 'Already pinned' : 'Test and pin');
   }
   if (fixOn) {

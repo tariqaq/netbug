@@ -36,3 +36,4 @@ Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). Th
    - If it matches while pinned, the pin isn't enough: the router side is probably poisoned too. Report it and propose next steps; apply nothing without the user's OK.
    - If it doesn't match, look for the actual layer that broke.
 4. Search `events.log` for `CLOUDFLARE ROUTE DEGRADED` and report each with its time, median and loss. Check the CSV's `via`/`vpn` columns first: hours while a VPN adapter carried the traffic measure the tunnel, not the ISP.
+   - Rows with `minimal`=1 (minimal mode, e.g. a phone tether) have no Cloudflare route check, and `g_ms`/`tcp_ms`/`udp_ms` are empty (not measured). `minimal mode on/off` lines in `events.log` mark those hours.

@@ -5,6 +5,9 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 01:56: v1.0.14: clearer minimal mode reason
+- `tools/netbug.cs` (`Version` 1.0.14): the reason shown on the page and in the `minimal mode on (...)` line is now `manual switch`, `phone tether, <adapter>`, or both joined by `+` (was "switched on on the page" / "phone tether '<adapter>'", and only one of them when both applied).
+
 ### 01:48: `2feb692` v1.0.13: page in sync with minimal mode
 - `tools/dashboard.html`: while minimal mode is on, **Auto-detect the real router** and **Keep the router updated** say they're paused (the announce note drops its "N sent" count), and **Logs and updates** says the release check runs every 6 hours, not every 15 minutes. The switches keep their settings.
 - `tools/netbug.cs`: `Version` 1.0.13 (the page is embedded in the exe).

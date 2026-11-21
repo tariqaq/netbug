@@ -91,7 +91,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.13";
+    public const string Version = "1.0.14";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -637,7 +637,7 @@ class NetBug
     // can open the page may flip both switches (POST /api/minimal with an X-Netbug-Minimal header: other
     // websites can't send that header to it, see MinimalApi).
     static volatile bool minimal, minimalOn, minimalAuto = true;
-    static volatile string minimalWhy = "";   // why it's on: "phone tether '<adapter>'", "switched on on the page", or ""
+    static volatile string minimalWhy = "";   // why it's on: "manual switch", "phone tether, <adapter>", both ("manual switch + phone tether, <adapter>"), or ""
 
     static readonly string[] TetherWords = { "remote ndis", "rndis", "usbncm", "usb ncm", "apple mobile device ethernet", "ios usb ethernet" };
     static bool IsTether(NetworkInterface n)
@@ -758,7 +758,8 @@ class NetBug
                 // minimal mode (see "minimal mode"): by the switch, or on a phone tether
                 bool teth = IsTether(ni);
                 bool minNow = minimalOn || (minimalAuto && teth);
-                minimalWhy = !minNow ? "" : minimalOn ? "switched on on the page" : "phone tether '" + ifaceName + "'";
+                bool byTether = minimalAuto && teth;
+                minimalWhy = !minNow ? "" : (minimalOn ? "manual switch" : "") + (minimalOn && byTether ? " + " : "") + (byTether ? "phone tether, " + ifaceName : "");
                 if (minNow != minimal)
                 {
                     minimal = minNow;

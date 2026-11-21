@@ -217,7 +217,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   <section class="fix" id="fix" hidden aria-live="polite">
     <div class="fix-head"><h2>Router protection:</h2><span class="fix-state" id="fx-state"></span></div>
     <p class="fix-sub" id="fx-sub"></p>
-    <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small id="fx-auto-note">Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. It never changes a pin by itself.</small></span></label>
+    <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small id="fx-auto-note">Off by default. Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. Never runs on a phone tether. It never changes a pin by itself.</small></span></label>
     <label class="sw"><input type="checkbox" id="fx-pin" disabled><span><b>Pin it permanently</b><small id="fx-pin-note">Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop.</small></span></label>
     <label class="sw"><input type="checkbox" id="fx-ann"><span><b>Keep the router updated</b><small id="fx-ann-note">Tells the router this laptop’s real address about once a second.</small></span></label>
     <div class="known">
@@ -620,7 +620,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     // minimal mode pauses the auto-detect, the MAC announce and slows the update check (see netbug.cs "minimal mode")
     const minOn = !!(state && state.sample && state.sample.minimal);
     putText($('fx-auto-note'), (minOn ? 'Paused while minimal mode is on. ' : '') +
-      'Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. It never changes a pin by itself.');
+      'Off by default. Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. Never runs on a phone tether. It never changes a pin by itself.');
     const pin = $('fx-pin');
     pin.checked = !!f.pinned;
     pin.disabled = f.busy || !f.gw || (!f.pinned && !f.verified);

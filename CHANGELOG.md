@@ -5,6 +5,14 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 01:59: v1.0.15: auto-detect no longer switches itself on
+- `tools/netbug.cs` (`Version` 1.0.15):
+  - Bug from v1.0.12: `LoadSettings` matched `auto=1` anywhere in `netbug.settings`, so the new `minimal_auto=1` line turned **Auto-detect the real router** on at every start although the file said `auto=0`. Settings are now read as whole `key=value` lines. (Minimal mode kept it from running on the tether meanwhile.)
+  - Auto-detect never runs on a phone tether, even with minimal mode off, and turning the switch on starts no check in minimal mode or on a tether.
+  - Comment: the router check section describes auto-detect.
+- `tools/dashboard.html`, `README.md`: auto-detect is off by default and never runs on a phone tether or in minimal mode.
+- **Machine:** the user installed v1.0.13 (01:50) and v1.0.14 (01:58); ran a manual router check on the tether (01:51, real router = the phone) and pinned it (01:53).
+
 ### 01:56: `b858f0f` v1.0.14: clearer minimal mode reason
 - `tools/netbug.cs` (`Version` 1.0.14): the reason shown on the page and in the `minimal mode on (...)` line is now `manual switch`, `phone tether, <adapter>`, or both joined by `+` (was "switched on on the page" / "phone tether '<adapter>'", and only one of them when both applied). Builds clean; released as v1.0.14, the asset's listed SHA-256 (`40498c42…`) matches the build.
 

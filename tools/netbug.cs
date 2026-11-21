@@ -91,7 +91,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.14";
+    public const string Version = "1.0.15";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -602,11 +602,20 @@ class NetBug
     {
         try
         {
-            string f = Path.Combine(logDir, "netbug.settings"), s = File.Exists(f) ? File.ReadAllText(f) : "";
-            autoDetect = s.Contains("auto=1");
-            announce = !s.Contains("announce=0");
-            minimalOn = s.Contains("minimal=1");
-            minimalAuto = !s.Contains("minimal_auto=0");
+            // one "key=value" per line, matched by the whole key ("auto" is not "minimal_auto")
+            string f = Path.Combine(logDir, "netbug.settings");
+            var kv = new Dictionary<string, string>();
+            if (File.Exists(f))
+                foreach (var line in File.ReadAllLines(f))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq > 0) kv[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim();
+                }
+            Func<string, bool, bool> get = (k, def) => { string v; return kv.TryGetValue(k, out v) ? v == "1" : def; };
+            autoDetect = get("auto", false);
+            announce = get("announce", true);
+            minimalOn = get("minimal", false);
+            minimalAuto = get("minimal_auto", true);
         }
         catch { }
     }
@@ -827,7 +836,9 @@ class NetBug
                 if (gw == null) { gwMac = ""; gwArp = ""; }
 
                 if (!minimal && Due(ref nextArpWatch, 300, mono) && gw != null && ip != null) ArpWatchStart(gw, ip, TrustedFor(gw));
-                if (autoDetect && !minimal && gw != null && mono - t0 >= 20 && !fixBusy)
+                // never on a phone tether (a check cuts the connection, and the phone is the router), even
+                // with minimal mode off
+                if (autoDetect && !minimal && !teth && gw != null && mono - t0 >= 20 && !fixBusy)
                 {
                     double since = mono - lastDetect;
                     if (gw.ToString() != lastDetectGw || since >= 1800 || (autoKick && since >= 300)) StartDetect("auto");
@@ -2479,6 +2490,9 @@ class NetBug
     // fake replies. Unpin removes it from both stores.
     // Test and pin (trypin?mac=): the same test for one MAC chosen on the page (a known router or typed in),
     // without the 10 s listen; it is pinned only when it passes. A failed test changes nothing.
+    // Auto-detect (the page's switch, off by default) runs a check by itself: on a new gateway, every 30 min
+    // and 5 min after spoofing is seen. Never in minimal mode or on a phone tether, where the check would cut
+    // the phone's connection for nothing.
     // Control: GET /api/fix (status, with the version and update state) and POST
     // /api/fix/{check,trypin,pin,unpin,auto,announce,update/check,update/install,uninstall}, only from this laptop
     // (loopback, Host localhost/127.0.0.1, against DNS rebinding) with the per-run token the page was
@@ -2587,7 +2601,7 @@ class NetBug
                 autoDetect = ctx.Request.QueryString["on"] == "1";
                 SaveSettings();
                 Event("router auto-detect " + (autoDetect ? "on" : "off"));
-                if (autoDetect && !fixBusy) StartDetect("auto");
+                if (autoDetect && !fixBusy && !minimal && !IsTether(curNi)) StartDetect("auto");   // never on a tether or in minimal mode
                 break;
             case "/api/fix/announce":
                 announce = ctx.Request.QueryString["on"] == "1";

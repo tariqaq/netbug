@@ -53,6 +53,8 @@ The attack: another device tells your laptop "I'm the router" and swallows your 
 
 The dropdown only lists a built-in router when it's actually on your current network, plus whatever you've pinned and the last check's result.
 
+**Auto-detect the real router** is off by default: it runs checks by itself, and each one cuts the connection for a few seconds. It never runs on a phone tether or in minimal mode.
+
 Moving the adapter to a different network that uses the same router IP? Turn the pin off first.
 
 If the router is replaced, the pin goes stale and the internet stops working. The outage line in the log prints the command to remove it, or turn the pin off on the page.

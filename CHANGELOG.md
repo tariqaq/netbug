@@ -5,11 +5,11 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 01:48: v1.0.13: page in sync with minimal mode
+### 01:48: `2feb692` v1.0.13: page in sync with minimal mode
 - `tools/dashboard.html`: while minimal mode is on, **Auto-detect the real router** and **Keep the router updated** say they're paused (the announce note drops its "N sent" count), and **Logs and updates** says the release check runs every 6 hours, not every 15 minutes. The switches keep their settings.
 - `tools/netbug.cs`: `Version` 1.0.13 (the page is embedded in the exe).
 - **Machine:** the user installed v1.0.12 at 01:46:22 (SHA-256 checked); minimal mode came on by itself for the phone tether (`Ethernet 4`, Samsung RNDIS), then by the page switch at 01:46:45; `pktmon` stopped; 1.1.1.1 every 2 s, Google/TCP/UDP off.
-- Checked: builds clean; the page script passes `node --check`.
+- Checked: builds clean; the page script passes `node --check`. Released as v1.0.13; the asset's listed SHA-256 (`0b7d3eb7…`) matches the build.
 
 ### 01:43: `691015c` v1.0.12: minimal mode for mobile data
 - `tools/netbug.cs` (`Version` 1.0.12), new "minimal mode" section:

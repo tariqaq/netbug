@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 02:16: v1.0.17: audit fixes
+### 02:16: `463c6f6` v1.0.17: audit fixes
 From a full read of the repo. `tools/netbug.cs` (`Version` 1.0.17):
 - **Logic:**
   - Minimal mode retried a failed DNS query only every 10 s while the failure counted every second, so one lost reply on 4G became an outage of up to ~10 s (likely the `[dns]` outage at 01:52:34). It's retried the next second again, as in normal mode.
@@ -22,7 +22,7 @@ From a full read of the repo. `tools/netbug.cs` (`Version` 1.0.17):
 - **Text:** "Discord, Claude and other Cloudflare-hosted services" → "Discord and other ..." in the event line, the page and the README (claude.ai is on Anthropic's own network, `160.79.104.10`, not Cloudflare).
 - `tools/dashboard.html`: Minimal mode text lists the public IP and update checks and the 60 s hold; tether note and disabled buttons in Router protection.
 - `README.md`: minimal mode (60 s hold, no router tests on a tether), "How it works" notes what minimal mode stops. `AGENTS.md` LOG ANALYSIS step 4: the `minimal` column.
-- Checked: builds clean; the page script passes `node --check`.
+- Checked: builds clean; the page script passes `node --check`. Released as v1.0.17; the asset's listed SHA-256 (`e0e0e44b…`) matches the build.
 - **Machine:** v1.0.16 installed from the page at 02:06:22; no pktmon running in minimal mode since.
 
 ### 02:05: `890f7fa` v1.0.16: minimal mode really stops pktmon at start-up

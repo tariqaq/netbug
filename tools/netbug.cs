@@ -42,7 +42,7 @@
 // mode and on a phone tether. See the "MAC announce" section.
 // Minimal mode (a page switch, on by itself on a phone's USB tether or a mobile broadband adapter, kept
 // on for 60 s when the tether drops out): on the internet only a 1.1.1.1 ping every 2 s (8.8.8.8 only
-// when it fails), DNS every 60 s, the public IP every 30 min and the update check every 6 h; TCP, TLS,
+// when it fails), DNS every 60 s, the public IP every 30 min and the update check every 15 min; TCP, TLS,
 // UDP, the regular 8.8.8.8 ping, the Cloudflare route check, MAC announce, ARP capture and the automatic
 // router check stop. See the "minimal mode" section.
 // logs/ is kept under 30 days and 500 MB (netbug.settings is left out); events.log moves to
@@ -69,8 +69,8 @@
 // netbug.exe --uninstall removes the task and the router pin (and, for a lone exe, its program files in
 // %ProgramData%\netbug). The logs always stay.
 // Export and updates (the page's System tab, this laptop only): one zip of everything in
-// logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 15 min (6 h in
-// minimal mode, and on the page's button) netbug asks GitHub for the latest release; a lone exe installs a
+// logs/ plus the in-memory ARP ring, nothing redacted, downloaded through the browser. Every 15 min (in
+// minimal mode too, and on the page's button) netbug asks GitHub for the latest release; a lone exe installs a
 // newer one by itself (the page shows a progress bar and the current step), a repo copy only reports it.
 // See "export and updates".
 //
@@ -102,7 +102,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "2.0.4";
+    public const string Version = "2.0.5";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -666,7 +666,7 @@ class NetBug
     // For mobile data (a phone tether, a 4G/5G modem), where every extra flow costs more than on a wired
     // LAN. While it's on, netbug sends on the internet only: a ping to 1.1.1.1 every 2 s (every second while
     // it fails, and a ping to 8.8.8.8 to tell an outage from a Cloudflare-only miss), a DNS query every 60 s
-    // (every second while failing), the public IP every 30 min and the update check every 6 h. The gateway ping
+    // (every second while failing), the public IP every 30 min and the update check every 15 min. The gateway ping
     // stays every second (it goes to the phone, not over the air). Off: the TCP connect, the persistent TLS
     // connection, the UDP/STUN probe, the regular 8.8.8.8 ping and with it the Cloudflare route check, the
     // MAC announce, the ARP capture (pktmon is stopped, freeing its buffer), the automatic router check, and
@@ -1186,7 +1186,7 @@ class NetBug
             minimal = minNow;
             if (minNow)
             {
-                Event("minimal mode on (" + minimalWhy + "): on the internet only a 1.1.1.1 ping every 2 s, DNS every 60 s, the public IP every 30 min and the update check every 6 h; " +
+                Event("minimal mode on (" + minimalWhy + "): on the internet only a 1.1.1.1 ping every 2 s, DNS every 60 s, the public IP every 30 min and the update check every 15 min; " +
                     "TCP, TLS, UDP/STUN, the regular 8.8.8.8 ping (now only while 1.1.1.1 fails), the Cloudflare route check, the MAC announce, the ARP capture and the automatic router check are off");
                 minTick = 0; lastMinCf = 0;
                 if (cfBad) Event(string.Format("Cloudflare route check paused by minimal mode (degraded since {0:HH:mm:ss})", cfBadStart));
@@ -2554,7 +2554,7 @@ class NetBug
     // under netbug-logs/, the in-memory ARP ring (arp-ring-memory.txt, the last 15 min), the latest sample
     // and Router protection status (state.json) and EXPORT_MANIFEST.txt. Nothing is redacted. Files are
     // read while netbug keeps writing them (shared read). One export at a time.
-    // Updates: 2 min after start and then every 15 min (6 h in minimal mode), and on the System tab's "Check now", netbug reads
+    // Updates: 2 min after start and then every 15 min (in minimal mode too), and on the System tab's "Check now", netbug reads
     // the latest GitHub release of Repo (about 12 KB; GitHub allows 60 such reads an hour per public IP
     // without an account, shared by everyone behind it). It sends the last reply's ETag, so an unchanged
     // release comes back as an empty 304. A higher tag than Version with a netbug.exe asset is an update.
@@ -2602,10 +2602,9 @@ class NetBug
                     Event("netbug " + latest + " is out (this is " + Version + "). This copy runs from its repo: git pull and rebuild to update.");
                 }
             }
-            // every 15 min, every 6 h in minimal mode (looked at every minute, so leaving minimal mode
-            // brings the 15 min back)
+            // every 15 min, in minimal mode too (an unchanged release is an empty 304 reply)
             double checkedAt = Mono();
-            while (Mono() - checkedAt < (minimal ? 21600 : 900)) Thread.Sleep(60000);
+            while (Mono() - checkedAt < 900) Thread.Sleep(60000);
         }
     }
 

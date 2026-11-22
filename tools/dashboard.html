@@ -1763,10 +1763,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('ex-btn').disabled = busyEx;
     putText($('ex-btn'), busyEx ? 'Preparing zip…' : 'Export zip');
 
-    const minOn = !!f.minimal;
     const modeNote = f.portable ? '' : ' · repo build (update with git pull & rebuild)';
     putText($('up-meta'), (u.checkedAt ? 'Checked ' + ago(u.checkedAt * 1000) : 'Not checked yet') +
-      ' · checks every ' + (minOn ? '6 h (minimal)' : '15 min') + modeNote);
+      ' · checks every 15 min' + modeNote);
     putText($('up-err'), sysErr || u.error || '');
   }
 

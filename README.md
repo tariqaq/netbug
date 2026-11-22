@@ -38,7 +38,7 @@ Other devices on the network can open the page at `http://<laptop-ip>:8787/` (vi
 
 For mobile data (a phone's USB tethering, a 4G/5G modem), where extra connections hurt more than on a wired LAN. It cuts netbug's internet traffic by about 90%:
 
-- Kept: a ping to 1.1.1.1 every 2 s (Google only to confirm a failure), the phone/router ping every second (it never leaves the cable), DNS every minute (every second while it fails), the public IP every 30 min, the update check every 6 h. Outages are still logged.
+- Kept: a ping to 1.1.1.1 every 2 s (Google only to confirm a failure), the phone/router ping every second (it never leaves the cable), DNS every minute (every second while it fails), the public IP every 30 min, the update check every 15 min (as in normal mode). Outages are still logged.
 - Stopped: the TCP, TLS and UDP checks, the regular Google ping and the Cloudflare route check, the ARP watch, the automatic router check, the MAC announce, and the network tests in outage snapshots (which are taken at most every 10 min). Their readings show "Off". **Check now** is off too (it listens to the ARP watch); **Test and pin** still works.
 
 It turns on by itself when the internet comes through a phone's USB tether or a mobile broadband adapter (switch **Auto on phone tether**, on by default), stays on for 60 s if the tether drops out, and turns off on any other network. On a tether, router protection is off and greyed out whatever the mode: **Check now**, **Test and pin**, **Pin router permanently**, **Auto-detect real router** and **Keep router updated** (nothing is sent). The phone is the router, nobody else is on that link, and each test cuts the connection. The switches keep their settings for other networks, and a pin made elsewhere can still be turned off. A phone's Wi-Fi hotspot looks like any Wi-Fi: use the **Minimal mode** switch in the top-right **Minimal** popover. Both switches work from any device that can open the page, and each change is logged with the device's IP.
@@ -67,7 +67,7 @@ If the router is replaced, the pin goes stale and the internet stops working. Th
 
 ## Updates
 
-netbug checks GitHub 2 minutes after it starts, then every 15 minutes (every 6 hours in minimal mode), and installs new releases by itself. **Install \<version\> now** under the **System** tab does it at once and shows a progress bar and the current step. netbug restarts for a few seconds and the page reloads.
+netbug checks GitHub 2 minutes after it starts, then every 15 minutes (in minimal mode too), and installs new releases by itself. **Install \<version\> now** under the **System** tab does it at once and shows a progress bar and the current step. netbug restarts for a few seconds and the page reloads.
 
 The download must match the SHA-256 GitHub lists and be a real netbug build, or it's thrown away. The previous version is kept as `netbug.old.exe`. If an update fails, the page says why and netbug keeps running. Automatic retries wait an hour.
 

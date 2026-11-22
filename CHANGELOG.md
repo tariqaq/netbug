@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 21:51: dashboard UI redesign and theme rules
+### 21:51: `f68c648` dashboard UI redesign and theme rules
 - `tools/dashboard.html`: redesigned as a matte dark-graphite tabbed desktop-app shell (`#0c0c0c` / `#151515`) with centered pill navigation (**Live**, **Protection**, **Events**, **System**) and a top-right **Minimal** popover available to every viewer.
   - **Live**: unboxed status headline with live Gateway/Cloudflare ms, full-bleed 5-minute latency chart with series toggles and cursor-tracking hover tooltip, unboxed 6-probe strip, and 2×2 overview tiles (click IPs/MACs to copy; click Router/Activity to jump to those tabs). Removed pulsing status dots and prose walls under switches.
   - **Protection** & **System**: grouped settings rows with tactile switches, collapsed "How router protection works" disclosure, update progress bar, log zip export and double-click uninstall.

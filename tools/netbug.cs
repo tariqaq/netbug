@@ -101,7 +101,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "2.0.1";
+    public const string Version = "2.0.2";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -188,7 +188,7 @@ class NetBug
     static int udpTotal = -1;
     static string udpTop = "";
     static int tcpMs = NotYet, dnsMs = NotYet;
-    static string gwMac = "";
+    static volatile string gwMac = "";
     // ARP spoofing defence: the gateway's ARP entry type (static = pinned, dynamic = learned),
     // a loud alert when the gateway MAC changes while the gateway IP stays the same, and the
     // continuous ARP capture (see "ARP watch"), which reports anyone else claiming the gateway IP or
@@ -197,16 +197,19 @@ class NetBug
     // gateway IP), replaced by a pin or by a MAC a router check proved (the first one seen can be an
     // impostor already answering). It is not replaced by a changed MAC, so a poisoned ARP cache can't make
     // the impostor "trusted".
-    static string gwArp = "", lastGwArp = "", trustedGwMac = "", trustedGwIp = "";
+    static volatile string gwArp = "";
+    static string lastGwArp = "", trustedGwMac = "", trustedGwIp = "";
     static int trustedGen = -1;   // the network generation it belongs to
     static volatile string gwAlert = "";
-    static DateTime gwAlertAt = DateTime.MinValue;
+    static double gwAlertAtMono = double.MinValue;
     static volatile string arpWatch = "";
+    static readonly object watchLock = new object();
     static bool udpWarned;
     static int failStreak;
     const int LagGwMs = 15;
     static bool inLag, lagSnapped;
     static DateTime lagStart, lagLastBad;
+    static double lagStartMono, lagLastBadMono;
     static long lagMaxGw;
     static int lagLoss, lagSamples;
     static string lastTcpReason = "";
@@ -255,7 +258,8 @@ class NetBug
     static readonly string[] hist = new string[300];
     static int histPos, histCount;
     static double dashMemMb;
-    static DateTime dashMemAt = DateTime.MinValue;
+    static double dashMemAt = double.MinValue;
+    static readonly object memLock = new object();
 
     const long LogCapBytes = 500L * 1024 * 1024;   // hard cap for logs/, oldest snapshots then CSVs go first
     const string CsvHeader = "time,iface,eth_link,ip,gw,gw_mac,gw_arp,gw_ms,cf_ms,g_ms,dns_ms,tcp_ms,udp_ms,udp_map,tx_pkts,rx_pkts,udp_total,udp_top,public_ip,fail,date,utc_offset,iface_type,ssid,vpn,via,net_profile,minimal";
@@ -512,7 +516,7 @@ class NetBug
             "<RestartOnFailure><Count>999</Count><Interval>PT1M</Interval></RestartOnFailure></Settings>" +
             "<Triggers><LogonTrigger><UserId>" + x(user) + "</UserId></LogonTrigger></Triggers>" +
             "<Actions Context=\"Author\"><Exec><Command>" + x(exe) + "</Command><WorkingDirectory>" + x(Path.GetDirectoryName(exe)) + "</WorkingDirectory></Exec></Actions></Task>";
-        string file = Path.Combine(Path.GetTempPath(), "netbug-task.xml");
+        string file = Path.Combine(Path.GetTempPath(), "netbug-task-" + Guid.NewGuid().ToString("N") + ".xml");
         File.WriteAllText(file, xml, Encoding.Unicode);
         try { Run("schtasks.exe", "/Create /TN " + TaskName + " /XML \"" + file + "\" /F"); }
         finally { File.Delete(file); }
@@ -551,7 +555,7 @@ class NetBug
                 if (g.Address.AddressFamily == AddressFamily.InterNetwork && PersistentPin(idx, g.Address) != "")
                 {
                     Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1}", idx, g.Address));
-                    lock (pinLock) pinCacheAt = DateTime.MinValue;
+                    lock (pinLock) pinCacheAt = double.MinValue;
                 }
         }
         if (portable) RemoveProgram();
@@ -605,43 +609,49 @@ class NetBug
         var asm = System.Reflection.Assembly.GetExecutingAssembly();
         foreach (var f in new[] { "dashboard.html", "inter.woff2", "arpwatch.ps1", "snapshot.ps1" })
             using (var res = asm.GetManifestResourceStream("netbug." + f))
-            using (var file = File.Create(Path.Combine(tools, f == "inter.woff2" ? @"fonts\inter.woff2" : f)))
-                res.CopyTo(file);
+            {
+                if (res == null) throw new Exception("missing embedded resource netbug." + f);
+                using (var file = File.Create(Path.Combine(tools, f == "inter.woff2" ? @"fonts\inter.woff2" : f)))
+                    res.CopyTo(file);
+            }
     }
 
-    // The page's "auto-detect" (off by default), "keep the router updated" (on by default), "minimal mode"
-    // (off by default) and "minimal mode on a phone tether" (on by default) switches, kept across restarts
+    // The page's "Auto-detect real router" (off by default), "Keep router updated" (on by default), "Minimal mode"
+    // (off by default) and "Auto on phone tether" (on by default) switches, kept across restarts
     // in logs/netbug.settings.
+    static readonly object settingsLock = new object();
     static void LoadSettings()
     {
-        try
-        {
-            // one "key=value" per line, matched by the whole key ("auto" is not "minimal_auto")
-            string f = Path.Combine(logDir, "netbug.settings");
-            var kv = new Dictionary<string, string>();
-            if (File.Exists(f))
-                foreach (var line in File.ReadAllLines(f))
-                {
-                    int eq = line.IndexOf('=');
-                    if (eq > 0) kv[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim();
-                }
-            Func<string, bool, bool> get = (k, def) => { string v; return kv.TryGetValue(k, out v) ? v == "1" : def; };
-            autoDetect = get("auto", false);
-            announce = get("announce", true);
-            minimalOn = get("minimal", false);
-            minimalAuto = get("minimal_auto", true);
-        }
-        catch { }
+        lock (settingsLock)
+            try
+            {
+                // one "key=value" per line, matched by the whole key ("auto" is not "minimal_auto")
+                string f = Path.Combine(logDir, "netbug.settings");
+                var kv = new Dictionary<string, string>();
+                if (File.Exists(f))
+                    foreach (var line in File.ReadAllLines(f))
+                    {
+                        int eq = line.IndexOf('=');
+                        if (eq > 0) kv[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim();
+                    }
+                Func<string, bool, bool> get = (k, def) => { string v; return kv.TryGetValue(k, out v) ? v == "1" : def; };
+                autoDetect = get("auto", false);
+                announce = get("announce", true);
+                minimalOn = get("minimal", false);
+                minimalAuto = get("minimal_auto", true);
+            }
+            catch { }
     }
 
     static void SaveSettings()
     {
-        try
-        {
-            File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\nannounce=" + (announce ? "1" : "0") +
-                "\r\nminimal=" + (minimalOn ? "1" : "0") + "\r\nminimal_auto=" + (minimalAuto ? "1" : "0") + "\r\n");
-        }
-        catch { }
+        lock (settingsLock)
+            try
+            {
+                File.WriteAllText(Path.Combine(logDir, "netbug.settings"), "auto=" + (autoDetect ? "1" : "0") + "\r\nannounce=" + (announce ? "1" : "0") +
+                    "\r\nminimal=" + (minimalOn ? "1" : "0") + "\r\nminimal_auto=" + (minimalAuto ? "1" : "0") + "\r\n");
+            }
+            catch { }
     }
 
     // ---------------------------------------------------------------- minimal mode
@@ -655,7 +665,7 @@ class NetBug
     // MAC announce, the ARP capture (pktmon is stopped, freeing its buffer), the automatic router check, and
     // a snapshot's network probes and capture. Rounds without a ping use the last answer (like the background
     // probes); the CSV leaves what wasn't measured empty, the page shows "off".
-    // On when the page's "Minimal mode" switch is on, or when "On a phone tether" is on (the default) and the
+    // On when the page's "Minimal mode" switch is on, or when "Auto on phone tether" is on (the default) and the
     // active interface is a phone's USB tether (RNDIS / NCM / Apple) or a mobile broadband adapter (kept on
     // for 60 s when the tether drops out and no other network takes over). Anyone who
     // can open the page may flip both switches (POST /api/minimal with an X-Netbug-Minimal header: other
@@ -691,7 +701,7 @@ class NetBug
             Event(string.Format("minimal mode on a phone tether: {0} (from {1})", minimalAuto ? "on" : "off", from));
         }
         SaveSettings();
-        return string.Format("{{\"on\":{0},\"auto\":{1}}}", minimalOn ? "true" : "false", minimalAuto ? "true" : "false");
+        return new Jw().B("on", minimalOn).B("auto", minimalAuto).ToString();
     }
 
     static volatile bool ifDirty = true;
@@ -726,15 +736,17 @@ class NetBug
     // gateway MAC, the ARP history and the Cloudflare route check's usual time belong to one generation.
     static volatile int netGen;
     static string genIface, genGw = "", genSsid = "", genProf = "";
-    static double lastNetEventAt = double.MinValue;   // Mono() of Windows' last network address/availability event
+    static long lastNetEventMs = long.MinValue;   // GetTickCount64() of Windows' last network event or wake from sleep
+    static void MarkNetEvent() { Interlocked.Exchange(ref lastNetEventMs, (long)GetTickCount64()); }
+    static double LastNetEventAt() { long v = Interlocked.Read(ref lastNetEventMs); return v == long.MinValue ? double.MinValue : v / 1000.0; }
 
-    // the active network as one object, so other threads never see a new interface with an old gateway
+    // the active network and its generation as one object, so other threads never mix old and new
     class NetNow
     {
-        public readonly NetworkInterface Ni; public readonly IPAddress Ip, Gw;
-        public NetNow(NetworkInterface ni, IPAddress ip, IPAddress gw) { Ni = ni; Ip = ip; Gw = gw; }
+        public readonly NetworkInterface Ni; public readonly IPAddress Ip, Gw; public readonly int Gen;
+        public NetNow(NetworkInterface ni, IPAddress ip, IPAddress gw, int gen) { Ni = ni; Ip = ip; Gw = gw; Gen = gen; }
     }
-    static volatile NetNow cur = new NetNow(null, null, null);
+    static volatile NetNow cur = new NetNow(null, null, null, 0);
 
     // the adapter's own DNS servers (besides the gateway), from the interface scan: the DNS check's fallback
     static IPAddress[] scanDns = new IPAddress[0];
@@ -751,8 +763,8 @@ class NetBug
 
     static void Run()
     {
-        NetworkChange.NetworkAddressChanged += (s, e) => { ifDirty = true; lastNetEventAt = Mono(); };
-        NetworkChange.NetworkAvailabilityChanged += (s, e) => { ifDirty = true; lastNetEventAt = Mono(); };
+        NetworkChange.NetworkAddressChanged += (s, e) => { ifDirty = true; MarkNetEvent(); };
+        NetworkChange.NetworkAvailabilityChanged += (s, e) => { ifDirty = true; MarkNetEvent(); };
         DateTime lastLoop = DateTime.MinValue;
         double lastRow = double.MinValue, lastLoopMono = 0;
         t0 = Mono();
@@ -788,7 +800,6 @@ class NetBug
                 string ifaceName = scanName, ethLink = scanLink, ifType = scanType, ssid = scanSsid, vpn = scanVpn, via = scanVia;
                 bool viaVpn = scanViaVpn;
                 NetworkInterface ni = scanNi;
-                cur = new NetNow(ni, ip, gw);
 
                 // a new interface: its packet counters start fresh, and another network has another public
                 // ip:port (not a NAT change)
@@ -808,14 +819,17 @@ class NetBug
                     profTask = null;
                 }
                 if (ni == null || profIface != ifaceName) netProfile = "";
-                if (ni != null && Idle(profTask) && (profIface != ifaceName || mono - profAt >= 300 || lastNetEventAt > profAt))
+                double netEvAt = LastNetEventAt();
+                if (ni != null && Idle(profTask) && (profIface != ifaceName || mono - profAt >= 300 || netEvAt > profAt))
                 {
                     int idx = IfIndex(ni);
                     profAt = mono; profIface = ifaceName;
                     profTask = idx < 0 ? Task.FromResult("") : Task.Run(() => NetProfile(idx));
                 }
 
-                CheckNetwork(ni, ifaceName, gw, ssid, mono);
+                CheckNetwork(ni, ifaceName, gw, ssid, mono, netEvAt);
+                // publish interface, IP, gateway and generation together after CheckNetwork
+                cur = new NetNow(ni, ip, gw, netGen);
                 // a new network: the Cloudflare route check learns its usual time again, so one network's
                 // 1.1.1.1 time isn't judged against another's
                 if (netGen != lastCfGen)
@@ -835,7 +849,10 @@ class NetBug
                     dnsTask = server == null ? Task.FromResult(-1) : Task.Run(() => DnsProbe(server, alt));
                 }
                 if (!minimal && (tenS || tcpMs < 0) && Idle(tcpTask)) tcpTask = Task.Run(() => TcpProbe());
-                if ((tenS || gwMac == "") && Idle(arpTask) && gw != null && ip != null && ni != null)   // "" = not read yet on this network
+                // wait for a pending profile lookup right after a network event so a hidden-SSID switch onto
+                // the same gateway IP bumps netGen before the new router's MAC is judged
+                bool profWait = !Idle(profTask) && mono - netEvAt < 60;
+                if (!profWait && (tenS || gwMac == "") && Idle(arpTask) && gw != null && ip != null && ni != null)   // "" = not read yet on this network
                 {
                     IPAddress agw = gw, aip = ip; NetworkInterface ani = ni; string gen = netGen.ToString();
                     arpTask = Task.Run(() => new[] { Arp(agw, aip), ArpEntryType(agw, ani), agw.ToString(), gen });
@@ -854,9 +871,10 @@ class NetBug
                 if (minimal && doCf && cfMs < 0 && !doG)
                 {
                     // 1.1.1.1 just started failing: 8.8.8.8 gets what is left of this second (the next rounds ask
-                    // both at once), so the round still ends on time; too little left counts as a miss
-                    int budget = 950 - (int)(DateTime.Now - loopStart).TotalMilliseconds;
-                    gMs = budget >= 100 ? PingAsync(pingG, GIp, Math.Min(800, budget)).Result : -1;
+                    // both at once), so the round still ends on time; if too little is left, leave it unmeasured (-2)
+                    // rather than logging a fake failure
+                    int budget = 950 - (int)((Mono() - mono) * 1000);
+                    gMs = budget >= 100 ? PingAsync(pingG, GIp, Math.Min(800, budget)).Result : -2;
                 }
                 bool cfMeasured = doCf, gMeasured = gMs != -2;
                 if (minimal) lastMinCf = cfMs;
@@ -865,7 +883,7 @@ class NetBug
                 // a slower one in a later round: the round itself never takes longer for it
                 var pending = new List<Task>();
                 foreach (Task t in new Task[] { dnsTask, tcpTask, arpTask }) if (t != null && !t.IsCompleted) pending.Add(t);
-                int left = 900 - (int)(DateTime.Now - loopStart).TotalMilliseconds;
+                int left = 900 - (int)((Mono() - mono) * 1000);
                 if (pending.Count > 0 && left > 0) Task.WaitAll(pending.ToArray(), left);
                 if (dnsTask != null && dnsTask.IsCompleted) { dnsMs = dnsTask.Status == TaskStatus.RanToCompletion ? dnsTask.Result : -1; dnsTask = null; }
                 if (tcpTask != null && tcpTask.IsCompleted) { tcpMs = tcpTask.Status == TaskStatus.RanToCompletion ? tcpTask.Result : -1; tcpTask = null; }
@@ -894,18 +912,24 @@ class NetBug
                 long txDelta = 0, rxDelta = 0;
                 if (ni != null)
                 {
-                    var st = ni.GetIPv4Statistics();
-                    long tx = st.UnicastPacketsSent, rx = st.UnicastPacketsReceived;
-                    // counters going backwards were reset (sleep, adapter reset): this second starts them fresh
-                    if (lastTx >= 0 && tx >= lastTx && rx >= lastRx) { txDelta = tx - lastTx; rxDelta = rx - lastRx; }
-                    lastTx = tx; lastRx = rx;
+                    try
+                    {
+                        var st = ni.GetIPv4Statistics();
+                        long tx = st.UnicastPacketsSent, rx = st.UnicastPacketsReceived;
+                        // counters going backwards were reset (sleep, adapter reset): this second starts them fresh
+                        if (lastTx >= 0 && tx >= lastTx && rx >= lastRx) { txDelta = tx - lastTx; rxDelta = rx - lastRx; }
+                        lastTx = tx; lastRx = rx;
+                    }
+                    catch { ifDirty = true; lastTx = -1; }   // adapter vanished mid-round: rescan next second
                 }
 
                 // ---- classify ----
+                // a router check cuts the connection on purpose: its seconds are tagged, never an outage, lag or CF route fault
+                bool checking = fixBusy;
                 var fails = new List<string>();
                 if (ni == null) fails.Add("no_iface");
                 if (gw != null && gwMs < 0) fails.Add("gw");
-                if (cfMs < 0 && gMs < 0) fails.Add("internet");
+                if (cfMs == -1 && gMs == -1) fails.Add("internet");
                 if (dnsMs == -1) fails.Add("dns");
                 if (!minimal && udpMs == -1 && mono >= udpGraceUntil) fails.Add("udp");   // not in the first 10 s of the probe (start-up, leaving minimal mode)
                 string map = udpMap;
@@ -922,9 +946,7 @@ class NetBug
                 }
                 if (!minimal && tcpMs == -1) fails.Add("tcp");
                 if (udpTotal >= UdpWarnThreshold) fails.Add("udp_high");
-                if (!minimal && CfRoute(cfMs, gMs, mono)) fails.Add("cf_route");
-                // a router check cuts the connection on purpose: its seconds are tagged, never an outage or lag
-                bool checking = fixBusy;
+                if (!minimal && !checking && CfRoute(cfMs, gMs, mono)) fails.Add("cf_route");
                 if (checking) fails.Add("router_check");
                 string failStr = string.Join("|", fails);
 
@@ -966,22 +988,23 @@ class NetBug
                 // LAN lag: the gateway is normally 0-1 ms away, so a slow or lost gateway ping
                 // together with a slow/lost internet ping means the local segment is choking
                 bool lagNow = !checking && ni != null && (gwMs >= LagGwMs || (gwMs < 0 && (cfMs == -1 || gMs == -1)));   // -2 = not pinged
+                double nowMono = Mono();
                 if (lagNow)
                 {
-                    if (!inLag) { inLag = true; lagStart = DateTime.Now; lagMaxGw = 0; lagLoss = 0; lagSamples = 0; lagSnapped = false; }
-                    lagLastBad = DateTime.Now;
+                    if (!inLag) { inLag = true; lagStart = DateTime.Now; lagStartMono = nowMono; lagMaxGw = 0; lagLoss = 0; lagSamples = 0; lagSnapped = false; }
+                    lagLastBad = DateTime.Now; lagLastBadMono = nowMono;
                     lagSamples++;
                     if (gwMs < 0) lagLoss++; else lagMaxGw = Math.Max(lagMaxGw, gwMs);
-                    if (!lagSnapped && (DateTime.Now - lagStart).TotalSeconds >= 5)
+                    if (!lagSnapped && nowMono - lagStartMono >= 5)
                     {
-                        Event(string.Format("LAG ongoing for {0:N0} s: gw max {1} ms, {2} lost gw pings", (DateTime.Now - lagStart).TotalSeconds, lagMaxGw, lagLoss));
+                        Event(string.Format("LAG ongoing for {0:N0} s: gw max {1} ms, {2} lost gw pings", nowMono - lagStartMono, lagMaxGw, lagLoss));
                         Snapshot("lag"); lagSnapped = true;
                     }
                 }
-                else if (inLag && (DateTime.Now - lagLastBad).TotalSeconds >= 10)
+                else if (inLag && nowMono - lagLastBadMono >= 10)
                 {
                     inLag = false;
-                    double dur = (lagLastBad - lagStart).TotalSeconds + 1;
+                    double dur = (lagLastBadMono - lagStartMono) + 1;
                     if (lagSamples >= 3)
                         Event(string.Format("LAG {0:HH:mm:ss}-{1:HH:mm:ss} ({2:N0} s): {3} bad s, gw max {4} ms, {5} lost gw pings", lagStart, lagLastBad, dur, lagSamples, lagMaxGw, lagLoss));
                 }
@@ -991,12 +1014,12 @@ class NetBug
                 // An outage needs 2 bad seconds in a row and counts from the first. Gateway-only ICMP loss
                 // doesn't count (the MikroTik rate-limits ICMP), and lag, high UDP usage and a slow
                 // Cloudflare route have their own events. During a router check the outage state stays as it
-                // was (the check's own cuts aren't counted).
+                // was (the check's own cuts aren't counted; a lone pre-check blip doesn't stitch across it).
                 var realFails = fails.Where(f => f != "udp_high" && f != "gw" && f != "lag" && f != "cf_route" && f != "router_check").ToList();
                 // CSV rows every second around real failures, lag and router checks, not for the warnings
                 if (realFails.Count > 0 || lagNow || checking) fastUntil = mono + 60;
-                if (!checking)
-                    TrackOutage(realFails.Count > 0, failStr, fails.Contains("gw"), loopStart, ifaceName, gw, gwMs, cfMs, gMs, txDelta, rxDelta);
+                if (checking) { if (!inOutage) failStreak = 0; }
+                else TrackOutage(realFails.Count > 0, failStr, fails.Contains("gw"), loopStart, ifaceName, gw, gwMs, cfMs, gMs, txDelta, rxDelta);
 
                 // ---- csv row ----
                 // stamped with the round's start, when the pings went out; the public IP only while it's
@@ -1018,12 +1041,12 @@ class NetBug
                 long now = Unix(loopStart);
                 lock (hist)
                 {
-                    // -2 = not measured (minimal mode): the page shows "off"; NotYet (-3): "–"
+                    // -2 = not measured (minimal mode): the page shows "Off"; NotYet (-3): "–"
                     hist[histPos] = string.Format("[{0},{1},{2},{3},{4},{5},{6},{7}]", now, gwMs, cfMs, gMs, minimal ? -2 : udpMs, dnsMs, minimal ? -2 : tcpMs, J(failStr));
                     histPos = (histPos + 1) % hist.Length;
                     if (histCount < hist.Length) histCount++;
                 }
-                if (gwAlert != "" && (DateTime.Now - gwAlertAt).TotalMinutes >= 30) gwAlert = "";   // alert shows for 30 min
+                lock (watchLock) if (gwAlert != "" && nowMono - gwAlertAtMono >= 1800) gwAlert = "";   // alert shows for 30 min
                 sampleJson = new Jw()
                     .N("t", now).S("iface", ifaceName).S("link", ethLink).S("ip", ip == null ? "" : ip.ToString())
                     .S("gw", gw == null ? "" : gw.ToString()).S("gwMac", gwMac).N("tx", txDelta).N("rx", rxDelta)
@@ -1039,7 +1062,7 @@ class NetBug
                 Event("netbug error: " + ex.GetType().Name + ": " + ex.Message);
             }
 
-            int sleep = 1000 - (int)(DateTime.Now - loopStart).TotalMilliseconds;
+            int sleep = 1000 - (int)((Mono() - mono) * 1000);
             if (sleep > 0) Thread.Sleep(sleep);
         }
     }
@@ -1076,19 +1099,19 @@ class NetBug
         }
     }
 
-    // Is the active network another one than before? Another adapter, another gateway IP, or another Wi-Fi
-    // name or Windows network profile on the same adapter and gateway IP within 60 s of a Windows network
-    // event (an ARP attack changes none of these, and causes no such event). Losing the network for a while
-    // and coming back to the same one is not a new network. A new one gets a new generation (netGen): its
-    // gateway MAC is read again and its first one is trusted (see JudgeGateway), the ARP history is cleared
-    // and the Cloudflare route check learns its usual time again.
-    static void CheckNetwork(NetworkInterface ni, string ifaceName, IPAddress gw, string ssid, double mono)
+    // Is the active network another one than before? Another adapter, another gateway IP, another Wi-Fi
+    // SSID, or another Windows network profile on the same adapter and gateway IP within 60 s of a Windows
+    // network event or wake from sleep (an ARP attack changes none of these, and causes no such event).
+    // Losing the network for a while and coming back to the same one is not a new network. A new one gets
+    // a new generation (netGen): its gateway MAC is read again and its first one is trusted (see JudgeGateway),
+    // the ARP history is cleared and the Cloudflare route check learns its usual time again.
+    static void CheckNetwork(NetworkInterface ni, string ifaceName, IPAddress gw, string ssid, double mono, double netEvAt)
     {
         if (ni == null) return;
         string gwS = gw == null ? "" : gw.ToString();
-        bool recent = mono - lastNetEventAt < 60;
+        bool recent = mono - netEvAt < 60;
         if (genIface == null || ifaceName != genIface || gwS != genGw
-            || (ssid != "" && genSsid != "" && ssid != genSsid && recent)
+            || (ssid != "" && genSsid != "" && ssid != genSsid)
             || (netProfile != "" && genProf != "" && netProfile != genProf && recent))
         {
             netGen++;
@@ -1105,26 +1128,28 @@ class NetBug
     // network is trusted; any other one later (same network, so same gateway IP) is GATEWAY MAC CHANGED.
     static void JudgeGateway(IPAddress gw)
     {
-        if (gwArp != "" && gwArp != lastGwArp)
+        string mac = gwMac, arp = gwArp;
+        if (arp != "" && arp != lastGwArp)
         {
-            Event(string.Format("gateway ARP entry for {0}: {1} -> {2}{3}", gw, lastGwArp == "" ? "?" : lastGwArp, gwArp,
-                gwArp == "static" ? " (pinned to " + gwMac + ", spoofed ARP replies are ignored)" : ""));
-            if (gwArp == "static" && gwMac.Length == 17 && gw != null) TrustGateway(gw.ToString(), gwMac);   // the pin is the truth
-            lock (pinLock) pinCacheAt = DateTime.MinValue;   // the persistent store may have changed too
-            lastGwArp = gwArp;
+            Event(string.Format("gateway ARP entry for {0}: {1} -> {2}{3}", gw, lastGwArp == "" ? "?" : lastGwArp, arp,
+                arp == "static" ? " (pinned to " + mac + ", spoofed ARP replies are ignored)" : ""));
+            if (arp == "static" && mac.Length == 17 && gw != null) TrustGateway(gw.ToString(), mac);   // the pin is the truth
+            lock (pinLock) pinCacheAt = double.MinValue;   // the persistent store may have changed too
+            lastGwArp = arp;
         }
-        if (gwMac == "" || gwMac == lastGwMac) return;
+        if (mac == "" || mac == lastGwMac) return;
         string gwIp = gw == null ? "" : gw.ToString(), tMac = TrustedFor(gw);
-        if (gwMac.Length == 17 && tMac == "") { TrustGateway(gwIp, gwMac); tMac = gwMac; }   // the first one on this network
-        if (gwMac.Length == 17 && gwMac != tMac)
+        if (mac.Length == 17 && tMac == "") { TrustGateway(gwIp, mac); tMac = mac; }   // the first one on this network
+        if (mac.Length == 17 && mac != tMac)
         {
-            SetGwAlert(string.Format("gateway {0} changed MAC {1} -> {2} at {3:HH:mm:ss}", gwIp, tMac, gwMac, DateTime.Now));
-            Event(string.Format("GATEWAY MAC CHANGED, possible ARP spoofing: {0} {1} -> {2} (trusted {3}, ARP entry {4})", gwIp, lastGwMac, gwMac, tMac, gwArp));
+            SetGwAlert(string.Format("gateway {0} changed MAC {1} -> {2} at {3:HH:mm:ss}", gwIp, tMac, mac, DateTime.Now));
+            Event(string.Format("GATEWAY MAC CHANGED, possible ARP spoofing: {0} {1} -> {2} (trusted {3}, ARP entry {4})",
+                gwIp, lastGwMac == "" ? "?" : lastGwMac, mac, tMac, arp));
             Snapshot("gw_mac");
             autoKick = true;
         }
-        else Event(string.Format("gateway MAC: {0} -> {1}", lastGwMac == "" ? "?" : lastGwMac, gwMac));
-        lastGwMac = gwMac;
+        else Event(string.Format("gateway MAC: {0} -> {1}", lastGwMac == "" ? "?" : lastGwMac, mac));
+        lastGwMac = mac;
     }
 
     // Minimal mode (see "minimal mode"): on by the switch, or on a phone tether. A tether that drops out with
@@ -1204,7 +1229,7 @@ class NetBug
             Event(string.Format("OUTAGE END after {0:N0} s ({1:HH:mm:ss}-{2:HH:mm:ss}, the last sample before the gap)",
                 (outageLastBad - outageStart).TotalSeconds + 1, outageStart, outageLastBad));
         }
-        inLag = false; failStreak = 0; lastTx = -1; ifDirty = true;
+        inLag = false; failStreak = 0; lastTx = -1; ifDirty = true; MarkNetEvent();
         Event(string.Format("no samples for {0:N0} s ({1} to {2}): the laptop was asleep or netbug was paused",
             gapSecs, Stamp(from), Stamp(DateTime.Now)));
     }
@@ -1518,8 +1543,9 @@ class NetBug
             var sw = Stopwatch.StartNew();
             using (var c = new TcpClient())
             {
-                bool ok = c.ConnectAsync(ip, 443).Wait(2000);
-                return ok ? (int)sw.ElapsedMilliseconds : -1;
+                var conn = c.ConnectAsync(ip, 443);
+                if (!conn.Wait(2000)) { conn.ContinueWith(_ => { }, TaskContinuationOptions.OnlyOnFaulted); return -1; }
+                return (int)sw.ElapsedMilliseconds;
             }
         }
         catch { return -1; }
@@ -1544,7 +1570,8 @@ class NetBug
                 using (var tcp = new TcpClient())
                 {
                     tcp.ReceiveTimeout = 5000; tcp.SendTimeout = 5000;
-                    if (!tcp.ConnectAsync(host, 443).Wait(5000)) throw new TimeoutException("connect timed out");
+                    var conn = tcp.ConnectAsync(host, 443);
+                    if (!conn.Wait(5000)) { conn.ContinueWith(_ => { }, TaskContinuationOptions.OnlyOnFaulted); throw new TimeoutException("connect timed out"); }
                     using (var ssl = new System.Net.Security.SslStream(tcp.GetStream()))
                     {
                         ssl.ReadTimeout = 5000; ssl.WriteTimeout = 5000;
@@ -1560,6 +1587,7 @@ class NetBug
                                 int n = ssl.Read(buf, 0, buf.Length);
                                 if (n == 0) throw new EndOfStreamException("server closed (FIN)");
                                 head.Append(Encoding.ASCII.GetString(buf, 0, n));
+                                if (head.Length > 16384) throw new IOException("response headers too large");
                             }
                             requests++;
                             if (sw.ElapsedMilliseconds > 1500)
@@ -1656,7 +1684,7 @@ class NetBug
         return IntPtr.Zero;
     }
 
-    static void SetGwAlert(string text) { gwAlertAt = DateTime.Now; gwAlert = text; }
+    static void SetGwAlert(string text) { lock (watchLock) { gwAlertAtMono = Mono(); gwAlert = text; } }
 
     // ---------------------------------------------------------------- ARP watch
     //
@@ -1695,12 +1723,14 @@ class NetBug
 
     static void RingLoop()
     {
+        int fastFails = 0;
         while (true)
         {
             try
             {
                 while (ringPaused || minimal) Thread.Sleep(500);   // minimal mode: no capture (see "minimal mode")
                 Process p;
+                double startedAt;
                 lock (pktmonLock)
                 {
                     if (ringPaused || minimal) continue;
@@ -1709,16 +1739,31 @@ class NetBug
                         { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true });
                     ringProc = p;
                     ringIdle.Reset();
+                    startedAt = Mono();
                 }
+                int exitCode = 0;
                 using (p)
                 {
                     try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
                     RingRead(p.StandardOutput);   // until pktmon stops (a pause, or anything else stopping it)
-                    p.WaitForExit(5000);
+                    if (p.WaitForExit(5000)) exitCode = p.ExitCode;
                 }
                 ringProc = null;
                 ringIdle.Set();
-                if (!ringPaused) Thread.Sleep(1000);
+                double ran = Mono() - startedAt;
+                if (ran >= 10) fastFails = 0;
+                if (!ringPaused && !minimal)
+                {
+                    if (ran < 5)
+                    {
+                        fastFails++;
+                        int wait = Math.Min(60, 5 * (1 << Math.Min(4, fastFails - 1)));
+                        if (fastFails == 1 || fastFails % 5 == 0)
+                            Event(string.Format("ARP capture stopped after {0:0.0} s (exit {1}): retrying in {2} s", ran, exitCode, wait));
+                        Thread.Sleep(wait * 1000);
+                    }
+                    else Thread.Sleep(1000);
+                }
             }
             catch (Exception ex) { ringProc = null; ringIdle.Set(); Event("ARP capture error: " + ex.Message); Thread.Sleep(30000); }
         }
@@ -1897,8 +1942,11 @@ class NetBug
         var rogueGw = expectMac == "" ? new List<Claim>() : g.Where(c => !same(c.Mac, expectMac)).ToList();
         var rogueMe = own == "" ? new List<Claim>() : m.Where(c => !same(c.Mac, own)).ToList();
         int mine = m.Where(c => same(c.Mac, own)).Sum(c => c.N);
-        announceSeenFrom = announceSeenAt == DateTime.MinValue ? started : announceSeenAt;   // since the previous check
-        announceSeen = mine; announceSeenAt = DateTime.Now;
+        lock (watchLock)
+        {
+            announceSeenFrom = announceSeenAt == DateTime.MinValue ? started : announceSeenAt;   // since the previous check
+            announceSeen = mine; announceSeenAt = DateTime.Now;
+        }
         if (rogueGw.Count > 0)
         {
             string who = string.Join(", ", rogueGw.Select(c => c.ToString()));
@@ -2214,9 +2262,20 @@ class NetBug
             if ((priv > MaxPrivateBytes || handles > MaxHandles || threads > MaxThreads) && !fixBusy)
             {
                 Event(string.Format("health limit exceeded (private {0:N0} MB, handles {1}, threads {2}): restarting netbug", priv / 1048576, handles, threads));
-                WaitForCheck();
-                if (Monitor.TryEnter(pktmonLock, 10000)) RingPause();
-                Restart(SelfPath());
+                bool paused = false;
+                try
+                {
+                    WaitForCheck();
+                    paused = Monitor.TryEnter(pktmonLock, 10000);
+                    if (paused) RingPause();
+                    Restart(SelfPath());
+                }
+                catch (Exception ex)
+                {
+                    if (paused) { RingResume(); Monitor.Exit(pktmonLock); }
+                    lock (fixLock) exiting = false;
+                    Event("health restart failed: " + ex.Message);
+                }
             }
         }
     }
@@ -2327,11 +2386,12 @@ class NetBug
     // year), /api/state the latest sample + chart history (?since=<unix s>
     // returns only newer samples) + netbug's version, /api/events new events.log lines (?from=<byte offset>, or the
     // last 64 KB when omitted). /api/fix* is the router check and pin plus the update check/install (see
-    // FixApi); POST /api/minimal the minimal mode switches (see MinimalApi). One request at a time on this thread, except POST /api/export (see "export and updates"),
-    // which streams on its own; the page polls only while it is visible. The "+" prefix (all
+    // FixApi); POST /api/minimal the minimal mode switches (see MinimalApi). Requests run concurrently
+    // (capped at 16 in flight) so a slow remote client or a netsh call never stalls other polls;
+    // POST /api/export streams on its own thread too. The "+" prefix (all
     // interfaces, Tailscale included) needs admin, which netbug always has. Other devices see the page read-only:
-    // only a request from this laptop gets the control token (see LocalHost), so they get no Router protection,
-    // update or export controls, and those APIs refuse them.
+    // only a request from this laptop gets the control token (see LocalHost), so they get no Protection
+    // or System controls, and those APIs refuse them.
     static void DashboardLoop()
     {
         var listener = new HttpListener();
@@ -2342,6 +2402,7 @@ class NetBug
             Event("dashboard listening on port " + DashPort + " (all interfaces; controls only on this laptop)");
         }
         catch (Exception ex) { Event("dashboard failed to start: " + ex.Message); return; }
+        var slots = new SemaphoreSlim(16, 16);
         while (listener.IsListening)
         {
             HttpListenerContext ctx;
@@ -2358,9 +2419,18 @@ class NetBug
                 });
                 continue;
             }
-            try { Serve(ctx); }
-            catch { }
-            finally { try { ctx.Response.Close(); } catch { } }
+            if (!slots.Wait(0))
+            {
+                try { ctx.Response.StatusCode = 503; ctx.Response.Close(); } catch { }
+                continue;
+            }
+            var reqCtx = ctx;
+            Task.Run(() =>
+            {
+                try { Serve(reqCtx); }
+                catch { }
+                finally { try { reqCtx.Response.Close(); } catch { } slots.Release(); }
+            });
         }
     }
 
@@ -2396,13 +2466,21 @@ class NetBug
                     if (long.Parse(h.Substring(1, h.IndexOf(',') - 1)) > since) rows.Add(h);
                 }
             // reading process memory makes Windows enumerate every process, so refresh it only every 10 s
-            if ((DateTime.Now - dashMemAt).TotalSeconds >= 10)
+            double memMb;
+            lock (memLock)
             {
-                using (var p = Process.GetCurrentProcess()) dashMemMb = p.PrivateMemorySize64 / 1048576.0;
-                dashMemAt = DateTime.Now;
+                double nowMono = Mono();
+                if (nowMono - dashMemAt >= 10)
+                {
+                    using (var p = Process.GetCurrentProcess()) dashMemMb = p.PrivateMemorySize64 / 1048576.0;
+                    dashMemAt = nowMono;
+                }
+                memMb = dashMemMb;
             }
-            body = string.Format("{{\"now\":{0},\"started\":{1},\"memMb\":{2:F1},\"port\":{3},\"version\":{4},\"sample\":{5},\"hist\":[{6}]}}",
-                Unix(DateTime.Now), Unix(started), dashMemMb, DashPort, J(Version), sampleJson, string.Join(",", rows));
+            body = new Jw().N("now", Unix(DateTime.Now)).N("started", Unix(started))
+                .R("memMb", memMb.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))
+                .N("port", DashPort).S("version", Version).R("sample", sampleJson)
+                .R("hist", "[" + string.Join(",", rows) + "]").ToString();
         }
         else if (path == "/api/events")
         {
@@ -2427,7 +2505,7 @@ class NetBug
     // under netbug-logs/, the in-memory ARP ring (arp-ring-memory.txt, the last 15 min), the latest sample
     // and Router protection status (state.json) and EXPORT_MANIFEST.txt. Nothing is redacted. Files are
     // read while netbug keeps writing them (shared read). One export at a time.
-    // Updates: 2 min after start and then every 15 min (6 h in minimal mode), and on the page's "Check for updates", netbug reads
+    // Updates: 2 min after start and then every 15 min (6 h in minimal mode), and on the System tab's "Check now", netbug reads
     // the latest GitHub release of Repo (about 12 KB; GitHub allows 60 such reads an hour per public IP
     // without an account, shared by everyone behind it). It sends the last reply's ETag, so an unchanged
     // release comes back as an empty 304. A higher tag than Version with a netbug.exe asset is an update.
@@ -2479,8 +2557,15 @@ class NetBug
 
     static bool UpdateAvailable()
     {
+        string url, latest;
+        lock (updLock) { url = updUrl; latest = updLatest; }
+        return UpdateAvailable(url, latest);
+    }
+
+    static bool UpdateAvailable(string url, string latest)
+    {
         System.Version v;
-        return updUrl != "" && System.Version.TryParse(updLatest, out v) && v > System.Version.Parse(Version);
+        return url != "" && System.Version.TryParse(latest, out v) && v > System.Version.Parse(Version);
     }
 
     // One check at a time (the 15-minute loop and the page's button share the cached reply and its ETag);
@@ -2523,18 +2608,51 @@ class NetBug
             if (!tag.Success) throw new Exception("GitHub's reply has no release version");
             string exeRe = "\"browser_download_url\"\\s*:\\s*\"(https://github\\.com/" + Regex.Escape(Repo) + "/releases/download/[^\"/]+/netbug\\.exe)\"";
             var url = Regex.Match(json, exeRe);
-            // the SHA-256 GitHub computed for the asset (its "digest", listed just before its download URL)
-            var sha = Regex.Match(json, "\"digest\"\\s*:\\s*\"sha256:([0-9a-f]{64})\"[^{}]*?" + exeRe);
-            lock (updLock)   // InstallUpdate reads the three together
+            // find the SHA-256 anywhere inside the enclosing asset object (independent of JSON key order or nested objects like "uploader")
+            string digest = url.Success ? AssetDigest(json, url.Index) : "";
+            lock (updLock)   // InstallUpdate and FixStatus read these together
             {
                 updUrl = url.Success ? url.Groups[1].Value : "";
-                updSha = sha.Success ? sha.Groups[1].Value : "";
+                updSha = digest;
                 updLatest = tag.Groups[2].Value;
             }
             updError = updUrl == "" ? "release " + updLatest + " has no netbug.exe" : "";
         }
         catch (Exception ex) { updError = "update check failed: " + ex.Message; }
         updCheckedAt = DateTime.Now;
+    }
+
+    // Extracts the sha256 digest from the JSON object enclosing `pos`, ignoring nested objects (e.g. "uploader": {...}).
+    static string AssetDigest(string json, int pos)
+    {
+        int start = -1, end = -1, depth = 0;
+        bool inStr = false, esc = false;
+        for (int i = pos - 1; i >= 0; i--)
+        {
+            char c = json[i];
+            if (c == '"')
+            {
+                int bs = 0;
+                for (int k = i - 1; k >= 0 && json[k] == '\\'; k--) bs++;
+                if ((bs & 1) == 0) inStr = !inStr;
+            }
+            if (inStr) continue;
+            if (c == '}') depth++;
+            else if (c == '{') { if (depth == 0) { start = i; break; } depth--; }
+        }
+        if (start < 0) return "";
+        depth = 0; inStr = false; esc = false;
+        for (int i = start; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (inStr) { if (esc) esc = false; else if (c == '\\') esc = true; else if (c == '"') inStr = false; continue; }
+            if (c == '"') inStr = true;
+            else if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) { end = i; break; }
+        }
+        if (end <= start) return "";
+        var m = Regex.Match(json.Substring(start, end - start + 1), "\"digest\"\\s*:\\s*\"sha256:([0-9a-f]{64})\"");
+        return m.Success ? m.Groups[1].Value : "";
     }
 
     // Starts installing the update found by the last check; returns an error for the page, "" when started.
@@ -2602,6 +2720,8 @@ class NetBug
                 if (an.Name != "netbug" || an.Version < System.Version.Parse(tag))
                     throw new Exception("the new file is " + an.Name + " " + an.Version + ", not netbug " + tag);
 
+                updPct = 92; updStep = fixBusy ? "Waiting for the router check to finish" : "Preparing to replace netbug.exe";
+                WaitForCheck();   // block new checks and let any check started during the download finish before touching disk
                 updPct = 95; updStep = "Replacing netbug.exe (the current build is kept as netbug.old.exe)";
                 if (File.Exists(old)) File.Delete(old);
                 File.Move(self, old);
@@ -2610,7 +2730,6 @@ class NetBug
                 swapped = true;
                 Event("installing netbug " + an.Version + ": " + self + " replaced (the previous build is " + old + (sha != "" ? "; SHA-256 checked" : "; GitHub listed no SHA-256") + "), restarting");
                 updPct = 100; updStep = "Restarting netbug " + tag + " (the page reloads by itself)";
-                WaitForCheck();   // a check started during the download finishes first
                 paused = Monitor.TryEnter(pktmonLock, 10000);
                 if (paused) RingPause();
                 Restart(self);   // the path from before the rename: the running file is netbug.old.exe now
@@ -2624,7 +2743,7 @@ class NetBug
                     catch (Exception e2) { undo = "; netbug.exe is already the new build and runs from the next restart (" + e2.Message + ")"; }
                 }
                 if (paused) { RingResume(); Monitor.Exit(pktmonLock); }
-                exiting = false;   // netbug keeps running: router checks may start again
+                lock (fixLock) exiting = false;   // netbug keeps running: router checks may start again
                 updError = "update failed: " + ex.Message + undo;
                 Event("update failed: " + ex.Message + undo);
                 foreach (var f in new[] { part, exe }) try { File.Delete(f); } catch { }
@@ -2651,14 +2770,19 @@ class NetBug
     {
         string form = "";
         if (ctx.Request.HttpMethod == "POST")
-            using (var r = new StreamReader(ctx.Request.InputStream)) form = r.ReadToEnd();
+            using (var r = new StreamReader(ctx.Request.InputStream))
+            {
+                var buf = new char[512];
+                int n = r.ReadBlock(buf, 0, buf.Length);
+                form = new string(buf, 0, n);
+            }
         var tok = Regex.Match(form, "(?:^|&)token=([0-9a-f]{32})(?:&|$)");
         if (!LocalHost(ctx) || ctx.Request.HttpMethod != "POST" || !tok.Success || tok.Groups[1].Value != token) { ctx.Response.StatusCode = 403; return; }
         if (Interlocked.Exchange(ref exporting, 1) == 1) { ctx.Response.StatusCode = 409; return; }
         try
         {
             DateTime cut = DateTime.Now;
-            if (Monitor.TryEnter(pktmonLock, 15000))
+            if (!minimal && Monitor.TryEnter(pktmonLock, 15000))
                 try { RingPause(); } finally { RingResume(); Monitor.Exit(pktmonLock); }
             var frames = RingRecent();
 
@@ -2694,7 +2818,7 @@ class NetBug
                 var ringText = new StringBuilder();
                 foreach (var fr in frames) ringText.Append(StampMs(fr.T)).Append("  ").Append(fr.Line).Append("\r\n");
                 ZipText(zip, "netbug-logs/arp-ring-memory.txt", ringText.ToString());
-                ZipText(zip, "netbug-logs/state.json", "{\"version\":" + J(Version) + ",\"sample\":" + sampleJson + ",\"routerProtection\":" + FixStatus("") + "}");
+                ZipText(zip, "netbug-logs/state.json", new Jw().S("version", Version).R("sample", sampleJson).R("routerProtection", FixStatus("")).ToString());
                 ZipText(zip, "netbug-logs/EXPORT_MANIFEST.txt",
                     "netbug " + Version + " full export. Nothing is redacted: it has MAC addresses, IPs and network names.\r\n" +
                     "Export cutoff (local): " + StampMs(cut) + "\r\n" +
@@ -2835,7 +2959,7 @@ class NetBug
     static string verifiedMac = "", verifiedGw = "";
     static int verifiedIf = -1, verifiedGen = -1;
     static string pinCache = "", pinCacheKey = "";
-    static DateTime pinCacheAt = DateTime.MinValue;
+    static double pinCacheAt = double.MinValue;
     static readonly string token = Guid.NewGuid().ToString("N");
     static bool portable;
 
@@ -2918,22 +3042,28 @@ class NetBug
         string iface = ni == null ? "" : ni.Name, pinned = "";
         int idx = IfIndex(ni);
         if (gw != null && idx >= 0) pinned = PersistentPin(idx, gw);
-        bool verifiedHere = VerifiedHere(gw, idx);
+        string vMac = VerifiedMacFor(gw, idx, c.Gen);
+        string curGwMac = gwMac, curGwArp = gwArp;
         // the Router MAC dropdown: the known routers present on this network, then the pinned MAC and the MAC
         // the last check found, when they aren't among them
-        var opts = KnownHere(gw, c.Ip, gwMac).Select(k => new KeyValuePair<string, string>(k.Mac, k.Label)).ToList();
+        var opts = KnownHere(gw, c.Ip, curGwMac).Select(k => new KeyValuePair<string, string>(k.Mac, k.Label)).ToList();
         if (pinned != "" && !opts.Any(o => o.Key == pinned)) opts.Add(new KeyValuePair<string, string>(pinned, "pinned now"));
-        if (verifiedHere && !opts.Any(o => o.Key == verifiedMac)) opts.Add(new KeyValuePair<string, string>(verifiedMac, "found by the last check"));
+        if (vMac != "" && !opts.Any(o => o.Key == vMac)) opts.Add(new KeyValuePair<string, string>(vMac, "found by the last check"));
         string known = "[" + string.Join(",", opts.Select(o => new Jw().S("mac", o.Key).S("label", o.Value).ToString())) + "]";
-        string ann = new Jw().B("on", announce).S("target", announceTarget).N("sent", Thread.VolatileRead(ref announceSent)).N("seen", announceSeen)
-            .N("seenAt", announceSeenAt == DateTime.MinValue ? 0 : Unix(announceSeenAt))
-            .N("seenFrom", announceSeenFrom == DateTime.MinValue ? 0 : Unix(announceSeenFrom)).S("error", announceErr).ToString();
-        string upd = new Jw().S("latest", updLatest).B("available", UpdateAvailable()).N("checkedAt", updCheckedAt == DateTime.MinValue ? 0 : Unix(updCheckedAt))
-            .B("checking", updChecks > 0).B("busy", updBusy).S("step", updStep).N("pct", updPct).S("error", updError).ToString();
+        DateTime seenAt, seenFrom;
+        int seenCount;
+        lock (watchLock) { seenCount = announceSeen; seenAt = announceSeenAt; seenFrom = announceSeenFrom; }
+        string ann = new Jw().B("on", announce).S("target", announceTarget).N("sent", Thread.VolatileRead(ref announceSent)).N("seen", seenCount)
+            .N("seenAt", seenAt == DateTime.MinValue ? 0 : Unix(seenAt))
+            .N("seenFrom", seenFrom == DateTime.MinValue ? 0 : Unix(seenFrom)).S("error", announceErr).ToString();
+        string uLatest, uUrl;
+        lock (updLock) { uLatest = updLatest; uUrl = updUrl; }
+        string upd = new Jw().S("latest", uLatest).B("available", UpdateAvailable(uUrl, uLatest)).N("checkedAt", updCheckedAt == DateTime.MinValue ? 0 : Unix(updCheckedAt))
+            .B("checking", Thread.VolatileRead(ref updChecks) > 0).B("busy", updBusy).S("step", updStep).N("pct", updPct).S("error", updError).ToString();
         return new Jw().B("busy", fixBusy).S("step", fixStep).B("auto", autoDetect).B("portable", portable).S("iface", iface)
-            .S("gw", gw == null ? "" : gw.ToString()).S("arpMac", gwMac).S("arpType", gwArp).S("pinned", pinned)
-            .S("verified", verifiedHere ? verifiedMac : "").R("result", fixJson).S("error", error).R("announce", ann).R("known", known)
-            .S("version", Version).R("update", upd).B("exporting", exporting == 1).B("tether", IsTether(ni))
+            .S("gw", gw == null ? "" : gw.ToString()).S("arpMac", curGwMac).S("arpType", curGwArp).S("pinned", pinned)
+            .S("verified", vMac).R("result", fixJson).S("error", error).R("announce", ann).R("known", known)
+            .S("version", Version).R("update", upd).B("exporting", Thread.VolatileRead(ref exporting) == 1).B("tether", IsTether(ni))
             .B("minimal", minimal).B("snapshot", snapRunning).ToString();
     }
 
@@ -2952,14 +3082,15 @@ class NetBug
         lock (pinLock)
         {
             string key = ifIndex + " " + gw;
-            if (key == pinCacheKey && (DateTime.Now - pinCacheAt).TotalSeconds < 300) return pinCache;
+            double nowMono = Mono();
+            if (key == pinCacheKey && nowMono - pinCacheAt < 300) return pinCache;
             string mac = "";
             foreach (var line in Netsh(string.Format("interface ipv4 show neighbors interface={0} store=persistent", ifIndex)).Split('\n'))
             {
                 var parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length >= 2 && parts[0] == gw.ToString() && parts[1].Length == 17) mac = parts[1].ToUpperInvariant();
             }
-            pinCache = mac; pinCacheKey = key; pinCacheAt = DateTime.Now;
+            pinCache = mac; pinCacheKey = key; pinCacheAt = nowMono;
             return mac;
         }
     }
@@ -2976,7 +3107,9 @@ class NetBug
     static int PingFrom(IPAddress src, IPAddress dst, byte ttl, out IPAddress from)
     {
         from = null;
-        IntPtr handle = IcmpCreateFile(), reply = Marshal.AllocHGlobal(256);
+        IntPtr handle = IcmpCreateFile();
+        if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return Marshal.GetLastWin32Error();
+        IntPtr reply = Marshal.AllocHGlobal(256);
         try
         {
             var options = new IpOptions { Ttl = ttl };
@@ -3007,7 +3140,7 @@ class NetBug
     static volatile bool exiting;
     static void WaitForCheck()
     {
-        exiting = true;
+        lock (fixLock) exiting = true;
         for (int i = 0; i < 240 && fixBusy; i++) Thread.Sleep(500);
     }
 
@@ -3050,10 +3183,10 @@ class NetBug
         try
         {
             var net = cur; NetworkInterface ni = net.Ni; IPAddress ip = net.Ip, gw = net.Gw;
-            int idx = IfIndex(ni), gen = netGen;
+            int idx = IfIndex(ni), gen = net.Gen;
             if (ni == null || ip == null || gw == null || idx < 0)
             {
-                fixJson = string.Format("{{\"at\":{0},\"note\":{1},\"cands\":[]}}", Unix(DateTime.Now), J("No network with a router right now."));
+                fixJson = new Jw().N("at", Unix(DateTime.Now)).S("note", "No network with a router right now.").R("cands", "[]").ToString();
                 return;
             }
             lastDetectGw = gw.ToString();
@@ -3106,10 +3239,11 @@ class NetBug
 
             // the laptop moved to another network or adapter meanwhile: the results say nothing about it
             var now = cur;
-            if (now.Gw == null || now.Gw.ToString() != gwIp || IfIndex(now.Ni) != idx || netGen != gen)
+            if (now.Gw == null || now.Gw.ToString() != gwIp || IfIndex(now.Ni) != idx || now.Gen != gen)
             {
-                fixJson = string.Format("{{\"at\":{0},\"note\":{1},\"cands\":[]}}", Unix(DateTime.Now),
-                    J("The network changed during the check, so nothing was picked" + (only != null ? " or pinned" : "") + ". Run it again."));
+                fixJson = new Jw().N("at", Unix(DateTime.Now))
+                    .S("note", "The network changed during the check, so nothing was picked" + (only != null ? " or pinned" : "") + ". Run it again.")
+                    .R("cands", "[]").ToString();
                 Event(string.Format("router check ({0}) dropped: the network changed during it", why));
                 return;
             }
@@ -3151,16 +3285,16 @@ class NetBug
                 }
                 else note = "Not pinned: " + cands[0].Verdict + ". Nothing was changed. Use Check now to find the real router.";
             }
-            fixJson = string.Format("{{\"at\":{0},\"chosen\":{1},\"note\":{2},\"cands\":[{3}]}}", Unix(DateTime.Now), J(verifiedMac), J(note),
-                string.Join(",", cands.Select(c => string.Format("{{\"mac\":{0},\"from\":{1},\"works\":{2},\"hop\":{3},\"random\":{4},\"verdict\":{5}}}",
-                    J(c.Mac), J(c.From), c.Works ? "true" : "false", J(c.Hop), c.Random ? "true" : "false", J(c.Verdict)))));
+            string candsJson = "[" + string.Join(",", cands.Select(c => new Jw()
+                .S("mac", c.Mac).S("from", c.From).B("works", c.Works).S("hop", c.Hop).B("random", c.Random).S("verdict", c.Verdict).ToString())) + "]";
+            fixJson = new Jw().N("at", Unix(DateTime.Now)).S("chosen", verifiedMac).S("note", note).R("cands", candsJson).ToString();
             if (only != null) Event(string.Format("router test of {0}: {1}; {2}", only, cands[0].Verdict, pinnedNow ? "pinned" : "not pinned"));
             else Event(string.Format("router check: {0} ({1})", verifiedMac != "" ? "real router is " + verifiedMac : "no MAC picked",
                 string.Join("; ", cands.Select(c => c.Mac + ": " + c.Verdict))));
         }
         catch (Exception ex)
         {
-            fixJson = string.Format("{{\"at\":{0},\"note\":{1},\"cands\":[]}}", Unix(DateTime.Now), J("Check failed: " + ex.Message));
+            fixJson = new Jw().N("at", Unix(DateTime.Now)).S("note", "Check failed: " + ex.Message).R("cands", "[]").ToString();
             Event("router check failed: " + ex.Message);
         }
         finally { fixStep = ""; fixBusy = false; }
@@ -3175,8 +3309,8 @@ class NetBug
         lock (fixLock)
         {
             if (fixBusy) return "Wait for the check to finish.";
-            if (!VerifiedHere(gw, idx)) return "Run a check first: nothing is verified for this network yet.";
-            mac = verifiedMac;
+            mac = VerifiedMacUnlocked(gw, idx, c.Gen);
+            if (mac == "") return "Run a check first: nothing is verified for this network yet.";
         }
         return PinMac(ni, idx, gw, mac, "from the page");
     }
@@ -3185,7 +3319,7 @@ class NetBug
     {
         Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1}", idx, gw));
         string output = Netsh(string.Format("interface ipv4 add neighbors interface={0} address={1} neighbor={2} store=persistent", idx, gw, mac));
-        lock (pinLock) pinCacheAt = DateTime.MinValue;
+        lock (pinLock) pinCacheAt = double.MinValue;
         if (PersistentPin(idx, gw) != mac) return "Pinning failed: " + output.Trim();
         TrustGateway(gw.ToString(), mac);
         Event(string.Format("gateway {0} pinned to {1} on '{2}' {3}", gw, mac, ni.Name, how));
@@ -3206,10 +3340,14 @@ class NetBug
     }
     static readonly object trustLock = new object();
 
-    // the last check's verified MAC belongs to this gateway, interface and network generation
-    static bool VerifiedHere(IPAddress gw, int idx)
+    // the last check's verified MAC when it belongs to this gateway, interface and network generation ("" otherwise)
+    static string VerifiedMacUnlocked(IPAddress gw, int idx, int gen)
     {
-        return gw != null && verifiedMac != "" && verifiedGw == gw.ToString() && verifiedIf == idx && verifiedGen == netGen;
+        return gw != null && verifiedMac != "" && verifiedGw == gw.ToString() && verifiedIf == idx && verifiedGen == gen ? verifiedMac : "";
+    }
+    static string VerifiedMacFor(IPAddress gw, int idx, int gen)
+    {
+        lock (fixLock) return VerifiedMacUnlocked(gw, idx, gen);
     }
 
     static string Unpin()
@@ -3219,7 +3357,7 @@ class NetBug
         if (gw == null || idx < 0) return "No network with a router right now.";
         if (fixBusy) return "Wait for the check to finish.";
         Netsh(string.Format("interface ipv4 delete neighbors name={0} address={1}", idx, gw));
-        lock (pinLock) pinCacheAt = DateTime.MinValue;
+        lock (pinLock) pinCacheAt = double.MinValue;
         if (PersistentPin(idx, gw) != "") return "Unpinning failed.";
         Event(string.Format("gateway {0} unpinned on '{1}' from the page", gw, ni.Name));
         return "";
@@ -3233,10 +3371,11 @@ class NetBug
         byte[] data; long len; bool tail = false;
         lock (eventLock)
         {
-            if (!File.Exists(file)) return "{\"next\":0,\"lines\":[]}";
+            if (!File.Exists(file)) return "{\"next\":0,\"reset\":false,\"lines\":[]}";
             using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
                 len = fs.Length;
+                if (from == len) return new Jw().N("next", len).B("reset", false).R("lines", "[]").ToString();
                 if (from < 0 || from > len) { from = Math.Max(0, len - 65536); tail = from > 0; }
                 if (len - from > 262144) { from = len - 262144; tail = true; }
                 data = new byte[len - from];
@@ -3247,8 +3386,8 @@ class NetBug
         }
         var lines = Encoding.UTF8.GetString(data).Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).AsEnumerable();
         if (tail) lines = lines.Skip(1);   // first line may be cut in half
-        return string.Format("{{\"next\":{0},\"reset\":{1},\"lines\":[{2}]}}", len, from == 0 || tail ? "true" : "false",
-            string.Join(",", lines.Select(J)));
+        return new Jw().N("next", len).B("reset", from == 0 || tail)
+            .R("lines", "[" + string.Join(",", lines.Select(J)) + "]").ToString();
     }
 
     static long Unix(DateTime local) { return (long)(local.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds; }

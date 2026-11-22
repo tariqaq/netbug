@@ -5,6 +5,36 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 23:14: v2.0.2: full repo-wide audit fixes
+From a full line-by-line audit of the repo (`tools/netbug.cs` `Version` `2.0.2`, `tools/dashboard.html`, `tools/snapshot.ps1`, `tools/arpwatch.ps1`, `tools/build.ps1`):
+- **Logic bugs (`tools/netbug.cs`):**
+  - **Monotonic clock everywhere:** round pacing (`sleep`), minimal-mode 8.8.8.8 `budget`, background probe `left` wait, lag durations (`lagStartMono`/`lagLastBadMono`), 30-minute ARP alert expiry (`gwAlertAtMono`), dashboard memory refresh (`dashMemAt`), and persistent-pin cache (`pinCacheAt`) now use `Mono()` instead of `DateTime.Now`, so stepping the system clock backwards can no longer freeze the main loop or stick alerts/caches.
+  - **Per-network trust on sleep/wake & hidden-SSID Wi-Fi:** `LoopGap()` now marks a network event (`MarkNetEvent()`) so waking onto another network with the same gateway IP bumps `netGen`; SSID changes bump `netGen` without requiring a 60 s network-event window; `arpTask` waits while a post-event WMI `NetProfile` lookup is in flight so the new router's MAC isn't judged under the old generation.
+  - **Minimal-mode 8.8.8.8 fallback:** when a 1.1.1.1 timeout leaves under 100 ms in the round, `gMs` stays `-2` (unmeasured) instead of faking `-1`, and `internet` fails only when `cfMs == -1 && gMs == -1` (no false 1 s outage or fake `g_ms=-1` CSV entry).
+  - **Router check isolation:** `CfRoute` is skipped while `fixBusy` is true so intentional ARP swaps don't pollute the Cloudflare degradation window; `failStreak` resets when a check starts outside an outage so a lone pre-check blip can't stitch into a backdated outage.
+  - **Adapter removal mid-round:** `ni.GetIPv4Statistics()` is caught so an unplugged adapter triggers a rescan (`ifDirty = true`) instead of aborting the round with a `netbug error:`.
+  - **GitHub SHA-256 digest extraction:** `AssetDigest()` parses the enclosing asset JSON object (handling any key order and nested objects like `"uploader"`), instead of a fragile positional regex.
+  - **Formatting:** `GATEWAY MAC CHANGED` prints `?` when `lastGwMac` is empty.
+- **Race conditions & reliability (`tools/netbug.cs`):**
+  - `WaitForCheck()` now sets `exiting = true` under `fixLock`; `InstallUpdate()` runs `WaitForCheck()` before swapping `netbug.exe` on disk and resets `exiting` under `fixLock` on failure; `Health()` resets `exiting` and resumes the ring if `Restart()` throws.
+  - `NetNow` carries `Gen` and is published after `CheckNetwork()`, so `Detect()` and `FixStatus()` never read a new network with an old generation.
+  - Cross-thread state synchronized: `VerifiedMacFor` under `fixLock`, `UpdateAvailable`/update fields under `updLock`, `announceSeenAt`/`announceSeenFrom`/`gwAlertAtMono` under `watchLock`, `SaveSettings`/`LoadSettings` under `settingsLock`, `dashMemMb`/`dashMemAt` under `memLock`, `gwMac`/`gwArp` `volatile`, `lastNetEventMs` via `Interlocked`.
+  - `DashboardLoop()` serves requests concurrently (capped at 16 via `SemaphoreSlim`) so slow remote clients or synchronous `netsh` calls never stall other polls.
+  - `RingLoop()` backs off exponentially (5 s → 60 s) and logs when `pktmon` exits within 5 s, preventing a silent 4-process/s spawn storm.
+  - `Export()` skips `RingPause()` in minimal mode and caps the POST body read at 512 bytes; `PersistentTcpLoop()` caps response headers at 16 KB; `TcpConnect()`/`PersistentTcpLoop()` observe faulted `ConnectAsync` tasks on timeout; `PingFrom()` guards against `INVALID_HANDLE_VALUE`; `RegisterTask()` uses a unique temp XML filename; `Unpack()` checks for null resources; `EventsJson()` short-circuits when `from == len`; remaining manual JSON builders migrated to `Jw`; stale comments updated.
+- **Dashboard (`tools/dashboard.html`):**
+  - `Traffic & UDP` tile: port-count badge highlights on `udp_high` (`>= 3000` ports) instead of TX/RX blackhole; the `↓` RX packet count highlights red when `tx > 15 && rx <= 2`.
+  - `Recent activity` tile: `Open log →` stays neutral (turns red only on unread alerts); ARP watch warn/bad tint moved to the **Router & ARP** tile.
+  - **Protection** & **System** tabs use `f.minimal` from `/api/fix` (eliminating desync with `/api/state`), **Protection** tab badge shows `!` during active `gwAlert`, and toggling Minimal mode immediately refreshes `/api/state` and `/api/fix`.
+  - Chart hover tooltip now includes `TCP`; `pointermove` is throttled with `requestAnimationFrame` and fill gradients are built once per series.
+  - **Events** tab hides empty `.day` headers under `Alerts`/health/search filters, re-pins scroll on `All`/`Alerts` when following, parses UTC offsets for exact `ago` times, and guards non-dated lines.
+  - Uninstall double-click clears its arming timer and disables the button while uninstalling; Minimal popover closes on `Escape`; added `aria-selected` and `role="tabpanel"`.
+- **Scripts:**
+  - `tools/snapshot.ps1`: guards null `$gw` in `pktmon filter add`, `ping`, and `Resolve-DnsName`; reads adapter counters for all `Up` adapters instead of hardcoding `'Ethernet|Wi-Fi'`.
+  - `tools/arpwatch.ps1`: handles missing `etl2txt` output cleanly and fixes 5 ms dedup across midnight rollover.
+  - `tools/build.ps1`: checks output filename before compiling so custom `-Out` paths compile once instead of twice.
+- Checked: `tools/build.ps1` builds clean (`netbug 2.0.2.0`, all 5 resources embedded); all 4 `.ps1` scripts parse with 0 errors; dashboard JS passes `node --check`.
+
 ### 22:13: `e6dfeaf` v2.0.1: steady Live tiles, sage green
 - `tools/dashboard.html`: the four Live tiles are built once and only their values update (before, the whole block was rebuilt almost every second, so a click on a copy chip or a tile could land on a replaced node and do nothing). A copied value shows "Copied …" for 0.9 s.
 - `tools/dashboard.html`: OK green `--ok` is now muted sage `#8fbf8a` (was emerald `#34d399`, against the design rules); `AGENTS.md` design rules name the status colours.

@@ -23,6 +23,10 @@ function Read-Capture([string]$file) {
     if (-not (Test-Path $file)) { 'frames 0'; return }
     $txt = "$file.txt"
     pktmon etl2txt $file --out $txt | Out-Null
+    if (-not (Test-Path $txt)) {
+        if (-not $NoDelete) { Remove-Item $file -Force }
+        'frames 0'; return
+    }
     $mac = '((?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2})'
     $rules = @()
     foreach ($kv in @(@('gw', $Gw), @('me', $Me))) {
@@ -42,8 +46,10 @@ function Read-Capture([string]$file) {
             continue
         }
         # pktmon logs each frame at two driver components, microseconds apart: skip a frame line equal
-        # to the last one within 5 ms (identical frames further apart, like repeated ARP requests, count)
-        if ($line -eq $prev -and [Math]::Abs($sec - $prevSec) -lt 0.005) { continue }
+        # to the last one within 5 ms (handles midnight wrap; repeated requests further apart still count)
+        $diff = [Math]::Abs($sec - $prevSec)
+        if ($diff -gt 43200) { $diff = 86400 - $diff }
+        if ($line -eq $prev -and $diff -lt 0.005) { continue }
         $prev = $line; $prevSec = $sec
         if ($line -notmatch 'ARP') { continue }
         $frames++

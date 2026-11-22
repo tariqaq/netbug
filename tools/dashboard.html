@@ -392,7 +392,7 @@ canvas#chart {
   overflow-wrap: anywhere;
 }
 .tile-val.mono { font-family: var(--mono); font-size: 16.5px; letter-spacing: -0.02em; }
-.tile-val.bad { color: var(--down); }
+.tile-val.bad, .tile-val .bad { color: var(--down); }
 .tile-meta {
   margin-top: 6px;
   font: 400 13px/1.4 var(--sans);
@@ -401,6 +401,8 @@ canvas#chart {
   gap: 8px 14px;
   flex-wrap: wrap;
 }
+.tile-meta .bad { color: var(--down); }
+.tile-meta .warn { color: var(--lag); }
 .tile-meta code {
   font-family: var(--mono);
   font-size: 12px;
@@ -696,7 +698,7 @@ details.faq p { margin: 8px 0 0; line-height: 1.55; color: var(--ink-2); }
 #log .quiet .t, #log .quiet .m { color: #7cc4e8; }
 #log.hide-quiet .quiet { display: none; }
 #log.only-problems .l:not(.down):not(.lag) { display: none; }
-#log .l.filtered { display: none; }
+#log .l.filtered, #log .day.filtered { display: none; }
 
 #jump {
   position: absolute; right: 16px; bottom: 16px;
@@ -736,9 +738,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
 
     <nav class="tabs" role="tablist" aria-label="Views">
       <button type="button" class="tab active" data-view="live" role="tab" aria-selected="true">Live</button>
-      <button type="button" class="tab" data-view="protect" id="tab-protect" role="tab" hidden>Protection<span class="tab-badge" id="bdg-protect"></span></button>
-      <button type="button" class="tab" data-view="events" role="tab">Events<span class="tab-badge" id="bdg-events"></span></button>
-      <button type="button" class="tab" data-view="system" id="tab-system" role="tab" hidden>System<span class="tab-badge warn" id="bdg-system"></span></button>
+      <button type="button" class="tab" data-view="protect" id="tab-protect" role="tab" aria-selected="false" hidden>Protection<span class="tab-badge" id="bdg-protect"></span></button>
+      <button type="button" class="tab" data-view="events" role="tab" aria-selected="false">Events<span class="tab-badge" id="bdg-events"></span></button>
+      <button type="button" class="tab" data-view="system" id="tab-system" role="tab" aria-selected="false" hidden>System<span class="tab-badge warn" id="bdg-system"></span></button>
     </nav>
 
     <div class="nav-right">
@@ -761,7 +763,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     </div>
   </header>
 
-  <main class="view active" id="view-live">
+  <main class="view active" id="view-live" role="tabpanel">
     <section class="hero" aria-live="polite">
       <div class="hero-left">
         <h1 class="hero-state" id="headline">Connecting</h1>
@@ -833,7 +835,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     </section>
   </main>
 
-  <section class="view" id="view-protect" aria-live="polite">
+  <section class="view" id="view-protect" role="tabpanel" aria-live="polite">
     <div class="page-wrap">
       <div class="page-hero">
         <div>
@@ -900,7 +902,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     </div>
   </section>
 
-  <section class="view" id="view-events">
+  <section class="view" id="view-events" role="tabpanel">
     <div class="ev-head">
       <h2>Events</h2>
       <div class="ev-controls">
@@ -918,7 +920,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     </div>
   </section>
 
-  <section class="view" id="view-system" aria-live="polite">
+  <section class="view" id="view-system" role="tabpanel" aria-live="polite">
     <div class="page-wrap">
       <div class="page-hero">
         <div>
@@ -1029,6 +1031,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   };
   document.addEventListener('click', e => {
     if (!minPop.hidden && !minPop.contains(e.target) && e.target !== minBtn) {
+      minPop.hidden = true;
+      minBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !minPop.hidden) {
       minPop.hidden = true;
       minBtn.setAttribute('aria-expanded', 'false');
     }
@@ -1181,6 +1189,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('t-gwmac').classList.toggle('bad', !!s.gwAlert);
     chip('c-gw', 'Gateway', s.gw);
     putText($('t-aw'), /arp/i.test(aw) ? aw : 'ARP watch: ' + aw);
+    $('t-aw').className = awCls === 'bad' || awCls === 'warn' ? awCls : '';
 
     tag('t-vpn', vpnTag[0], vpnTag[1]);
     putText($('t-iface'), s.iface || 'No adapter');
@@ -1188,14 +1197,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     chip('c-ip', 'Local', s.ip);
     chip('c-pub', 'Public', s.pubIp);
 
-    tag('t-udp', s.udpTotal < 0 ? '–' : s.udpTotal + ' ports', s.tx > 15 && s.rx <= 2 ? 'bad' : '');
+    const udpHigh = s.udpTotal >= 3000 || /(^|\|)udp_high(\||$)/.test(s.fail);
+    tag('t-udp', s.udpTotal < 0 ? '–' : s.udpTotal + ' ports', udpHigh ? 'warn' : '');
     putText($('t-tx'), String(s.tx));
     putText($('t-rx'), String(s.rx));
+    $('t-rx').className = s.tx > 15 && s.rx <= 2 ? 'bad' : '';
     $('c-nat').hidden = !natAddr;
     if (natAddr) chip('c-nat', 'NAT', natAddr, natSrv);
     putText($('t-top'), topProc);
 
-    tag('t-awtag', 'Open log →', awCls);
+    tag('t-awtag', 'Open log →', unreadAlerts > 0 ? 'bad' : '');
     putText($('t-last'), latestLogMsg || 'Listening to events…');
     putText($('t-vpnname'), s.vpn ? 'VPN: ' + s.vpn : 'No VPN active');
   }
@@ -1238,14 +1249,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   const chart = $('chart'), ctx = chart.getContext('2d');
   const SPAN = 300, MAXMS = 300;
   const y = (v, h) => { const r = Math.sqrt(Math.min(v, MAXMS) / MAXMS); return h - 12 - r * (h - 26); };
-  let hoverX = null;
+  let hoverX = null, hoverRaf = 0;
 
   chart.addEventListener('pointermove', e => {
     hoverX = e.clientX - chart.getBoundingClientRect().left;
-    draw();
+    if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); });
   });
   chart.addEventListener('pointerleave', () => {
     hoverX = null;
+    if (hoverRaf) { cancelAnimationFrame(hoverRaf); hoverRaf = 0; }
     $('float-tip').classList.remove('show');
     draw();
   });
@@ -1306,6 +1318,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         const pt = [x(r[0]), y(v, h)];
         if (!seg) { seg = [pt]; segs.push(seg); } else seg.push(pt);
       }
+      let grad = null;
+      if (fillColor && segs.length) {
+        grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, fillColor);
+        grad.addColorStop(1, 'rgba(12,12,12,0)');
+      }
       for (const s of segs) {
         if (s.length === 1) {
           ctx.fillStyle = color;
@@ -1321,10 +1339,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         ctx.lineCap = 'round';
         ctx.stroke();
 
-        if (fillColor) {
-          const grad = ctx.createLinearGradient(0, 0, 0, h);
-          grad.addColorStop(0, fillColor);
-          grad.addColorStop(1, 'rgba(12,12,12,0)');
+        if (grad) {
           ctx.lineTo(s[s.length - 1][0], h - 12);
           ctx.lineTo(s[0][0], h - 12);
           ctx.closePath();
@@ -1368,6 +1383,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
           '<span>G ' + fmt(nearest[3]) + '</span>' +
           '<span>UDP ' + fmt(nearest[4]) + '</span>' +
           '<span>DNS ' + fmt(nearest[5]) + '</span>' +
+          '<span>TCP ' + fmt(nearest[6]) + '</span>' +
           '</div>' +
           (nearest[7] ? '<div class="ft-warn">' + esc(failText(nearest[7])) + '</div>' : '');
         tip.classList.add('show');
@@ -1389,15 +1405,33 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     if (!searchTerm) { el.classList.remove('filtered'); return; }
     el.classList.toggle('filtered', !el.textContent.toLowerCase().includes(searchTerm));
   }
+  function syncDays() {
+    const onlyProb = log.classList.contains('only-problems');
+    const hideQuiet = log.classList.contains('hide-quiet');
+    let dayEl = null, visible = false;
+    for (const el of log.children) {
+      if (el.classList.contains('day')) {
+        if (dayEl) dayEl.classList.toggle('filtered', !visible);
+        dayEl = el; visible = false;
+      } else {
+        const hidden = el.classList.contains('filtered') ||
+          (hideQuiet && el.classList.contains('quiet')) ||
+          (onlyProb && !el.classList.contains('down') && !el.classList.contains('lag'));
+        if (!hidden) visible = true;
+      }
+    }
+    if (dayEl) dayEl.classList.toggle('filtered', !visible);
+  }
 
   function addLines(lines, initial) {
     const frag = document.createDocumentFragment();
     let newAlerts = 0;
     for (const raw of lines) {
       // "2026-11-04 08:01:02 +08:00  msg" (older lines have no UTC offset: "2026-11-04 08:01:02  msg")
-      const tz = /^.{19} [+-]\d\d:\d\d  /.test(raw);
-      const day = raw.slice(0, 10), time = raw.slice(11, 19), msg = raw.slice(tz ? 28 : 21);
-      if (day !== lastDay) {
+      const dated = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/.test(raw);
+      const tz = dated && /^.{19} [+-]\d\d:\d\d  /.test(raw);
+      const day = dated ? raw.slice(0, 10) : '', time = dated ? raw.slice(11, 19) : '', msg = dated ? raw.slice(tz ? 28 : 21) : raw;
+      if (day && day !== lastDay) {
         lastDay = day;
         const d = document.createElement('div');
         d.className = 'day';
@@ -1405,7 +1439,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         frag.appendChild(d);
       }
       const k = kind(msg);
-      if (k !== 'quiet') latestLogMsg = time + ' · ' + msg.slice(0, 96);
+      if (k !== 'quiet') latestLogMsg = (time ? time + ' · ' : '') + msg.slice(0, 96);
       if (!initial && k === 'down') newAlerts++;
       const el = document.createElement('div');
       el.className = 'l' + (k ? ' ' + k : '');
@@ -1414,14 +1448,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       frag.appendChild(el);
 
       // a LAG summary logged within 2 min of an outage ending is the same incident: keep the outage
-      let m;
-      const at = new Date(day + 'T' + time).getTime();
-      if ((m = msg.match(/^OUTAGE END after ([\d,]+) s/))) lastProblem = { what: 'outage (' + dur(+m[1].replace(/,/g, '')) + ')', at, outage: true };
-      else if ((m = msg.match(/^LAG .*?\(([\d,]+) s\)/)) && !(lastProblem && lastProblem.outage && at - lastProblem.at < 120000))
-        lastProblem = { what: 'local lag (' + dur(+m[1].replace(/,/g, '')) + ')', at };
+      if (dated) {
+        let m;
+        const at = new Date(day + 'T' + time + (tz ? raw.slice(20, 26) : '')).getTime();
+        if ((m = msg.match(/^OUTAGE END after ([\d,]+) s/))) lastProblem = { what: 'outage (' + dur(+m[1].replace(/,/g, '')) + ')', at, outage: true };
+        else if ((m = msg.match(/^LAG .*?\(([\d,]+) s\)/)) && !(lastProblem && lastProblem.outage && at - lastProblem.at < 120000))
+          lastProblem = { what: 'local lag (' + dur(+m[1].replace(/,/g, '')) + ')', at };
+      }
     }
     log.appendChild(frag);
     while (log.childElementCount > 4000) log.firstElementChild.remove();
+    syncDays();
     if (follow) log.scrollTop = log.scrollHeight;
     if (newAlerts > 0 && activeView !== 'events') {
       unreadAlerts += newAlerts;
@@ -1442,11 +1479,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('quiet-btn').classList.toggle('on', showHealth);
     putText($('quiet-btn'), showHealth ? 'Health shown' : 'Health hidden');
     log.classList.toggle('hide-quiet', !showHealth);
+    syncDays();
     if (follow) log.scrollTop = log.scrollHeight;
   };
-  $('flt-all').onclick = () => { $('flt-all').classList.add('active'); $('flt-prob').classList.remove('active'); log.classList.remove('only-problems'); };
-  $('flt-prob').onclick = () => { $('flt-prob').classList.add('active'); $('flt-all').classList.remove('active'); log.classList.add('only-problems'); };
-  $('log-q').oninput = e => { searchTerm = e.target.value.trim().toLowerCase(); log.querySelectorAll('.l').forEach(applySearch); };
+  $('flt-all').onclick = () => {
+    $('flt-all').classList.add('active'); $('flt-prob').classList.remove('active');
+    log.classList.remove('only-problems'); syncDays();
+    if (follow) log.scrollTop = log.scrollHeight;
+  };
+  $('flt-prob').onclick = () => {
+    $('flt-prob').classList.add('active'); $('flt-all').classList.remove('active');
+    log.classList.add('only-problems'); syncDays();
+    if (follow) log.scrollTop = log.scrollHeight;
+  };
+  $('log-q').oninput = e => {
+    searchTerm = e.target.value.trim().toLowerCase();
+    log.querySelectorAll('.l').forEach(applySearch);
+    syncDays();
+  };
 
   // ---------- polling ----------
   // each poll waits for its previous request: a stuck netbug doesn't pile requests up
@@ -1504,6 +1554,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     try {
       const r = await fetch('/api/minimal?' + q, { method: 'POST', cache: 'no-store', headers: { 'X-Netbug-Minimal': '1' } });
       if (!r.ok) putText($('mn-err'), 'netbug refused the change (HTTP ' + r.status + ').');
+      else { pollState(); if (fixOn) fixCall(''); }
     } catch (e) { putText($('mn-err'), 'netbug isn’t answering.'); }
   }
   $('mn-on').onchange = e => minCall('on=' + (e.target.checked ? 1 : 0));
@@ -1512,7 +1563,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   // ---------- router protection & system (only on the laptop itself) ----------
   const token = document.querySelector('meta[name="netbug-token"]').content;
   const fixOn = /^[0-9a-f]{32}$/.test(token);
-  let fix = null, uninstArmed = false, fixPolling = false, fastFix = 0;
+  let fix = null, uninstArmed = false, uninstTimer = 0, fixPolling = false, fastFix = 0;
 
   $('tab-protect').hidden = !fixOn;
   $('tab-system').hidden = !fixOn;
@@ -1552,7 +1603,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     putText($('fx-sub'), sub);
     putText($('fx-state'), st);
     $('fx-state').className = 'tile-tag' + (cls ? ' ' + cls : '');
-    putText($('bdg-protect'), cls === 'bad' ? '!' : (f.busy ? '…' : ''));
+    const hasAlert = !!(state && state.sample && state.sample.gwAlert);
+    putText($('bdg-protect'), cls === 'bad' || hasAlert ? '!' : (f.busy ? '…' : ''));
 
     const bEl = $('fx-banner');
     bEl.hidden = !ban;
@@ -1560,7 +1612,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
 
     // on a phone tether the switches are greyed out (netbug refuses them, see TetherOff); an existing pin can still be turned off
     const teth = !!f.tether;
-    const minOn = !!(state && state.sample && state.sample.minimal);
+    const minOn = !!f.minimal;
 
     const pin = $('fx-pin');
     pin.checked = !!f.pinned;
@@ -1649,7 +1701,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('ex-btn').disabled = busyEx;
     putText($('ex-btn'), busyEx ? 'Preparing zip…' : 'Export zip');
 
-    const minOn = !!(state && state.sample && state.sample.minimal);
+    const minOn = !!f.minimal;
     const modeNote = f.portable ? '' : ' · repo build (update with git pull & rebuild)';
     putText($('up-meta'), (u.checkedAt ? 'Checked ' + ago(u.checkedAt * 1000) : 'Not checked yet') +
       ' · checks every ' + (minOn ? '6 h (minimal)' : '15 min') + modeNote);
@@ -1698,9 +1750,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         uninstArmed = true;
         $('fx-uninst').classList.add('armed');
         putText($('fx-uninst'), 'Click again to uninstall');
-        setTimeout(() => { uninstArmed = false; $('fx-uninst').classList.remove('armed'); putText($('fx-uninst'), 'Uninstall'); }, 4000);
+        clearTimeout(uninstTimer);
+        uninstTimer = setTimeout(() => { uninstArmed = false; $('fx-uninst').classList.remove('armed'); putText($('fx-uninst'), 'Uninstall'); }, 4000);
         return;
       }
+      clearTimeout(uninstTimer); uninstArmed = false;
+      $('fx-uninst').classList.remove('armed');
+      $('fx-uninst').disabled = true;
+      putText($('fx-uninst'), 'Uninstalling…');
       fixCall('/uninstall', 'POST');
     };
     $('up-check').onclick = () => fixCall('/update/check', 'POST');

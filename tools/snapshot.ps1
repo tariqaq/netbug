@@ -28,7 +28,7 @@ if ($capture) {
     pktmon stop 2>&1 | Out-Null
     pktmon filter remove | Out-Null
     pktmon filter add arp -d ARP | Out-Null
-    pktmon filter add gw -i $gw | Out-Null
+    if ($gw) { pktmon filter add gw -i $gw | Out-Null }
     pktmon filter add cf -i 1.1.1.1 | Out-Null
     # default file size on purpose: pktmon files with a small --file-size silently lose most frames
     pktmon start --capture --comp nics --pkt-size 128 --file-name $etl | Out-Null
@@ -53,9 +53,10 @@ if ($capture) {
         Format-Table InterfaceAlias, IPAddress, LinkLayerAddress, State -AutoSize | Out-String
 
     "`n--- adapter counters (2 reads, 3 s apart) ---"
-    $a = Get-NetAdapterStatistics | Where-Object Name -match 'Ethernet|Wi-Fi'
+    $upNames = @(Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -ExpandProperty Name)
+    $a = Get-NetAdapterStatistics | Where-Object { $upNames -contains $_.Name }
     Start-Sleep 3
-    $b = Get-NetAdapterStatistics | Where-Object Name -match 'Ethernet|Wi-Fi'
+    $b = Get-NetAdapterStatistics | Where-Object { $upNames -contains $_.Name }
     foreach ($x in $b) {
         $y = $a | Where-Object Name -eq $x.Name
         "{0}: +tx {1} pkts, +rx {2} pkts, rx_err {3}, rx_disc {4}, tx_err {5}, tx_disc {6}" -f $x.Name,
@@ -65,15 +66,20 @@ if ($capture) {
 
     if ($Minimal) { "`n--- probes and tracert: skipped (netbug's minimal mode) ---" } else {
     "`n--- probes ---"
-    "gateway $gw"
+    "gateway $(if ($gw) { $gw } else { 'none' })"
     # ping.exe, not Test-Connection: -TimeoutSeconds doesn't exist in Windows PowerShell 5.1
-    foreach ($t in @($gw, '1.1.1.1', '8.8.8.8')) {
+    $targets = @(); if ($gw) { $targets += $gw }; $targets += '1.1.1.1', '8.8.8.8'
+    foreach ($t in $targets) {
         $r = ping -n 3 -w 1000 $t | Select-String 'Reply from .*time'
         "ping {0}: {1}/3 ok  {2}" -f $t, @($r).Count, (($r | ForEach-Object { ($_ -replace '.*time[=<]', '' -replace ' .*', '') }) -join ' ')
     }
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    $d = Resolve-DnsName google.com -Server $gw -DnsOnly -QuickTimeout -ErrorAction SilentlyContinue
-    "dns via gw: $(if ($d) { 'ok' } else { 'FAIL' }) in $($sw.ElapsedMilliseconds) ms"
+    if ($gw) {
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $d = Resolve-DnsName google.com -Server $gw -DnsOnly -QuickTimeout -ErrorAction SilentlyContinue
+        "dns via gw: $(if ($d) { 'ok' } else { 'FAIL' }) in $($sw.ElapsedMilliseconds) ms"
+    } else {
+        "dns via gw: skipped (no gateway)"
+    }
     foreach ($h in 'www.google.com', 'discord.com') {
         $r = Test-NetConnection $h -Port 443 -WarningAction SilentlyContinue
         "tcp ${h}:443 -> $($r.TcpTestSucceeded) ($($r.RemoteAddress))"

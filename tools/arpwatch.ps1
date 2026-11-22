@@ -36,34 +36,37 @@ function Read-Capture([string]$file) {
     }
     $claims = @{}
     $frames = 0; $prev = ''; $time = ''; $sec = 0.0; $prevSec = -1.0
-    foreach ($line in [IO.File]::ReadLines($txt)) {
-        # header lines ("[cpu]...::2026-11-01 02:35:31.450248500 [Microsoft-Windows-PktMon] ...") carry the time
-        if (-not $line.StartsWith("`t")) {
-            if ($line -match '::\d{4}-\d\d-\d\d ((\d\d):(\d\d):(\d\d\.\d+))') {
-                $time = $Matches[1].Substring(0, 12)
-                $sec = [int]$Matches[2] * 3600 + [int]$Matches[3] * 60 + [double]::Parse($Matches[4], [Globalization.CultureInfo]::InvariantCulture)
+    try {
+        foreach ($line in [IO.File]::ReadLines($txt)) {
+            # header lines ("[cpu]...::2026-11-01 02:35:31.450248500 [Microsoft-Windows-PktMon] ...") carry the time
+            if (-not $line.StartsWith("`t")) {
+                if ($line -match '::\d{4}-\d\d-\d\d ((\d\d):(\d\d):(\d\d\.\d+))') {
+                    $time = $Matches[1].Substring(0, [Math]::Min(12, $Matches[1].Length))
+                    $sec = [int]$Matches[2] * 3600 + [int]$Matches[3] * 60 + [double]::Parse($Matches[4], [Globalization.CultureInfo]::InvariantCulture)
+                }
+                continue
             }
-            continue
-        }
-        # pktmon logs each frame at two driver components, microseconds apart: skip a frame line equal
-        # to the last one within 5 ms (handles midnight wrap; repeated requests further apart still count)
-        $diff = [Math]::Abs($sec - $prevSec)
-        if ($diff -gt 43200) { $diff = 86400 - $diff }
-        if ($line -eq $prev -and $diff -lt 0.005) { continue }
-        $prev = $line; $prevSec = $sec
-        if ($line -notmatch 'ARP') { continue }
-        $frames++
-        foreach ($r in $rules) {
-            $m = $r[1].Match($line); if (-not $m.Success) { $m = $r[2].Match($line) }
-            if ($m.Success) {
-                $k = $r[0] + ' ' + $m.Groups[1].Value.ToUpper()
-                $t = $time.Substring(0, [Math]::Min(8, $time.Length))
-                if ($claims.ContainsKey($k)) { $claims[$k][0]++; $claims[$k][2] = $t } else { $claims[$k] = @(1, $t, $t) }
+            # pktmon logs each frame at two driver components, microseconds apart: skip a frame line equal
+            # to the last one within 5 ms (handles midnight wrap; repeated requests further apart still count)
+            $diff = [Math]::Abs($sec - $prevSec)
+            if ($diff -gt 43200) { $diff = 86400 - $diff }
+            if ($line -eq $prev -and $diff -lt 0.005) { continue }
+            $prev = $line; $prevSec = $sec
+            if ($line -notmatch 'ARP') { continue }
+            $frames++
+            foreach ($r in $rules) {
+                $m = $r[1].Match($line); if (-not $m.Success) { $m = $r[2].Match($line) }
+                if ($m.Success) {
+                    $k = $r[0] + ' ' + $m.Groups[1].Value.ToUpper()
+                    $t = $time.Substring(0, [Math]::Min(8, $time.Length))
+                    if ($claims.ContainsKey($k)) { $claims[$k][0]++; $claims[$k][2] = $t } else { $claims[$k] = @(1, $t, $t) }
+                }
             }
         }
+    } finally {
+        if (Test-Path $txt) { Remove-Item $txt -Force }
+        if (-not $NoDelete -and (Test-Path $file)) { Remove-Item $file -Force }
     }
-    Remove-Item $txt -Force
-    if (-not $NoDelete) { Remove-Item $file -Force }
     "frames $frames"
     foreach ($k in $claims.Keys) { '{0} {1} {2} {3}' -f $k, $claims[$k][0], $claims[$k][1], $claims[$k][2] }
 }

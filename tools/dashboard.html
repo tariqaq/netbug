@@ -92,7 +92,9 @@ body[data-state="stale"] { --wash: rgba(255, 69, 58, 0.14); }
   border-radius: 999px;
   background: var(--surf);
   border: 1px solid var(--hair);
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   position: relative;
   border: 0;
@@ -671,10 +673,21 @@ details.faq p { margin: 8px 0 0; line-height: 1.55; color: var(--ink-2); }
   height: calc(100vh - 230px);
   min-height: 360px;
   overflow-y: auto;
-  padding: 10px 0;
+  padding: 0 0 10px;
   font: 12.5px/1.75 var(--mono);
   overscroll-behavior: contain;
 }
+.log-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  font: 500 13.5px/1 var(--sans);
+  pointer-events: none;
+}
+.log-empty[hidden] { display: none; }
 #log .day {
   position: sticky; top: 0;
   background: var(--surf);
@@ -708,7 +721,7 @@ details.faq p { margin: 8px 0 0; line-height: 1.55; color: var(--ink-2); }
 }
 #jump.show { display: block; }
 
-button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visible {
+button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visible, .tile.clickable:focus-visible {
   outline: 2px solid var(--ink-2); outline-offset: 2px;
 }
 
@@ -722,6 +735,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   canvas#chart { height: 190px; }
   #log .l { grid-template-columns: 1fr; gap: 1px; padding: 6px 16px; }
   .ev-search { width: 100%; }
+}
+@media (max-width: 520px) {
+  .app { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+  .tab { padding: 8px 13px; font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .upd-track i, .sw, .sw::after { animation: none !important; transition: none !important; }
@@ -785,9 +802,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     <section class="chart-stage">
       <div class="chart-bar">
         <div class="series-pills">
-          <button type="button" class="s-pill" data-trace="gw"><i style="background:var(--gw)"></i>Gateway</button>
-          <button type="button" class="s-pill" data-trace="cf"><i style="background:var(--cf)"></i>Cloudflare</button>
-          <button type="button" class="s-pill" data-trace="udp"><i style="background:var(--udp)"></i>UDP</button>
+          <button type="button" class="s-pill" data-trace="gw" aria-pressed="true"><i style="background:var(--gw)"></i>Gateway</button>
+          <button type="button" class="s-pill" data-trace="cf" aria-pressed="true"><i style="background:var(--cf)"></i>Cloudflare</button>
+          <button type="button" class="s-pill" data-trace="udp" aria-pressed="true"><i style="background:var(--udp)"></i>UDP</button>
         </div>
         <div class="chart-hint">
           <span><i style="background:var(--down)"></i>Outage</span>
@@ -827,7 +844,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         <div class="tile-val mono"><span id="t-tx">–</span> <span style="color:var(--ink-3)">↑</span> &nbsp; <span id="t-rx">–</span> <span style="color:var(--ink-3)">↓</span> <span style="font-size:13px;font-weight:400;color:var(--ink-3)">pkt/s</span></div>
         <div class="tile-meta"><button type="button" class="copy-chip" id="c-nat" hidden></button><span id="t-top"></span></div>
       </div>
-      <div class="tile clickable" data-go="events">
+      <div class="tile clickable" data-go="events" role="button" tabindex="0">
         <div class="tile-head"><span>Recent activity</span><span class="tile-tag" id="t-awtag">Open log →</span></div>
         <div class="tile-val" style="font-size:15px;font-weight:500" id="t-last">Listening to events…</div>
         <div class="tile-meta"><span id="t-vpnname">No VPN active</span></div>
@@ -916,6 +933,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     </div>
     <div class="log-shell">
       <div id="log" tabindex="0" aria-label="events.log"></div>
+      <div id="log-empty" class="log-empty" hidden>No matching events.</div>
       <button id="jump" type="button">Jump to latest</button>
     </div>
   </section>
@@ -1048,6 +1066,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       const k = b.dataset.trace;
       traceVis[k] = !traceVis[k];
       b.classList.toggle('off', !traceVis[k]);
+      b.setAttribute('aria-pressed', String(traceVis[k]));
       draw();
     };
   });
@@ -1183,7 +1202,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const aw = s.arpWatch || 'Pending';
     const awCls = /spoofing/i.test(aw) ? 'bad' : /clean/i.test(aw) ? 'ok' : /no ARP/i.test(aw) ? 'warn' : '';
 
-    $('t-router').classList.toggle('clickable', fixOn);
+    const rTile = $('t-router');
+    rTile.classList.toggle('clickable', fixOn);
+    if (fixOn) { rTile.setAttribute('role', 'button'); rTile.tabIndex = 0; }
+    else { rTile.removeAttribute('role'); rTile.removeAttribute('tabindex'); }
     tag('t-pin', pinTag[0], pinTag[1]);
     putText($('t-gwmac'), s.gwMac || '–');
     $('t-gwmac').classList.toggle('bad', !!s.gwAlert);
@@ -1241,6 +1263,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const tile = e.target.closest('.tile.clickable');
     if (tile && tile.dataset.go) {
       if (tile.dataset.go === 'protect' && !fixOn) return;
+      showView(tile.dataset.go);
+    }
+  });
+  $('tiles').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest('.copy-chip')) return;
+    const tile = e.target.closest('.tile.clickable');
+    if (tile && tile.dataset.go) {
+      if (tile.dataset.go === 'protect' && !fixOn) return;
+      e.preventDefault();
       showView(tile.dataset.go);
     }
   });
@@ -1390,7 +1422,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         const tw = tip.offsetWidth || 240;
         tip.style.left = Math.min(Math.max(8, px - tw / 2), pw - tw - 8) + 'px';
       } else tip.classList.remove('show');
-    }
+    } else tip.classList.remove('show');
   }
 
   // ---------- events ----------
@@ -1408,7 +1440,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   function syncDays() {
     const onlyProb = log.classList.contains('only-problems');
     const hideQuiet = log.classList.contains('hide-quiet');
-    let dayEl = null, visible = false;
+    let dayEl = null, visible = false, anyVisible = false;
     for (const el of log.children) {
       if (el.classList.contains('day')) {
         if (dayEl) dayEl.classList.toggle('filtered', !visible);
@@ -1417,10 +1449,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         const hidden = el.classList.contains('filtered') ||
           (hideQuiet && el.classList.contains('quiet')) ||
           (onlyProb && !el.classList.contains('down') && !el.classList.contains('lag'));
-        if (!hidden) visible = true;
+        if (!hidden) { visible = true; anyVisible = true; }
       }
     }
     if (dayEl) dayEl.classList.toggle('filtered', !visible);
+    $('log-empty').hidden = log.childElementCount === 0 || anyVisible;
   }
 
   function addLines(lines, initial) {
@@ -1513,8 +1546,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       lastOk = Date.now() / 1000;
       // a restarted netbug (an update, a crash, a rebuild) has a new control token: load its page
       if (!started0) started0 = state.started; else if (state.started !== started0) location.reload();
+      // recover if the system clock stepped backward: otherwise `since` stays in the future and freezes the chart
+      if (since > state.now + 5) { since = 0; hist.clear(); }
       for (const h of state.hist) { hist.set(h[0], h); since = Math.max(since, h[0]); }
-      for (const t of hist.keys()) if (t < state.now - SPAN) hist.delete(t); else break;
+      for (const t of [...hist.keys()]) if (t < state.now - SPAN || t > state.now + 5) hist.delete(t);
       renderState();
     } catch (e) { /* shown as "Not answering" by renderStatus */ }
     renderStatus();
@@ -1530,9 +1565,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       const r = await fetch('/api/events' + (offset >= 0 ? '?from=' + offset : ''), { cache: 'no-store' });
       const j = await r.json();
       const wasInit = offset < 0;
-      if (j.reset && offset >= 0) { log.textContent = ''; lastDay = ''; lastProblem = null; latestLogMsg = ''; }
+      if (j.reset && offset >= 0) {
+        log.textContent = ''; lastDay = ''; lastProblem = null; latestLogMsg = '';
+        unreadAlerts = 0; putText($('bdg-events'), '');
+      }
       offset = j.next;
-      if (j.lines.length) { addLines(j.lines, wasInit); renderStatus(); }
+      if (j.lines.length) { addLines(j.lines, wasInit || j.reset); renderStatus(); }
+      else if (j.reset) { syncDays(); if (state) renderState(); renderStatus(); }
     } catch (e) { }
   }
 
@@ -1563,24 +1602,46 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   // ---------- router protection & system (only on the laptop itself) ----------
   const token = document.querySelector('meta[name="netbug-token"]').content;
   const fixOn = /^[0-9a-f]{32}$/.test(token);
-  let fix = null, uninstArmed = false, uninstTimer = 0, fixPolling = false, fastFix = 0;
+  let fix = null, uninstArmed = false, uninstBusy = false, uninstTimer = 0, fixPolling = false, fastFix = 0;
+  let fixErr = '', sysErr = '';
 
   $('tab-protect').hidden = !fixOn;
   $('tab-system').hidden = !fixOn;
+
+  const isSysPath = p => p.startsWith('/update') || p === '/uninstall';
 
   async function fixCall(path, method) {
     const poll = !path;
     if (poll && fixPolling) return;   // a status poll waits for the previous one
     if (poll) fixPolling = true;
+    else if (isSysPath(path)) sysErr = ''; else fixErr = '';
     try {
       const r = await fetch('/api/fix' + path, { method: method || 'GET', cache: 'no-store', headers: { 'X-Netbug-Token': token } });
-      if (r.ok) { fix = await r.json(); renderFix(); }
+      if (r.ok) {
+        fix = await r.json();
+        if (!poll) {
+          if (isSysPath(path)) {
+            sysErr = fix.error || '';
+            if (path === '/uninstall' && sysErr) uninstBusy = false;
+          } else fixErr = fix.error || '';
+        }
+        renderFix();
+      }
       else if (r.status === 403) location.reload();   // the token is from a netbug that has restarted since
+      else if (!poll) {
+        const msg = 'netbug refused the action (HTTP ' + r.status + ').';
+        if (isSysPath(path)) { sysErr = msg; if (path === '/uninstall') uninstBusy = false; } else fixErr = msg;
+        if (fix) renderFix();
+      }
     } catch (e) {
       // netbug is gone for a moment while an update restarts it: say so until the new one answers (the page then reloads)
       if (fix && fix.update && fix.update.busy && fix.update.pct >= 95) {
         fix.update.step = 'Waiting for netbug ' + (fix.update.latest || '') + ' to start';
         renderTools();
+      } else if (!poll) {
+        const msg = 'netbug isn’t answering.';
+        if (isSysPath(path)) { sysErr = msg; if (path === '/uninstall') uninstBusy = false; } else fixErr = msg;
+        if (fix) renderFix();
       }
     } finally { if (poll) fixPolling = false; }
   }
@@ -1658,9 +1719,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     }
 
     $('uninst-group').hidden = !f.portable;   // a lone exe installed in %ProgramData%; the repo copy uses --uninstall
-    $('fx-uninst').disabled = f.busy;         // not during a router check: it must put the router's entry back first
+    $('fx-uninst').disabled = f.busy || !!(f.update && f.update.busy) || uninstBusy;   // not during a router check or update
+    if (!uninstArmed && !uninstBusy) putText($('fx-uninst'), 'Uninstall');
     renderKnown();
-    putText($('fx-err'), f.error || '');
+    putText($('fx-err'), fixErr);
     renderTools();
   }
 
@@ -1677,8 +1739,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       putText($('up-pct'), known ? u.pct + '%' : '');
     }
     // poll every 0.5 s while an update runs, so the bar moves smoothly
-    if (u.busy && !fastFix) fastFix = setInterval(() => fixCall(''), 500);
-    else if (!u.busy && fastFix) { clearInterval(fastFix); fastFix = 0; }
+    if (u.busy && !fastFix && !document.hidden) fastFix = setInterval(() => fixCall(''), 500);
+    else if ((!u.busy || document.hidden) && fastFix) { clearInterval(fastFix); fastFix = 0; }
 
     let st, cls = '';
     if (u.busy) { st = 'Updating…'; cls = 'warn'; }
@@ -1705,7 +1767,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const modeNote = f.portable ? '' : ' · repo build (update with git pull & rebuild)';
     putText($('up-meta'), (u.checkedAt ? 'Checked ' + ago(u.checkedAt * 1000) : 'Not checked yet') +
       ' · checks every ' + (minOn ? '6 h (minimal)' : '15 min') + modeNote);
-    putText($('up-err'), u.error || '');
+    putText($('up-err'), sysErr || u.error || '');
   }
 
   // "Router MAC": the known routers present on this network, the pinned MAC and the last check's MAC,
@@ -1754,7 +1816,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         uninstTimer = setTimeout(() => { uninstArmed = false; $('fx-uninst').classList.remove('armed'); putText($('fx-uninst'), 'Uninstall'); }, 4000);
         return;
       }
-      clearTimeout(uninstTimer); uninstArmed = false;
+      clearTimeout(uninstTimer); uninstArmed = false; uninstBusy = true;
       $('fx-uninst').classList.remove('armed');
       $('fx-uninst').disabled = true;
       putText($('fx-uninst'), 'Uninstalling…');

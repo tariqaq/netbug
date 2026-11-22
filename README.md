@@ -32,7 +32,7 @@ What the states mean:
 - **VPN shown in red**: a VPN carries your traffic, so the internet readings measure the VPN, not your ISP.
 - **"Windows network name, SSID hidden"** next to Wi-Fi: Windows 11 24H2+ hides the Wi-Fi name from apps without location access, so netbug shows the name Windows gave the network instead. Usually the same, but it can be renamed or end in " 2".
 
-Other devices on the network can open the page at `http://<laptop-ip>:8787/` (read-only) only after you allow inbound TCP 8787 in Windows Firewall. They'd see your public IP, router MAC and process names.
+Other devices on the network can open the page at `http://<laptop-ip>:8787/` (view-only except for the **Minimal** mode popover) only after you allow inbound TCP 8787 in Windows Firewall. They'd see your public IP, router MAC and process names.
 
 ## Minimal mode
 
@@ -55,7 +55,7 @@ The dropdown only lists a built-in router when it's actually on your current net
 
 netbug trusts the first router MAC it sees on each network (or the pinned or proven one) and raises **GATEWAY MAC CHANGED** if another MAC takes over. Moving to another network that happens to use the same router address (common at home: `192.168.1.1`) isn't an alarm: another adapter, router address, Wi-Fi name or Windows network name starts a fresh trust. Coming back to a network you left is "new" again, so pin the routers you rely on.
 
-A check is never cut short: **Install update** and **Uninstall** wait for it, and if netbug is stopped mid-check anyway, the next start puts the router's address entry back.
+A check is never cut short: **Install \<version\> now** and **Uninstall** wait for it, and if netbug is stopped mid-check anyway, the next start puts the router's address entry back.
 
 **Auto-detect real router** is off by default: it runs checks by itself, and each one cuts the connection for a few seconds. It never runs on a phone tether or in minimal mode.
 

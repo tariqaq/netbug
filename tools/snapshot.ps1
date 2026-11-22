@@ -5,13 +5,13 @@
 # and runs until every probe is done, so it covers the problem while it is still going on.
 # netbug pauses its continuous ARP capture just before and saves its ARP from the 15 min before
 # as <name>.ring.txt (-NoCapture: netbug couldn't hand over pktmon, so no capture here).
-# -Gw / -Me: the gateway and this laptop's IP on netbug's active interface. Without them (run by hand),
+# -Gw / -Me / -OwnMac: the gateway, this laptop's IP and MAC on netbug's active interface. Without them (run by hand),
 # the first adapter with a default gateway is used, which can be a VPN's.
 # The capture is kept as <name>.etl only (pktmon etl2txt <name>.etl --out <file> turns it into text).
 # -Minimal (netbug's minimal mode, for mobile data): no capture and no network probes (pings, DNS, TCP,
 # tracert), only the laptop's own state.
 
-param([Parameter(Mandatory)][string]$Out, [switch]$NoCapture, [string]$Gw, [string]$Me, [switch]$Minimal)
+param([Parameter(Mandatory)][string]$Out, [switch]$NoCapture, [string]$Gw, [string]$Me, [string]$OwnMac, [switch]$Minimal)
 
 $ErrorActionPreference = 'SilentlyContinue'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
@@ -33,6 +33,7 @@ if ($capture) {
     # default file size on purpose: pktmon files with a small --file-size silently lose most frames
     pktmon start --capture --comp nics --pkt-size 128 --file-name $etl | Out-Null
     $capStart = Get-Date
+    $capSw = [Diagnostics.Stopwatch]::StartNew()
 }
 
 & {
@@ -59,6 +60,7 @@ if ($capture) {
     $b = Get-NetAdapterStatistics | Where-Object { $upNames -contains $_.Name }
     foreach ($x in $b) {
         $y = $a | Where-Object Name -eq $x.Name
+        if (-not $y) { continue }
         "{0}: +tx {1} pkts, +rx {2} pkts, rx_err {3}, rx_disc {4}, tx_err {5}, tx_disc {6}" -f $x.Name,
             ($x.SentUnicastPackets - $y.SentUnicastPackets), ($x.ReceivedUnicastPackets - $y.ReceivedUnicastPackets),
             $x.ReceivedPacketErrors, $x.ReceivedDiscardedPackets, $x.OutboundPacketErrors, $x.OutboundDiscardedPackets
@@ -106,7 +108,7 @@ if ($capture) {
 
     if ($capture) {
         # keep the capture going a few more seconds after the probes, for at least 15 s in all
-        $left = 15 - ((Get-Date) - $capStart).TotalSeconds
+        $left = 15 - $capSw.Elapsed.TotalSeconds
         if ($left -gt 0) { Start-Sleep -Seconds ([Math]::Ceiling($left)) }
         pktmon stop | Out-Null
         pktmon filter remove | Out-Null
@@ -119,13 +121,16 @@ if ($capture) {
         # this laptop's IP. This laptop's own MAC claims its own IP with every ARP request it sends.
         $lines = & (Join-Path $PSScriptRoot 'arpwatch.ps1') -Etl $etl -Gw $gw -Me $me -NoDelete
         "ARP frames in the capture: $((@($lines | Where-Object { $_ -like 'frames *' }) -split ' ')[1])"
-        $ifIdx = @(Get-NetIPAddress -IPAddress $me -ErrorAction SilentlyContinue)[0].InterfaceIndex
-        $own = if ($ifIdx) { (Get-NetAdapter -InterfaceIndex $ifIdx).MacAddress } else { '' }
+        $own = $OwnMac
+        if (-not $own -and $me) {
+            $ifIdx = @(Get-NetIPAddress -IPAddress $me -ErrorAction SilentlyContinue)[0].InterfaceIndex
+            $own = if ($ifIdx) { (Get-NetAdapter -InterfaceIndex $ifIdx).MacAddress } else { '' }
+        }
         "`n--- who claimed to be the gateway $gw in the capture (more than one MAC = ARP spoofing) ---"
         $g = @($lines | Where-Object { $_ -like 'gw *' })
         if ($g.Count) { foreach ($l in $g) { $p = $l -split ' '; "{0}  {1} frame(s), {2}-{3}" -f $p[1], $p[2], $p[3], $p[4] } } else { "nobody (no ARP for the gateway seen)" }
-        "`n--- who claimed to be this laptop $me in the capture (any MAC other than $own = someone poisoning the router about this laptop) ---"
+        "`n--- who claimed to be this laptop $me in the capture (any MAC other than $(if ($own) { $own } else { 'unknown' }) = someone poisoning the router about this laptop) ---"
         $m = @($lines | Where-Object { $_ -like 'me *' })
-        if ($m.Count) { foreach ($l in $m) { $p = $l -split ' '; "{0}  {1} frame(s), {2}-{3}{4}" -f $p[1], $p[2], $p[3], $p[4], $(if ($p[1] -eq $own) { '  (this laptop)' } else { '  <-- NOT this laptop' }) } } else { "nobody (no ARP for this laptop seen)" }
+        if ($m.Count) { foreach ($l in $m) { $p = $l -split ' '; "{0}  {1} frame(s), {2}-{3}{4}" -f $p[1], $p[2], $p[3], $p[4], $(if (-not $own) { '  (own MAC unknown)' } elseif ($p[1] -eq $own) { '  (this laptop)' } else { '  <-- NOT this laptop' }) } } else { "nobody (no ARP for this laptop seen)" }
     }
 } *> $Out

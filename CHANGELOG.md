@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 23:14: v2.0.2: full repo-wide audit fixes
+### 23:14: `84dcb10` v2.0.2: full repo-wide audit fixes
 From a full line-by-line audit of the repo (`tools/netbug.cs` `Version` `2.0.2`, `tools/dashboard.html`, `tools/snapshot.ps1`, `tools/arpwatch.ps1`, `tools/build.ps1`):
 - **Logic bugs (`tools/netbug.cs`):**
   - **Monotonic clock everywhere:** round pacing (`sleep`), minimal-mode 8.8.8.8 `budget`, background probe `left` wait, lag durations (`lagStartMono`/`lagLastBadMono`), 30-minute ARP alert expiry (`gwAlertAtMono`), dashboard memory refresh (`dashMemAt`), and persistent-pin cache (`pinCacheAt`) now use `Mono()` instead of `DateTime.Now`, so stepping the system clock backwards can no longer freeze the main loop or stick alerts/caches.
@@ -34,6 +34,7 @@ From a full line-by-line audit of the repo (`tools/netbug.cs` `Version` `2.0.2`,
   - `tools/arpwatch.ps1`: handles missing `etl2txt` output cleanly and fixes 5 ms dedup across midnight rollover.
   - `tools/build.ps1`: checks output filename before compiling so custom `-Out` paths compile once instead of twice.
 - Checked: `tools/build.ps1` builds clean (`netbug 2.0.2.0`, all 5 resources embedded); all 4 `.ps1` scripts parse with 0 errors; dashboard JS passes `node --check`.
+- Release https://github.com/tariqaq/netbug/releases/tag/v2.0.2, `netbug.exe` sha256 `39305fd099eca79bdeee227900928420841993f14e4bf11629638fbaf3871277` (matches GitHub's listed digest).
 
 ### 22:13: `e6dfeaf` v2.0.1: steady Live tiles, sage green
 - `tools/dashboard.html`: the four Live tiles are built once and only their values update (before, the whole block was rebuilt almost every second, so a click on a copy chip or a tile could land on a replaced node and do nothing). A copied value shows "Copied …" for 0.9 s.

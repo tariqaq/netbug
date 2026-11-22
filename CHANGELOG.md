@@ -5,6 +5,11 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-23
 
+### 06:21: v2.0.4: Cloudflare usual time learns again after 2 h degraded
+- `tools/netbug.cs` `CfRoute`: the usual time stays frozen during a degradation (v2.0.3) only for the first 2 h (`CfRelearnAfter` 7200 s); then it learns again, so a route that is slower for good becomes the usual within ~30 min more and **Cloudflare slow** ends instead of staying on until a network change or restart. `Version` `2.0.4`.
+- `README.md`: what the states mean, Cloudflare route degraded.
+- Release notes: v2.0.4 and the v2.0.3 page (renamed **netbug v2.0.3**) get back the install/update/uninstall header and the full "New in…" history (v2.0.2's notes had dropped everything before v2.0.2), with a plain-language v2.0.3 section.
+
 ### 06:14: `90672c0` v2.0.3: second audit pass and live UI fixes
 From the second full line-by-line audit plus live browser inspection (`tools/netbug.cs` `Version` `2.0.3`, `tools/dashboard.html`, `tools/snapshot.ps1`, `tools/arpwatch.ps1`, `README.md`):
 - **Logger & protection (`tools/netbug.cs`):**

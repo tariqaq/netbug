@@ -102,7 +102,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "2.0.3";
+    public const string Version = "2.0.4";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -1486,19 +1486,24 @@ class NetBug
     // least twice its usual time and 5 ms more (usual = the 10th percentile of its answers over the last
     // 30 min, refreshed every minute, learned again on every new network: see CfReset) -> CLOUDFLARE ROUTE
     // DEGRADED. Back to normal after 60 s without that.
+    // The usual time stays frozen during a degradation, so a long one isn't learned as the new usual and
+    // cleared by itself; after 2 h degraded it learns again (CfRelearnAfter), so a route that is now slower
+    // for good becomes the usual within about 30 min more and the alert ends.
     // Returns whether the route counts as degraded now (the round's "cf_route" fail; not an outage).
+    const int CfRelearnAfter = 7200;
     static bool CfRoute(long cfMs, long gMs, double mono)
     {
         cfWin[cfWinPos] = (int)cfMs; gWin[cfWinPos] = (int)gMs;
         cfWinPos = (cfWinPos + 1) % cfWin.Length;
         if (cfWinCount < cfWin.Length) cfWinCount++;
-        if (cfMs >= 0 && !cfBad)
+        bool learn = !cfBad || mono - cfBadStartMono >= CfRelearnAfter;
+        if (cfMs >= 0 && learn)
         {
             cfHistory[cfHistPos] = (int)cfMs;
             cfHistPos = (cfHistPos + 1) % cfHistory.Length;
             if (cfHistCount < cfHistory.Length) cfHistCount++;
         }
-        if (!cfBad && mono - cfBaseAt >= 60 && cfHistCount >= 60)
+        if (learn && mono - cfBaseAt >= 60 && cfHistCount >= 60)
         {
             var sorted = new int[cfHistCount];
             Array.Copy(cfHistory, sorted, cfHistCount);

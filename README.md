@@ -28,7 +28,7 @@ What the states mean:
 
 - **Outage**: no internet for 2 seconds or more (both test pings, DNS, TCP or UDP failing). netbug saves a snapshot of the network state. The seconds of a router check (which cuts the connection on purpose) are tagged `router_check` and never count.
 - **Lag**: the router itself answers slowly (15 ms+) or drops pings along with the internet.
-- **Cloudflare route degraded**: 1.1.1.1 is losing pings or running twice as slow as usual while Google is fine. Discord and other sites behind Cloudflare suffer, everything else works. It's your ISP's route to Cloudflare, not your network.
+- **Cloudflare route degraded**: 1.1.1.1 is losing pings or running twice as slow as usual while Google is fine. Discord and other sites behind Cloudflare suffer, everything else works. It's your ISP's route to Cloudflare, not your network. "Usual" isn't updated while it's degraded, so a long slowdown stays flagged; after 2 hours netbug starts learning again, so a route that has become slower for good counts as usual about 30 minutes later.
 - **VPN shown in red**: a VPN carries your traffic, so the internet readings measure the VPN, not your ISP.
 - **"Windows network name, SSID hidden"** next to Wi-Fi: Windows 11 24H2+ hides the Wi-Fi name from apps without location access, so netbug shows the name Windows gave the network instead. Usually the same, but it can be renamed or end in " 2".
 

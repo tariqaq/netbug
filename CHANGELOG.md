@@ -5,8 +5,9 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 21:56: v2.0.0: full dashboard UI redesign
+### 21:56: `0dae9a9` v2.0.0: full dashboard UI redesign
 - `tools/netbug.cs`: `Version` `2.0.0` (embeds the redesigned `tools/dashboard.html`).
+- Release https://github.com/tariqaq/netbug/releases/tag/v2.0.0, `netbug.exe` sha256 `0d09ecf581cdfa85d8e685c2b5b6e08bad83a47f9e361bf754bcbb3118848673` (matches GitHub's listed digest; all five resources embedded).
 
 ### 21:51: `f68c648` dashboard UI redesign and theme rules
 - `tools/dashboard.html`: redesigned as a matte dark-graphite tabbed desktop-app shell (`#0c0c0c` / `#151515`) with centered pill navigation (**Live**, **Protection**, **Events**, **System**) and a top-right **Minimal** popover available to every viewer.

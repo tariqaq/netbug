@@ -38,8 +38,8 @@
 // Windows ignore it. A snapshot saves the ARP from the 15 min before it (<snapshot>.ring.txt). See the
 // "ARP watch" section.
 // MAC announce: about once a second this laptop sends an ARP request (sender = its own IP and MAC),
-// so a router told a fake MAC for this laptop learns the real one again within a second. See the
-// "MAC announce" section.
+// so a router told a fake MAC for this laptop learns the real one again within a second. Off in minimal
+// mode and on a phone tether. See the "MAC announce" section.
 // Minimal mode (a page switch, on by itself on a phone's USB tether or a mobile broadband adapter, kept
 // on for 60 s when the tether drops out): on the internet only a 1.1.1.1 ping every 2 s (8.8.8.8 only
 // when it fails), DNS every 60 s, the public IP every 30 min and the update check every 6 h; TCP, TLS,
@@ -54,8 +54,9 @@
 // netbug adds no Windows Firewall rule, so other devices reach it only once one allows inbound TCP 8787.
 // Router check and pin (the dashboard's "Router protection" panel, for the person at this laptop
 // only): finds the real router MAC by testing every MAC that claims the gateway IP (or tests one known
-// or typed MAC), and can pin it as a permanent ARP entry. Refused on a phone tether (and Check now in
-// minimal mode, or while a snapshot runs); a check's seconds are tagged router_check, never an outage; an
+// or typed MAC), and can pin it as a permanent ARP entry. On a phone tether the checks, pinning, the
+// auto-detect switch and the MAC announce are all off (an existing pin can still be removed); Check now
+// is also refused in minimal mode, and no check starts while a snapshot runs. A check's seconds are tagged router_check, never an outage; an
 // update, uninstall or restart waits for it, and one interrupted anyway is undone at the next start. See
 // the "router check and pin" section.
 //
@@ -100,7 +101,7 @@ using System.Management;
 class NetBug
 {
     // the release version: an update is a GitHub release with a higher tag (see "export and updates")
-    public const string Version = "1.0.18";
+    public const string Version = "1.0.19";
 
     [DllImport("iphlpapi.dll")]
     static extern int GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int af, int tableClass, int reserved);
@@ -1942,7 +1943,8 @@ class NetBug
     // is a broadcast whose sender is this laptop's IP and MAC, and routers update an existing entry from any ARP they
     // hear from that IP (RFC 826; Linux-based routers after a 1 s lock time), so a fake entry for this
     // laptop lasts about a second. Which neighbor is asked doesn't matter. When nobody has that address,
-    // one call sends a request about every second for ~3 s. Nothing is sent in minimal mode.
+    // one call sends a request about every second for ~3 s. Nothing is sent in minimal mode or on a phone
+    // tether (the phone is the router and nobody else is on that link); the switch keeps its setting.
 
     static volatile bool announce = true;
     static int announceSent;   // ARP resolutions started since netbug started
@@ -1959,7 +1961,7 @@ class NetBug
             {
                 var c = cur; NetworkInterface ni = c.Ni; IPAddress ip = c.Ip, gw = c.Gw;
                 int idx = IfIndex(ni);
-                IPAddress t = announce && !minimal && ip != null && gw != null && idx >= 0 ? AnnounceTarget(ni, ip, gw) : null;
+                IPAddress t = announce && !minimal && !IsTether(ni) && ip != null && gw != null && idx >= 0 ? AnnounceTarget(ni, ip, gw) : null;
                 if (t != null)
                 {
                     for (int i = 0; i < 88; i += 4) Marshal.WriteInt32(row, i, 0);
@@ -2746,7 +2748,9 @@ class NetBug
     // without the 10 s listen; it is pinned only when it passes. A failed test changes nothing.
     // Auto-detect (the page's switch, off by default) runs a check by itself: on a new gateway, every 30 min
     // and 5 min after spoofing is seen. Never in minimal mode or on a phone tether, where the check would cut
-    // the phone's connection for nothing; on a tether Check now and Test and pin are refused too. Check now
+    // the phone's connection for nothing. On a tether all of router protection is off (TetherOff): Check
+    // now, Test and pin, Pin and the auto-detect and announce switches are refused (the switches keep their
+    // settings), and only Unpin works, so a pin made elsewhere can still be removed. Check now
     // is also refused in minimal mode (no ARP capture to listen to), and no check starts while a snapshot
     // runs. During a check the main loop tags its seconds router_check and leaves the outage state alone.
     // The gateway's original entry is noted in logs\netbug.arptest while MACs are tested (see
@@ -2850,27 +2854,29 @@ class NetBug
         switch (path)
         {
             case "/api/fix/check":
-                if (IsTether(cur.Ni)) error = TetherNoCheck;
+                if (IsTether(cur.Ni)) error = TetherOff;
                 else if (minimal) error = MinimalNoCheck;
                 else if (!StartDetect("manual")) error = BusyText();
                 break;
-            case "/api/fix/pin": error = Pin(); break;
+            case "/api/fix/pin": error = IsTether(cur.Ni) ? TetherOff : Pin(); break;
             case "/api/fix/trypin":
             {
                 string mac = NormalizeMac(ctx.Request.QueryString["mac"]);
-                if (IsTether(cur.Ni)) error = TetherNoCheck;
+                if (IsTether(cur.Ni)) error = TetherOff;
                 else if (mac == "") error = "That isn't a router MAC address (format: AA-BB-CC-DD-EE-FF).";
                 else if (!StartDetect("test and pin " + mac, mac)) error = BusyText();
                 break;
             }
             case "/api/fix/unpin": error = Unpin(); break;
             case "/api/fix/auto":
+                if (IsTether(cur.Ni)) { error = TetherOff; break; }
                 autoDetect = ctx.Request.QueryString["on"] == "1";
                 SaveSettings();
                 Event("router auto-detect " + (autoDetect ? "on" : "off"));
-                if (autoDetect && !minimal && !IsTether(cur.Ni)) StartDetect("auto");   // never on a tether or in minimal mode
+                if (autoDetect && !minimal) StartDetect("auto");   // never in minimal mode
                 break;
             case "/api/fix/announce":
+                if (IsTether(cur.Ni)) { error = TetherOff; break; }
                 announce = ctx.Request.QueryString["on"] == "1";
                 SaveSettings();
                 Event("MAC announce (keep the router updated) " + (announce ? "on" : "off"));
@@ -2897,9 +2903,9 @@ class NetBug
         return FixStatus(error);
     }
 
-    // Check now and Test and pin are refused on a phone tether: each test cuts the connection, the phone is
-    // the router and nobody else is on that link to spoof it
-    const string TetherNoCheck = "Off on a phone tether: a check cuts the connection for a few seconds, and the phone itself is the router.";
+    // Router protection is off on a phone tether: the phone is the router and nobody else is on that link
+    // to spoof it, and each test cuts the connection
+    const string TetherOff = "Off on a phone tether: the phone itself is the router and nobody else is on that link, and each check cuts the connection for a few seconds.";
     // Check now is refused in minimal mode: it listens to the ARP capture, which is off then (Test and pin
     // doesn't listen, so it still works)
     const string MinimalNoCheck = "Off in minimal mode: the ARP capture is off, so the check can't hear who answers as the router. Turn minimal mode off first, or use Test and pin.";

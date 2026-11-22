@@ -41,7 +41,7 @@ For mobile data (a phone's USB tethering, a 4G/5G modem), where extra connection
 - Kept: a ping to 1.1.1.1 every 2 s (Google only to confirm a failure), the phone/router ping every second (it never leaves the cable), DNS every minute (every second while it fails), the public IP every 30 min, the update check every 6 h. Outages are still logged.
 - Stopped: the TCP, TLS and UDP checks, the regular Google ping and the Cloudflare route check, the ARP watch, the automatic router check, the MAC announce, and the network tests in outage snapshots (which are taken at most every 10 min). Their readings show "off". **Check now** is off too (it listens to the ARP watch); **Test and pin** still works.
 
-It turns on by itself when the internet comes through a phone's USB tether or a mobile broadband adapter (switch **On by itself on a phone tether**, on by default), stays on for 60 s if the tether drops out, and turns off on any other network. On a tether, **Check now** and **Test and pin** are off whatever the mode: each test cuts the connection, and the phone is the router. A phone's Wi-Fi hotspot looks like any Wi-Fi: use the **Minimal mode** switch. Both switches work from any device that can open the page, and each change is logged with the device's IP.
+It turns on by itself when the internet comes through a phone's USB tether or a mobile broadband adapter (switch **On by itself on a phone tether**, on by default), stays on for 60 s if the tether drops out, and turns off on any other network. On a tether, router protection is off and greyed out whatever the mode: **Check now**, **Test and pin**, **Pin it permanently**, **Auto-detect the real router** and **Keep the router updated** (nothing is sent). The phone is the router, nobody else is on that link, and each test cuts the connection. The switches keep their settings for other networks, and a pin made elsewhere can still be turned off. A phone's Wi-Fi hotspot looks like any Wi-Fi: use the **Minimal mode** switch. Both switches work from any device that can open the page, and each change is logged with the device's IP.
 
 ## Router protection
 
@@ -58,6 +58,8 @@ netbug trusts the first router MAC it sees on each network (or the pinned or pro
 A check is never cut short: **Install update now** and **Uninstall** wait for it, and if netbug is stopped mid-check anyway, the next start puts the router's address entry back.
 
 **Auto-detect the real router** is off by default: it runs checks by itself, and each one cuts the connection for a few seconds. It never runs on a phone tether or in minimal mode.
+
+On a phone's USB tether or a mobile broadband adapter, all of this is off and greyed out (see [Minimal mode](#minimal-mode)). A phone's Wi-Fi hotspot can't be told apart from other Wi-Fi.
 
 Moving the adapter to a different network that uses the same router IP? Turn the pin off first.
 

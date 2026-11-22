@@ -5,6 +5,18 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 19:32: v1.0.19: router protection off on a phone tether
+- On a phone's USB tether or a mobile broadband adapter, all of router protection is off: Check now, Test and pin, Pin, the **Auto-detect the real router** and **Keep the router updated** switches (refused by `/api/fix`, `TetherOff`), and the MAC announce sends nothing. The switches keep their settings for other networks; Unpin still works. `tools/netbug.cs`.
+- Page: on a tether those rows and the Router MAC picker are greyed out, each note says "Off on a phone tether". `tools/dashboard.html`.
+- README: Minimal mode and Router protection sections.
+
+### 19:16: netbug re-enabled on the user's request
+- **Machine:** from an elevated prompt the user approved, `schtasks /Change /TN netbug /ENABLE` and `schtasks /Run /TN netbug`: task `Running`, netbug v1.0.18 up and the dashboard answering on port 8787. The hostel gateway pin still reads `static`.
+
+### 05:21: netbug stopped on the user's request
+- **Machine:** `schtasks /End /TN netbug` and the netbug process (v1.0.18) killed; no netbug or pktmon running since. The task was then disabled from an elevated prompt the user approved (`schtasks /Change /TN netbug /DISABLE`, plus `pktmon stop`): status `Disabled`, so it doesn't start at logon or restart. Undo: `schtasks /Change /TN netbug /ENABLE` (admin), then `schtasks /Run /TN netbug`.
+- **Machine:** no ARP pin on the hotspot interfaces (Ethernet 4 tether and Wi-Fi gateways are learned, dynamic); the only pin is the hostel gateway on `Ethernet 7` (set by hand 10-28), left as is. No `netbug.arptest` leftover.
+
 ### 02:40: `27f512e` v1.0.18: second audit fixes
 From a second full read of the repo. `tools/netbug.cs` (`Version` 1.0.18):
 - **Logic:**

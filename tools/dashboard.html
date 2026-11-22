@@ -137,6 +137,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
 .sw input:checked { background: var(--ok); }
 .sw input:checked::after { transform: translateX(18px); }
 .sw input:disabled { opacity: .4; cursor: not-allowed; }
+.sw.off, .known-off { opacity: .45; cursor: not-allowed; }   /* router protection on a phone tether: the whole row greyed */
 .sw b { font-size: 16px; font-weight: 600; display: block; }
 .sw small { font-size: 13px; display: block; margin-top: 2px; }
 .known { border-top: 1px solid var(--line); padding: 12px 0; }
@@ -616,27 +617,36 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     else if (f.pinned) { st = 'Protected'; cls = 'ok'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ' on ' + f.iface + '. Fake router replies are ignored.'; }
     else if (f.verified) { st = 'Not pinned'; cls = 'warn'; sub = 'The real router ' + f.gw + ' is ' + f.verified + '. Turn on the pin to protect this laptop.'; }
     else { st = 'Not pinned'; cls = 'warn'; sub = 'Router ' + f.gw + ' on ' + f.iface + ' is currently ' + (f.arpMac || 'unknown') + ' (' + (f.arpType || 'not in the ARP table') + '). Run a check to find the real one, or test a router MAC below.'; }
-    // what netbug refuses right now (see TetherNoCheck, MinimalNoCheck and StartDetect in netbug.cs)
-    if (f.tether && !f.busy) sub += ' On a phone tether, Check now and Test and pin are off: each test cuts the connection, and the phone itself is the router.';
+    // what netbug refuses right now (see TetherOff, MinimalNoCheck and StartDetect in netbug.cs)
+    if (f.tether && !f.busy) sub += ' On a phone tether, router protection is off: the phone itself is the router and nobody else is on that link, and each check cuts the connection. The switches keep their settings for other networks.';
     else if (f.minimal && !f.busy) sub += ' In minimal mode, Check now is off (it needs the ARP capture, which is off); Test and pin still works.';
     if (f.snapshot && !f.busy) sub += ' A snapshot is being taken: router tests wait until it’s done.';
     putText($('fx-state'), st); $('fx-state').className = 'fix-state ' + cls;
     putText($('fx-sub'), sub);
+    // on a phone tether the three switches are greyed out (netbug refuses them, see TetherOff); a pin made on
+    // another network can still be turned off
+    const teth = !!f.tether, offNote = 'Off on a phone tether. ';
     $('fx-auto').checked = f.auto;
+    $('fx-auto').disabled = teth;
+    $('fx-auto').closest('.sw').classList.toggle('off', teth);
     // minimal mode pauses the auto-detect, the MAC announce and slows the update check (see netbug.cs "minimal mode")
     const minOn = !!(state && state.sample && state.sample.minimal);
-    putText($('fx-auto-note'), (minOn ? 'Paused while minimal mode is on. ' : '') +
+    putText($('fx-auto-note'), (teth ? offNote : minOn ? 'Paused while minimal mode is on. ' : '') +
       'Off by default. Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. Never runs on a phone tether. It never changes a pin by itself.');
     const pin = $('fx-pin');
     pin.checked = !!f.pinned;
-    pin.disabled = f.busy || !f.gw || (!f.pinned && !f.verified);
-    putText($('fx-pin-note'), (!f.pinned && !f.verified ? 'Run a check first. ' : '') + 'Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop. Turn it off before plugging this adapter into another network that uses the same router address (' + (f.gw || '–') + ').');
+    pin.disabled = f.busy || !f.gw || (!f.pinned && (!f.verified || teth));
+    pin.closest('.sw').classList.toggle('off', teth && !f.pinned);
+    putText($('fx-pin-note'), (teth && !f.pinned ? offNote : !f.pinned && !f.verified ? 'Run a check first. ' : '') + 'Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop. Turn it off before plugging this adapter into another network that uses the same router address (' + (f.gw || '–') + ').');
     const a = f.announce;
     $('fx-ann').checked = a.on;
-    putText($('fx-ann-note'), (minOn ? 'Paused while minimal mode is on: nothing is sent. ' : '') +
+    $('fx-ann').disabled = teth;
+    $('fx-ann').closest('.sw').classList.toggle('off', teth);
+    const annOff = teth || minOn;
+    putText($('fx-ann-note'), (teth ? offNote + 'Nothing is sent. ' : minOn ? 'Paused while minimal mode is on: nothing is sent. ' : '') +
       'Tells the router this laptop’s real address about once a second (an ARP request asking for ' + (a.target || 'a neighbor of the router') +
       '), so if someone tells the router they are this laptop, it lasts about a second. The pin can’t block that kind of attack.' +
-      (minOn ? '' : a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
+      (annOff ? '' : a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
       (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen +
         ' ARP requests from this laptop seen on the wire' + (a.seenFrom ? ' in the ' + dur(a.seenAt - a.seenFrom) + ' before it' : '') + '.' : ''));
     $('fx-check').disabled = f.busy || !f.gw || f.tether || f.minimal || f.snapshot;
@@ -714,6 +724,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
     }
     $('fx-mac').hidden = sel.value !== 'other';
+    // greyed out on a phone tether, with the switches above
+    sel.disabled = $('fx-mac').disabled = !!f.tether;
+    sel.closest('.known').classList.toggle('known-off', !!f.tether);
     const mac = chosenMac(), already = !!mac && f.pinned === mac;
     $('fx-try').disabled = f.busy || !f.gw || !mac || already || f.tether || f.snapshot;
     putText($('fx-try'), already ? 'Already pinned' : 'Test and pin');

@@ -34,7 +34,7 @@
   --ink: #f5f5f3;
   --ink-2: #9a9a95;
   --ink-3: #5e5e5a;
-  --ok: #34d399;
+  --ok: #8fbf8a;
   --lag: #ff8a3d;
   --down: #ff453a;
   --gw: #60a5fa;
@@ -380,7 +380,7 @@ canvas#chart {
   background: var(--surf-2);
   color: var(--ink-2);
 }
-.tile-tag.ok { background: rgba(52, 211, 153, .14); color: var(--ok); }
+.tile-tag.ok { background: rgba(143, 191, 138, .14); color: var(--ok); }
 .tile-tag.warn { background: rgba(255, 138, 61, .16); color: var(--lag); }
 .tile-tag.bad { background: rgba(255, 69, 58, .18); color: var(--down); }
 
@@ -808,7 +808,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       <div class="probe"><div class="pk">New TCP</div><div class="pv" id="r-tcp">–</div></div>
     </section>
 
-    <section class="tiles" id="tiles"></section>
+    <!-- built once; renderState only updates the values, so a click never lands on a node being replaced -->
+    <section class="tiles" id="tiles">
+      <div class="tile" id="t-router" data-go="protect">
+        <div class="tile-head"><span>Router &amp; ARP</span><span class="tile-tag" id="t-pin">–</span></div>
+        <div class="tile-val mono" id="t-gwmac">–</div>
+        <div class="tile-meta"><button type="button" class="copy-chip" id="c-gw"></button><span id="t-aw"></span></div>
+      </div>
+      <div class="tile">
+        <div class="tile-head"><span>Connection</span><span class="tile-tag" id="t-vpn">–</span></div>
+        <div class="tile-val"><span id="t-iface">No adapter</span> <span style="color:var(--ink-3);font-weight:400" id="t-wifi"></span></div>
+        <div class="tile-meta"><button type="button" class="copy-chip" id="c-ip"></button><button type="button" class="copy-chip" id="c-pub"></button></div>
+      </div>
+      <div class="tile">
+        <div class="tile-head"><span>Traffic &amp; UDP</span><span class="tile-tag" id="t-udp">–</span></div>
+        <div class="tile-val mono"><span id="t-tx">–</span> <span style="color:var(--ink-3)">↑</span> &nbsp; <span id="t-rx">–</span> <span style="color:var(--ink-3)">↓</span> <span style="font-size:13px;font-weight:400;color:var(--ink-3)">pkt/s</span></div>
+        <div class="tile-meta"><button type="button" class="copy-chip" id="c-nat" hidden></button><span id="t-top"></span></div>
+      </div>
+      <div class="tile clickable" data-go="events">
+        <div class="tile-head"><span>Recent activity</span><span class="tile-tag" id="t-awtag">Open log →</span></div>
+        <div class="tile-val" style="font-size:15px;font-weight:500" id="t-last">Listening to events…</div>
+        <div class="tile-meta"><span id="t-vpnname">No VPN active</span></div>
+      </div>
+    </section>
   </main>
 
   <section class="view" id="view-protect" aria-live="polite">
@@ -1153,41 +1175,43 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     const aw = s.arpWatch || 'Pending';
     const awCls = /spoofing/i.test(aw) ? 'bad' : /clean/i.test(aw) ? 'ok' : /no ARP/i.test(aw) ? 'warn' : '';
 
-    const tilesHtml = `
-      <div class="tile ${fixOn ? 'clickable' : ''}" data-go="protect">
-        <div class="tile-head"><span>Router &amp; ARP</span><span class="tile-tag ${pinTag[1]}">${esc(pinTag[0])}</span></div>
-        <div class="tile-val mono ${s.gwAlert ? 'bad' : ''}">${esc(s.gwMac || '–')}</div>
-        <div class="tile-meta">
-          <button type="button" class="copy-chip" data-copy="${esc(s.gw || '')}">Gateway <code>${esc(s.gw || '–')}</code></button>
-          <span>${esc(/arp/i.test(aw) ? aw : 'ARP watch: ' + aw)}</span>
-        </div>
-      </div>
+    $('t-router').classList.toggle('clickable', fixOn);
+    tag('t-pin', pinTag[0], pinTag[1]);
+    putText($('t-gwmac'), s.gwMac || '–');
+    $('t-gwmac').classList.toggle('bad', !!s.gwAlert);
+    chip('c-gw', 'Gateway', s.gw);
+    putText($('t-aw'), /arp/i.test(aw) ? aw : 'ARP watch: ' + aw);
 
-      <div class="tile">
-        <div class="tile-head"><span>Connection</span><span class="tile-tag ${vpnTag[1]}">${esc(vpnTag[0])}</span></div>
-        <div class="tile-val">${esc(s.iface || 'No adapter')} <span style="color:var(--ink-3);font-weight:400">· ${esc(wifiName)}</span></div>
-        <div class="tile-meta">
-          <button type="button" class="copy-chip" data-copy="${esc(s.ip || '')}">Local <code>${esc(s.ip || '–')}</code></button>
-          <button type="button" class="copy-chip" data-copy="${esc(s.pubIp || '')}">Public <code>${esc(s.pubIp || '–')}</code></button>
-        </div>
-      </div>
+    tag('t-vpn', vpnTag[0], vpnTag[1]);
+    putText($('t-iface'), s.iface || 'No adapter');
+    putText($('t-wifi'), '· ' + wifiName);
+    chip('c-ip', 'Local', s.ip);
+    chip('c-pub', 'Public', s.pubIp);
 
-      <div class="tile">
-        <div class="tile-head"><span>Traffic &amp; UDP</span><span class="tile-tag ${s.tx > 15 && s.rx <= 2 ? 'bad' : ''}">${s.udpTotal < 0 ? '–' : s.udpTotal + ' ports'}</span></div>
-        <div class="tile-val mono">${s.tx} <span style="color:var(--ink-3)">↑</span> &nbsp; ${s.rx} <span style="color:var(--ink-3)">↓</span> <span style="font-size:13px;font-weight:400;color:var(--ink-3)">pkt/s</span></div>
-        <div class="tile-meta">
-          ${natAddr ? '<button type="button" class="copy-chip" data-copy="' + esc(natAddr) + '">NAT <code>' + esc(natAddr) + '</code> (' + esc(natSrv) + ')</button>' : ''}
-          ${topProc ? '<span>' + esc(topProc) + '</span>' : ''}
-        </div>
-      </div>
+    tag('t-udp', s.udpTotal < 0 ? '–' : s.udpTotal + ' ports', s.tx > 15 && s.rx <= 2 ? 'bad' : '');
+    putText($('t-tx'), String(s.tx));
+    putText($('t-rx'), String(s.rx));
+    $('c-nat').hidden = !natAddr;
+    if (natAddr) chip('c-nat', 'NAT', natAddr, natSrv);
+    putText($('t-top'), topProc);
 
-      <div class="tile clickable" data-go="events">
-        <div class="tile-head"><span>Recent activity</span><span class="tile-tag ${awCls}">Open log →</span></div>
-        <div class="tile-val" style="font-size:15px;font-weight:500">${esc(latestLogMsg || 'Listening to events…')}</div>
-        <div class="tile-meta"><span>${s.vpn ? 'VPN: ' + esc(s.vpn) : 'No VPN active'}</span></div>
-      </div>
-    `;
-    put($('tiles'), tilesHtml);
+    tag('t-awtag', 'Open log →', awCls);
+    putText($('t-last'), latestLogMsg || 'Listening to events…');
+    putText($('t-vpnname'), s.vpn ? 'VPN: ' + s.vpn : 'No VPN active');
+  }
+
+  // a tile tag's text and colour class
+  function tag(id, text, cls) {
+    const el = $(id), c = 'tile-tag' + (cls ? ' ' + cls : '');
+    putText(el, text);
+    if (el.className !== c) el.className = c;
+  }
+  // a click-to-copy value; left alone for 0.9 s after a click so "Copied" stays readable
+  function chip(id, label, v, extra) {
+    const el = $(id);
+    el.dataset.copy = v || '';
+    if (Date.now() < (el._until || 0)) return;
+    put(el, esc(label) + ' <code>' + esc(v || '–') + '</code>' + (extra ? ' (' + esc(extra) + ')' : ''));
   }
 
   $('tiles').addEventListener('click', e => {
@@ -1197,9 +1221,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       const v = cp.dataset.copy;
       if (v) {
         if (navigator.clipboard) navigator.clipboard.writeText(v).catch(() => {});
-        const orig = cp.innerHTML;
+        cp._until = Date.now() + 900;
+        cp._h = null;                  // the next render after that puts the value back (see chip)
         cp.textContent = 'Copied ' + v;
-        setTimeout(() => { cp.innerHTML = orig; }, 900);
       }
       return;
     }

@@ -28,7 +28,7 @@
 
 Enforce this visual language on every UI edit so the dashboard stays like a focused native desktop app and never drifts into generic AI-generated admin-dashboard tropes:
 
-1. **Palette & surfaces:** Warm matte charcoal (`--bg: #0c0c0c`, `--surf: #151515`, `--surf-2: #1d1d1d`, `--surf-3: #272727`), whisper hairlines (`rgba(255, 255, 255, 0.075)`), warm ivory ink (`#f5f5f3`) and neutral secondary (`#9a9a95`). No cold bluish-slate dark themes, no neon cyan/emerald devops palettes, no dot-grid backgrounds, no glowing box-shadows, no left-edge colored stripe bars.
+1. **Palette & surfaces:** Warm matte charcoal (`--bg: #0c0c0c`, `--surf: #151515`, `--surf-2: #1d1d1d`, `--surf-3: #272727`), whisper hairlines (`rgba(255, 255, 255, 0.075)`), warm ivory ink (`#f5f5f3`) and neutral secondary (`#9a9a95`). Status colours stay muted: sage green for OK (`--ok: #8fbf8a`), orange for lag (`--lag`), red for down (`--down`). No cold bluish-slate dark themes, no neon cyan/emerald devops palettes, no dot-grid backgrounds, no glowing box-shadows, no left-edge colored stripe bars.
 2. **Typography & copy:** Sentence-case headings and labels in bundled Inter (`/fonts/inter.woff2`, zero external requests). Reserve monospace strictly for technical data (IPs, MACs, ports, timestamps, raw event lines) — no ALL-CAPS monospace UI headers.
 3. **No AI-slop clutter:**
    - **No decorative or pulsing status dots** (no random green "live/online" dots). Communicate state with crisp typography, the restrained top ambient wash on lag/outage (`--wash`), and pill tags only when actionable.

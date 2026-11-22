@@ -3,6 +3,27 @@
 All times are the user's system time: Kuala Lumpur, MYT (UTC+08:00). Newest first.
 Entries cover repo changes (with commit hash) and changes made to the machine itself.
 
+## 2026-11-23
+
+### 06:14: `90672c0` v2.0.3: second audit pass and live UI fixes
+From the second full line-by-line audit plus live browser inspection (`tools/netbug.cs` `Version` `2.0.3`, `tools/dashboard.html`, `tools/snapshot.ps1`, `tools/arpwatch.ps1`, `README.md`):
+- **Logger & protection (`tools/netbug.cs`):**
+  - **Serialized API mutations:** `Pin()` and `Unpin()` coordinate with `Detect()`, `WaitForCheck()`, `UpdateLoop()`, and `Health()` via `pinBusy` under `fixLock`; `POST /api/fix/uninstall` guards against concurrent uninstalls (`uninstalling`) and active updates (`updBusy`), and `InstallUpdate()` refuses to start while uninstalling; `auto`, `announce`, and `/api/minimal` update flags and call `SaveSettings()` together under `settingsLock`.
+  - **ARP watch accuracy & serialization:** `Snapshot()` and `ArpWatchStart()` capture `OwnMac` alongside `gw`/`me` instead of reading `cur.Ni` live after waiting on `pktmonLock` (preventing false laptop-IP spoofing alerts on adapter switches); overlapping `ReportClaims()` calls serialize under `reportLock`.
+  - **Updater & router check fixes:** fixed `UpdateLoop()` falling into the repo-build log branch when a portable install enters the 1-hour failed-update backoff; `Detect()` writes `chosen` from the current test instead of stale `verifiedMac` so a failed single-MAC test never highlights green.
+  - **Cloudflare & UDP stability:** `CfRoute()` freezes `cfHistory` and `cfBase` while `cfBad` is active so prolonged degradations do not drift the baseline up; `StunLoop` bumps `stunGen` on socket resets so `Run()` clears `lastMapBy` instead of logging false NAT mapping changes, skips writing `udpMap` if minimal mode turned on mid-probe, gates CSV/JSON `map` on `!minimal`, and closes broken sockets in `StunProbe()`'s generic `catch`.
+  - **Monotonic durations & synchronization:** migrated remaining duration/sleep checks (`TrackOutage`, `LoopGap`, `CfRoute`, `PersistentTcpLoop`, `Detect`, `Health`) to `Mono()`; synchronized `pubIp`/`pubIpAt` (`pubLock`), `updCheckedAt`/`updFailedAt` (`updLock`), and `lastDetect` (`fixLock`); `RingLoop()` kills hung `pktmon.exe` after `WaitForExit(5000)`; `LocalHost()` accepts case-insensitive `localhost` and IPv6 `[::1]`; `/api/export` rejects non-localhost/non-POST or busy requests before queueing a task; `PickInterface()` matches `GigabitEthernet`/`FastEthernet*` via `IsEthernet()` consistently with `IfType()`.
+- **Dashboard (`tools/dashboard.html`):**
+  - **Action errors & Uninstall state:** routed `/api/fix/update/*` and `/api/fix/uninstall` errors to `#up-err` on the **System** tab, persisted Protection and System action errors across 2 s polls until the next action, disabled **Uninstall** during active updates (`u.busy`), and restored its `"Uninstall"` label if refused or errored.
+  - **Chart, polling & events:** floating tooltip now hides when moving into the right-hand Y-axis gutter; backward clock steps reset `since` and `hist` instead of freezing the chart/probes; hidden-tab `fastFix` interval no longer re-arms from in-flight responses; `events.log` rotation resets unread alerts instead of inflating the badge.
+  - **Live UI & a11y fixes:** removed `#log` top padding (`padding: 0 0 10px`) so sticky `.day` headers sit flush with no peeking lines; added `"No matching events."` empty state; eliminated the native horizontal scrollbar inside the mobile (`390px`) tab pill bar (`scrollbar-width: none` + narrower `<= 520px` padding); added `aria-pressed` to chart series pills and keyboard access (`role="button"`, `tabindex="0"`, `Enter`/`Space`) to clickable overview tiles.
+- **Scripts & docs:**
+  - `tools/snapshot.ps1`: added `-OwnMac` parameter (passed by `netbug.exe`, with `(own MAC unknown)` fallback), switched the 15 s capture floor to `Stopwatch`, and skipped adapters missing a baseline counter read.
+  - `tools/arpwatch.ps1`: guarded short fractional timestamps against `.Substring` out-of-range errors and moved `.etl.txt` / `.etl` cleanup into `finally`.
+  - `README.md` & `tools/netbug.cs`: synced remote-viewer Minimal popover note, **Install \<version\> now** button name, and comments (`"Off"`, `"Keep router updated"`).
+- Checked: `tools/build.ps1` builds clean (`netbug 2.0.3.0`, all 5 resources embedded); all 4 `.ps1` scripts parse with 0 errors; dashboard JS passes `node --check`; all UI fixes verified live in browser across `1280×800` and `390×844` with `0` console errors.
+- Release https://github.com/tariqaq/netbug/releases/tag/v2.0.3, `netbug.exe` sha256 `4456a2b2792a912bda157a19293be96dd47804ad2b79734c7a74371cba26c610` (matches GitHub's listed digest).
+
 ## 2026-11-22
 
 ### 23:14: `84dcb10` v2.0.2: full repo-wide audit fixes

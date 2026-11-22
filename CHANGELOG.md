@@ -5,7 +5,7 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 22:01: stale control names after the redesign
+### 22:01: `052f3e7` stale control names after the redesign
 - Old control names left by the v2.0.0 redesign: `README.md` How it works (**Keep router updated**), `tools/netbug.cs` comments in `Serve` (Protection and System tabs) and the update section (the System tab's "Install <version> now"). Comments only, no behavior change, no rebuild.
 
 ### 21:56: `0dae9a9` v2.0.0: full dashboard UI redesign

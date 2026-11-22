@@ -5,6 +5,9 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 21:56: v2.0.0: full dashboard UI redesign
+- `tools/netbug.cs`: `Version` `2.0.0` (embeds the redesigned `tools/dashboard.html`).
+
 ### 21:51: `f68c648` dashboard UI redesign and theme rules
 - `tools/dashboard.html`: redesigned as a matte dark-graphite tabbed desktop-app shell (`#0c0c0c` / `#151515`) with centered pill navigation (**Live**, **Protection**, **Events**, **System**) and a top-right **Minimal** popover available to every viewer.
   - **Live**: unboxed status headline with live Gateway/Cloudflare ms, full-bleed 5-minute latency chart with series toggles and cursor-tracking hover tooltip, unboxed 6-probe strip, and 2×2 overview tiles (click IPs/MACs to copy; click Router/Activity to jump to those tabs). Removed pulsing status dots and prose walls under switches.

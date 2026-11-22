@@ -2372,7 +2372,7 @@ class NetBug
         else if (ctx.Request.HttpMethod != "GET") { ctx.Response.StatusCode = 405; body = "{}"; }
         else if (path == "/")
         {
-            // only the person at this laptop gets the control token (and so the Router protection and Logs and updates controls)
+            // only the person at this laptop gets the control token (and so the Protection and System tabs)
             body = File.ReadAllText(Path.Combine(baseDir, "tools", "dashboard.html")).Replace("__NETBUG_TOKEN__", LocalHost(ctx) ? token : "");
             type = "text/html; charset=utf-8";
         }
@@ -2432,7 +2432,7 @@ class NetBug
     // without an account, shared by everyone behind it). It sends the last reply's ETag, so an unchanged
     // release comes back as an empty 304. A higher tag than Version with a netbug.exe asset is an update.
     // A lone exe (the release exe, installed in %ProgramData%\netbug) installs it by itself (once no router
-    // check runs) or on "Install update now" (see InstallUpdate). A repo copy (tools\netbug.exe, a developer
+    // check runs) or on the System tab's "Install <version> now" (see InstallUpdate). A repo copy (tools\netbug.exe, a developer
     // build) only reports it: its page and scripts are read from tools\, so it's updated with git pull and
     // a build.
 

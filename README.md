@@ -121,7 +121,7 @@ Start-ScheduledTask netbug
   - one TLS connection (checked every 15 s)
   - a UDP socket doing STUN every 2 s (UDP time and NAT mapping)
   - an ARP-only `pktmon` capture that flags any other device claiming the router's or the laptop's IP (`ARP SPOOFING DETECTED`), judged every 5 min and before each snapshot; only its last 15 min count, and a new network clears it
-  - the MAC announce: an ARP request about once a second, so the router keeps this laptop's real MAC (**Keep the router updated**)
+  - the MAC announce: an ARP request about once a second, so the router keeps this laptop's real MAC (**Keep router updated**)
 - **Interface:** the network adapter carrying the traffic. VPN adapters are never picked, but logged when they carry the traffic.
 - **Restarts:** updates and health restarts (past 200 MB, 5000 handles or 100 threads) go through the logon task.
 - **Control API:** `/api/fix…` accepts requests only from the laptop itself, with the page's per-run token. `/api/minimal` (the minimal mode switches) accepts any device, but only with an `X-Netbug-Minimal` header, which other websites can't send.

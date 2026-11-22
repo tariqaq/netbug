@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#0c0c0c">
 <meta name="color-scheme" content="dark">
 <title>netbug</title>
 <meta name="netbug-token" content="__NETBUG_TOKEN__">
 <!-- Served by netbug.exe on port 8787. No external requests, so it keeps working while the
-     internet is down: Apple devices use their own SF Pro, everything else gets Inter from
-     /fonts/inter.woff2. Polls /api/state every 1 s and /api/events every 2 s, only while visible.
-     On the laptop itself netbug fills in the token above, which shows the Router protection panel
-     (polls /api/fix every 2 s and sends its actions with the token) and the Logs and updates panel
-     (update check/install, and the full log export as a form post to /api/export); everyone else
-     sees no controls except the Minimal mode switches, which work from any device that can open the
-     page (POST /api/minimal with an X-Netbug-Minimal header). The page reloads itself when netbug has restarted (a new start time in
-     /api/state, or its token refused), so the controls always carry the running netbug's token.
-     Other devices reach the page only once Windows Firewall allows inbound TCP 8787 (netbug adds no rule). -->
+     internet is down: uses bundled Inter from /fonts/inter.woff2 with system fallbacks.
+     Polls /api/state every 1 s and /api/events every 2 s, only while visible.
+     Navigation is a centered pill bar (Live, Protection, Events, System) plus a top-right
+     Minimal mode popover available to every viewer (POST /api/minimal with X-Netbug-Minimal).
+     On the laptop itself netbug fills in the token above, which enables the Protection and System
+     tabs (polling /api/fix every 2 s, or every 0.5 s during an update, and streaming the full log
+     export via a form post to /api/export). The page reloads itself when netbug has restarted
+     (a new start time in /api/state, or its token refused). Other devices reach the page only
+     once Windows Firewall allows inbound TCP 8787 (netbug adds no rule). -->
 <style>
 @font-face {
   font-family: "Inter";
@@ -25,265 +25,950 @@
   font-display: swap;
 }
 :root {
-  --bg: #000;
-  --line: #222;
-  --panel-line: #2a2a2a;
-  --ink: #fff;
-  --ok: #30d158;
-  --lag: #ff9f0a;
+  --bg: #0c0c0c;
+  --surf: #151515;
+  --surf-2: #1d1d1d;
+  --surf-3: #272727;
+  --hair: rgba(255, 255, 255, 0.075);
+  --hair-hi: rgba(255, 255, 255, 0.14);
+  --ink: #f5f5f3;
+  --ink-2: #9a9a95;
+  --ink-3: #5e5e5a;
+  --ok: #34d399;
+  --lag: #ff8a3d;
   --down: #ff453a;
-  --gw: #0a84ff;
-  --net: #fff;
-  --udp: #bf5af2;
-  --info: #64d2ff;
-  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
-  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
+  --gw: #60a5fa;
+  --cf: #f5f5f3;
+  --udp: #d8b4fe;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
+
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
 body {
-  color: var(--ink);
-  font: 400 15px/1.5 var(--sans);
+  font: 400 14px/1.5 var(--sans);
   font-feature-settings: "tnum";
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
+  min-height: 100vh;
+  background-image: radial-gradient(900px 380px at 50% -120px, var(--wash, rgba(255,255,255,0.035)), transparent 70%);
+  transition: background-image .4s ease;
 }
-main {
-  max-width: 1080px;
+body[data-state="lag"] { --wash: rgba(255, 138, 61, 0.11); }
+body[data-state="down"],
+body[data-state="stale"] { --wash: rgba(255, 69, 58, 0.14); }
+
+.app {
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 28px max(24px, env(safe-area-inset-right)) 48px max(24px, env(safe-area-inset-left));
+  padding: 0 max(24px, env(safe-area-inset-right)) 56px max(24px, env(safe-area-inset-left));
 }
 
-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; }
-.brand { font: 700 18px/1 var(--display); letter-spacing: -0.02em; }
-.meta { font-size: 13px; display: flex; gap: 4px 18px; flex-wrap: wrap; }
-.meta b, .axis b { font-weight: 600; }
+/* ---- Top Navigation Bar ---- */
+.nav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0;
+}
+.nav-left { display: flex; align-items: baseline; gap: 8px; }
+.wordmark {
+  font: 700 18px/1 var(--sans);
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+.ver {
+  font: 500 12px/1 var(--mono);
+  color: var(--ink-3);
+}
 
-.status { margin: 48px 0 32px; display: grid; grid-template-columns: auto 1fr; column-gap: 18px; }
-.dot { width: 14px; height: 14px; border-radius: 50%; background: var(--ok); grid-row: span 2; margin-top: 0.42em; font-size: clamp(30px, 6vw, 56px); }
-.headline { font: 700 clamp(30px, 6vw, 56px)/1.05 var(--display); letter-spacing: -0.035em; margin: 0; }
-.sub { margin: 10px 0 0; font-size: 17px; line-height: 1.45; max-width: 60ch; }
-body[data-state="lag"] .dot { background: var(--lag); }
-body[data-state="lag"] .headline { color: var(--lag); }
-body[data-state="down"] .headline, body[data-state="stale"] .headline { color: var(--down); }
-.fact dd.alert { color: var(--down); }
-body[data-state="down"] .dot, body[data-state="stale"] .dot { background: var(--down); }
-body[data-state="lag"] .dot, body[data-state="down"] .dot { animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .35; } }
+.tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surf);
+  border: 1px solid var(--hair);
+}
+.tab {
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: 500 13.5px/1 var(--sans);
+  letter-spacing: -0.01em;
+  padding: 9px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--ink); }
+.tab.active {
+  background: var(--ink);
+  color: var(--bg);
+  font-weight: 600;
+}
+.tab[hidden] { display: none; }
+.tab-badge {
+  margin-left: 6px;
+  font: 600 10.5px/1 var(--mono);
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 69, 58, .22);
+  color: var(--down);
+}
+.tab.active .tab-badge { background: rgba(0, 0, 0, .14); color: var(--bg); }
+.tab-badge.warn { background: rgba(255, 138, 61, .22); color: var(--lag); }
+.tab-badge:empty { display: none; }
 
-.trace { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-canvas { display: block; width: 100%; height: 200px; }
-.axis { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding-top: 8px; }
+.nav-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  position: relative;
+}
+.quick-pill {
+  border: 1px solid var(--hair);
+  background: var(--surf);
+  color: var(--ink-2);
+  font: 500 12.5px/1 var(--sans);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+.quick-pill:hover { border-color: var(--hair-hi); color: var(--ink); }
+.quick-pill.on {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--ink);
+}
 
-.readouts { display: grid; grid-template-columns: repeat(6, 1fr); margin: 30px 0 0; }
-.readout { padding-right: 16px; min-width: 0; }
-.readout + .readout { border-left: 1px solid var(--line); padding-left: 16px; }
-.readout .k { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
-.readout .k i { width: 10px; height: 3px; border-radius: 2px; flex: none; }
-.readout .v { font: 600 30px/1.15 var(--display); letter-spacing: -0.03em; margin-top: 2px; }
-.readout .v small { font: 500 14px var(--sans); letter-spacing: 0; margin-left: 3px; }
-.readout .v.bad { color: var(--down); }
+/* Minimal Mode Popover (available to any viewer that can open the page) */
+.popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 310px;
+  background: #181818;
+  border: 1px solid var(--hair-hi);
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .75);
+  z-index: 40;
+}
+.popover[hidden] { display: none; }
+.pop-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.pop-title b { font: 600 14px/1 var(--sans); }
+.pop-title span { font: 500 12px/1 var(--mono); color: var(--ink-2); }
+.pop-why {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 0 0 10px;
+}
+.pop-why:empty { display: none; }
 
-.facts { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 32px; margin: 32px 0 48px; }
-.fact { border-top: 1px solid var(--line); padding: 12px 0 14px; min-width: 0; }
-.fact dt { font-size: 13px; font-weight: 600; }
-.fact dd { margin: 3px 0 0; font-size: 16px; font-weight: 400; overflow-wrap: anywhere; }
-.fact dd span { display: block; font-size: 13px; font-weight: 400; margin-top: 2px; }
+/* ---- Views ---- */
+.view { display: none; }
+.view.active { display: block; }
 
-.logs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.logs-head h2 { font: 700 20px/1 var(--display); letter-spacing: -0.02em; margin: 0; }
-.logs-head label { font-size: 13px; font-weight: 600; display: flex; gap: 8px; align-items: center; cursor: pointer; }
-input[type="checkbox"] { accent-color: var(--gw); width: 16px; height: 16px; margin: 0; }
-.log-wrap { position: relative; }
+/* ---- Live View: Editorial Hero ---- */
+.hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px 36px;
+  flex-wrap: wrap;
+  padding: 28px 0 32px;
+}
+.hero-left { min-width: 0; flex: 1 1 380px; }
+.hero-state {
+  margin: 0;
+  font: 600 clamp(38px, 6vw, 62px)/0.96 var(--sans);
+  letter-spacing: -0.045em;
+  color: var(--ink);
+}
+body[data-state="lag"] .hero-state { color: var(--lag); }
+body[data-state="down"] .hero-state,
+body[data-state="stale"] .hero-state { color: var(--down); }
+
+.hero-sub {
+  margin: 14px 0 0;
+  font: 400 16px/1.45 var(--sans);
+  color: var(--ink-2);
+  max-width: 58ch;
+}
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.hero-actions:empty { display: none; }
+
+.hero-right {
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.big-metric { text-align: right; }
+.big-metric .lbl {
+  font: 500 12.5px/1 var(--sans);
+  color: var(--ink-3);
+}
+.big-metric .num {
+  margin-top: 6px;
+  font: 600 44px/0.95 var(--sans);
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+.big-metric .num small {
+  font: 500 16px/1 var(--sans);
+  color: var(--ink-3);
+  margin-left: 3px;
+  letter-spacing: 0;
+}
+.big-metric .num.bad { color: var(--down); }
+.big-metric .num.muted { color: var(--ink-3); font-size: 32px; }
+
+/* ---- Full-Bleed Smooth Chart Stage ---- */
+.chart-stage {
+  position: relative;
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+  padding: 18px 0 14px;
+}
+.chart-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.series-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.s-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ink);
+  font: 500 12.5px/1 var(--sans);
+  cursor: pointer;
+  transition: opacity .15s, background .15s;
+}
+.s-pill:hover { background: var(--surf); }
+.s-pill.off { opacity: .32; }
+.s-pill i { width: 10px; height: 2.5px; border-radius: 2px; display: inline-block; }
+
+.chart-hint {
+  font: 500 12.5px/1 var(--sans);
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.chart-hint span { display: inline-flex; align-items: center; gap: 6px; }
+.chart-hint i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+
+.canvas-box { position: relative; }
+canvas#chart {
+  display: block;
+  width: 100%;
+  height: 240px;
+  cursor: crosshair;
+}
+.float-tip {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  pointer-events: none;
+  background: rgba(24, 24, 24, 0.94);
+  border: 1px solid var(--hair-hi);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font: 500 12px/1.45 var(--mono);
+  color: var(--ink);
+  white-space: nowrap;
+  display: none;
+  box-shadow: 0 12px 32px rgba(0,0,0,.6);
+  z-index: 10;
+}
+.float-tip.show { display: block; }
+.float-tip .ft-t { color: var(--ink-2); margin-bottom: 4px; font-size: 11px; }
+.float-tip .ft-row { display: flex; gap: 12px; }
+.float-tip .ft-bad { color: var(--down); }
+.float-tip .ft-warn { color: var(--lag); margin-top: 4px; font-family: var(--sans); }
+
+/* Unboxed Airy Probe Strip */
+.probes {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+  padding: 22px 0 26px;
+  border-bottom: 1px solid var(--hair);
+}
+.probe { min-width: 0; }
+.probe .pk {
+  font: 500 12.5px/1 var(--sans);
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.probe .pk i { width: 8px; height: 2px; border-radius: 2px; display: inline-block; }
+.probe .pv {
+  margin-top: 7px;
+  font: 600 24px/1 var(--sans);
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.probe .pv small { font: 400 13px var(--sans); color: var(--ink-3); margin-left: 2px; letter-spacing: 0; }
+.probe .pv.bad { color: var(--down); }
+.probe .pv.muted { color: var(--ink-3); font-size: 19px; font-weight: 500; }
+
+/* ---- 4 Tactile Overview Tiles ---- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 24px;
+}
+.tile {
+  background: var(--surf);
+  border: 1px solid var(--hair);
+  border-radius: 18px;
+  padding: 18px 20px;
+  min-width: 0;
+  transition: border-color .15s, background .15s;
+}
+.tile.clickable { cursor: pointer; }
+.tile.clickable:hover { border-color: var(--hair-hi); background: #191919; }
+.tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font: 500 12.5px/1 var(--sans);
+  color: var(--ink-3);
+}
+.tile-tag {
+  font: 600 11.5px/1 var(--sans);
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--surf-2);
+  color: var(--ink-2);
+}
+.tile-tag.ok { background: rgba(52, 211, 153, .14); color: var(--ok); }
+.tile-tag.warn { background: rgba(255, 138, 61, .16); color: var(--lag); }
+.tile-tag.bad { background: rgba(255, 69, 58, .18); color: var(--down); }
+
+.tile-val {
+  margin-top: 12px;
+  font: 600 19px/1.25 var(--sans);
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.tile-val.mono { font-family: var(--mono); font-size: 16.5px; letter-spacing: -0.02em; }
+.tile-val.bad { color: var(--down); }
+.tile-meta {
+  margin-top: 6px;
+  font: 400 13px/1.4 var(--sans);
+  color: var(--ink-2);
+  display: flex;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+}
+.tile-meta code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.copy-chip {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.copy-chip:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- Protection & System Views ---- */
+.page-wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-top: 14px;
+}
+.page-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 22px;
+}
+.page-hero h2 {
+  margin: 0;
+  font: 600 32px/1.05 var(--sans);
+  letter-spacing: -0.035em;
+}
+.page-hero p {
+  margin: 8px 0 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+.banner {
+  padding: 13px 16px;
+  border-radius: 14px;
+  background: var(--surf);
+  border: 1px solid var(--hair-hi);
+  font-size: 13.5px;
+  color: var(--ink-2);
+  margin-bottom: 18px;
+}
+.banner[hidden] { display: none; }
+.banner.warn { background: rgba(255, 138, 61, .11); border-color: rgba(255, 138, 61, .32); color: #ffc79e; }
+.banner.bad { background: rgba(255, 69, 58, .12); border-color: rgba(255, 69, 58, .35); color: #ffa6a0; }
+
+.group {
+  background: var(--surf);
+  border: 1px solid var(--hair);
+  border-radius: 18px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--hair);
+}
+.row:first-child { border-top: 0; }
+.row.clickable { cursor: pointer; }
+.row.off { opacity: .42; cursor: not-allowed; }
+.row-text { min-width: 0; }
+.row-title {
+  display: block;
+  font: 500 15px/1.25 var(--sans);
+  color: var(--ink);
+}
+.row-val {
+  display: block;
+  margin-top: 3px;
+  font: 400 13px/1.35 var(--sans);
+  color: var(--ink-2);
+}
+.row-val.mono { font-family: var(--mono); font-size: 12.5px; }
+.row-val.bad { color: var(--down); }
+
+.sw {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--surf-3);
+  position: relative;
+  cursor: pointer;
+  margin: 0;
+  transition: background .2s ease;
+}
+.sw::after {
+  content: "";
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 2px 5px rgba(0,0,0,.4);
+  transition: transform .2s cubic-bezier(.22, 1, .36, 1);
+}
+.sw:checked { background: var(--ok); }
+.sw:checked::after { transform: translateX(18px); }
+.sw:disabled { opacity: .45; cursor: not-allowed; }
+
+.field-row {
+  padding: 16px 20px;
+  border-top: 1px solid var(--hair);
+}
+.field-row:first-child { border-top: 0; }
+.field-row.off { opacity: .42; pointer-events: none; }
+.field-lbl {
+  display: block;
+  font: 500 13px/1 var(--sans);
+  color: var(--ink-2);
+  margin-bottom: 10px;
+}
+.ctl-flex { display: flex; gap: 10px; flex-wrap: wrap; }
+.sel, .inp {
+  background: var(--surf-2);
+  color: var(--ink);
+  border: 1px solid var(--hair-hi);
+  border-radius: 12px;
+  font: 500 14px/1.2 var(--sans);
+  padding: 10px 14px;
+  min-width: 0;
+  flex: 1 1 200px;
+  outline: none;
+}
+.inp { font-family: var(--mono); }
+.sel option { background: #1c1c1c; color: var(--ink); }
+.sel:focus, .inp:focus { border-color: var(--ink-2); }
+.inp[hidden] { display: none; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font: 600 13.5px/1 var(--sans);
+  padding: 11px 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity .15s, transform .1s, background .15s;
+}
+.btn:hover:not(:disabled) { opacity: .9; }
+.btn:active:not(:disabled) { transform: scale(0.985); }
+.btn.sec {
+  background: var(--surf-2);
+  color: var(--ink);
+  border: 1px solid var(--hair-hi);
+}
+.btn.sec:hover:not(:disabled) { background: var(--surf-3); opacity: 1; }
+.btn.danger {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--hair);
+}
+.btn.danger:hover:not(:disabled),
+.btn.danger.armed {
+  background: rgba(255, 69, 58, .16);
+  color: var(--down);
+  border-color: rgba(255, 69, 58, .4);
+}
+.btn:disabled {
+  background: var(--surf-2);
+  color: var(--ink-3);
+  border: 1px solid var(--hair);
+  opacity: .65;
+  cursor: not-allowed;
+}
+.btn[hidden] { display: none; }
+
+.cands { list-style: none; margin: 0; padding: 0; }
+.cands:empty { display: none; }
+.cands li {
+  padding: 14px 20px;
+  border-top: 1px solid var(--hair);
+}
+.cands li:first-child { border-top: 0; }
+.cand-h { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.cand-mac { font: 600 14px/1 var(--mono); }
+.cand-mac.ok { color: var(--ok); }
+.cand-mac.bad { color: var(--down); }
+.cand-from { font: 400 12.5px/1 var(--sans); color: var(--ink-3); }
+.cand-why { margin-top: 5px; font-size: 13.5px; color: var(--ink-2); }
+
+.upd-prog { padding: 16px 20px; border-bottom: 1px solid var(--hair); }
+.upd-prog[hidden] { display: none; }
+.upd-track { height: 6px; border-radius: 999px; background: var(--surf-3); overflow: hidden; }
+.upd-track i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 999px; transition: width .35s ease; }
+.upd-track.unknown i { width: 30%; animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.upd-meta { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+.upd-meta b { color: var(--ink); font-family: var(--mono); }
+
+.err-msg { margin-top: 10px; font-size: 13.5px; color: var(--down); }
+.err-msg:empty { display: none; }
+
+details.faq {
+  margin-top: 14px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+details.faq summary { cursor: pointer; user-select: none; color: var(--ink-2); }
+details.faq p { margin: 8px 0 0; line-height: 1.55; color: var(--ink-2); }
+
+/* ---- Events View ---- */
+.ev-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0 18px;
+}
+.ev-head h2 { margin: 0; font: 600 28px/1 var(--sans); letter-spacing: -0.03em; }
+.ev-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ev-seg {
+  display: inline-flex;
+  background: var(--surf);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 3px;
+}
+.ev-seg button {
+  border: 0; background: transparent; color: var(--ink-2);
+  font: 500 12.5px/1 var(--sans); padding: 7px 13px; border-radius: 999px; cursor: pointer;
+}
+.ev-seg button.active { background: var(--surf-3); color: var(--ink); }
+.ev-search {
+  background: var(--surf);
+  color: var(--ink);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  font: 400 13px/1 var(--sans);
+  padding: 8px 14px;
+  width: 210px;
+  outline: none;
+}
+.ev-search:focus { border-color: var(--hair-hi); }
+
+.log-shell {
+  position: relative;
+  background: var(--surf);
+  border: 1px solid var(--hair);
+  border-radius: 18px;
+  overflow: hidden;
+}
 #log {
-  border: 1px solid var(--panel-line);
-  border-radius: 16px;
-  height: 50vh; min-height: 300px;
+  height: calc(100vh - 230px);
+  min-height: 360px;
   overflow-y: auto;
-  padding: 12px 0;
-  font: 12.5px/1.7 var(--mono);
+  padding: 10px 0;
+  font: 12.5px/1.75 var(--mono);
   overscroll-behavior: contain;
 }
-#log .l { display: grid; grid-template-columns: 70px 1fr; gap: 14px; padding: 0 18px; }
-#log .m { white-space: pre-wrap; overflow-wrap: anywhere; }
-#log .day { padding: 12px 18px 4px; font: 600 12px var(--sans); }
-#log .day:first-child { padding-top: 2px; }
-#log .down .m { color: var(--down); }
-#log .lag .m { color: var(--lag); }
-#log .t { font-weight: 700; }
-#log .quiet .t, #log .quiet .m { color: var(--info); }
+#log .day {
+  position: sticky; top: 0;
+  background: var(--surf);
+  padding: 10px 20px 6px;
+  font: 600 12px/1 var(--sans);
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--hair);
+  z-index: 2;
+}
+#log .l {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 14px;
+  padding: 3px 20px;
+}
+#log .l:hover { background: rgba(255,255,255,.025); }
+#log .t { color: var(--ink-3); user-select: none; }
+#log .m { white-space: pre-wrap; overflow-wrap: anywhere; color: #dcdcd8; }
+#log .down .t, #log .down .m { color: var(--down); }
+#log .lag .t, #log .lag .m { color: var(--lag); }
+#log .quiet .t, #log .quiet .m { color: #7cc4e8; }
 #log.hide-quiet .quiet { display: none; }
+#log.only-problems .l:not(.down):not(.lag) { display: none; }
+#log .l.filtered { display: none; }
+
 #jump {
-  position: absolute; right: 14px; bottom: 14px;
+  position: absolute; right: 16px; bottom: 16px;
   background: var(--ink); color: var(--bg); border: 0; border-radius: 999px;
-  font: 600 13px/1 var(--sans); padding: 10px 16px; cursor: pointer; display: none;
+  font: 600 12.5px/1 var(--sans); padding: 9px 16px; cursor: pointer; display: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
 }
 #jump.show { display: block; }
-button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visible { outline: 2px solid var(--gw); outline-offset: 2px; }
 
-.fix { border: 1px solid var(--panel-line); border-radius: 18px; padding: 20px 22px 18px; margin: 0 0 36px; }
-.fix[hidden] { display: none; }
-.fix-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
-.fix h2 { font: 700 20px/1.2 var(--display); letter-spacing: -0.02em; margin: 0; }
-.fix-state { font-size: 14px; font-weight: 600; }
-.fix-state.ok { color: var(--ok); }
-.fix-state.warn { color: var(--lag); }
-.fix-state.bad { color: var(--down); }
-.fix-sub { margin: 8px 0 16px; font-size: 15px; max-width: 70ch; }
-.sw { display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: start; padding: 12px 0; border-top: 1px solid var(--line); cursor: pointer; }
-.sw input { appearance: none; -webkit-appearance: none; width: 44px; height: 26px; border-radius: 13px; background: #39393d; position: relative; cursor: pointer; margin: 2px 0 0; transition: background .2s; }
-.sw input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .2s; }
-.sw input:checked { background: var(--ok); }
-.sw input:checked::after { transform: translateX(18px); }
-.sw input:disabled { opacity: .4; cursor: not-allowed; }
-.sw.off, .known-off { opacity: .45; cursor: not-allowed; }   /* router protection on a phone tether: the whole row greyed */
-.sw b { font-size: 16px; font-weight: 600; display: block; }
-.sw small { font-size: 13px; display: block; margin-top: 2px; }
-.known { border-top: 1px solid var(--line); padding: 12px 0; }
-.known b { font-size: 16px; font-weight: 600; display: block; }
-.known small { font-size: 13px; display: block; margin-top: 2px; max-width: 90ch; }
-.known em { font-style: normal; font-weight: 600; }
-.known-ctl { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
-.known select, .known input { background: transparent; color: var(--ink); border: 1px solid #444; border-radius: 10px; font: 500 14px var(--sans); padding: 9px 12px; min-width: 0; max-width: 100%; }
-.known input { font-family: var(--mono); width: 21ch; }
-.known select option { background: #111; color: var(--ink); }
-.cands { margin: 6px 0 0; padding: 0; list-style: none; }
-.cands li { border-top: 1px solid var(--line); padding: 10px 0; display: grid; grid-template-columns: 190px 1fr; gap: 2px 16px; }
-.cands .mac { font: 600 15px var(--mono); }
-.cands .mac.ok { color: var(--ok); }
-.cands .mac.bad { color: var(--down); }
-.cands .why { font-size: 14px; }
-.cands .src { font-size: 12.5px; grid-column: 2; }
-.fix-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
-.btn { background: var(--ink); color: var(--bg); border: 0; border-radius: 999px; font: 600 14px/1 var(--sans); padding: 11px 18px; cursor: pointer; }
-.btn.ghost { background: transparent; color: var(--ink); border: 1px solid #444; }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
-.fix-err { color: var(--down); font-size: 14px; margin-top: 10px; }
-.upd { margin: 0 0 16px; }
-.upd[hidden] { display: none; }
-.upd-bar { height: 6px; border-radius: 3px; background: #2c2c2e; overflow: hidden; }
-.upd-bar i { display: block; height: 100%; width: 0; background: var(--gw); border-radius: 3px; transition: width .4s ease; }
-.upd-bar.unknown i { width: 30%; animation: slide 1.2s ease-in-out infinite; }
-@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-.upd-line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-top: 8px; }
-.upd-line b { font-weight: 600; }
+button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visible {
+  outline: 2px solid var(--ink-2); outline-offset: 2px;
+}
 
-@media (max-width: 600px) {
-  .facts { grid-template-columns: repeat(2, 1fr); column-gap: 16px; }
-  .cands li { grid-template-columns: 1fr; }
-  .known select, .known input { flex: 1 1 100%; width: auto; }
-  .cands .src { grid-column: 1; }
-  .fact.wide { grid-column: 1 / -1; }
+@media (max-width: 820px) {
+  .nav { grid-template-columns: 1fr auto; }
+  .tabs { grid-column: 1 / -1; order: 3; justify-self: start; overflow-x: auto; max-width: 100%; }
+  .probes { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; }
+  .tiles { grid-template-columns: 1fr; }
+  .hero-right { width: 100%; justify-content: flex-start; }
+  .big-metric { text-align: left; }
+  canvas#chart { height: 190px; }
+  #log .l { grid-template-columns: 1fr; gap: 1px; padding: 6px 16px; }
+  .ev-search { width: 100%; }
 }
-@media (max-width: 640px) {
-  main { padding: 20px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left)); }
-  .status { margin: 32px 0 24px; column-gap: 14px; }
-  .dot { width: 12px; height: 12px; }
-  .sub { font-size: 16px; }
-  .readouts { grid-template-columns: repeat(3, 1fr); row-gap: 20px; margin-top: 24px; }
-  .readout:nth-child(4) { border-left: 0; padding-left: 0; }
-  .readout .v { font-size: 26px; }
-  canvas { height: 170px; }
-  .axis .mid { display: none; }
-  .facts { margin: 24px 0 36px; }
-  .fact dd { font-size: 15px; }
-  #log { height: 60vh; }
-  #log .l { grid-template-columns: 1fr; gap: 0; padding: 4px 14px; }
-  #log .t { font-size: 11.5px; }
+@media (prefers-reduced-motion: reduce) {
+  .upd-track i, .sw, .sw::after { animation: none !important; transition: none !important; }
 }
-@media (prefers-reduced-motion: reduce) { .dot, .upd-bar i { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body data-state="ok">
-<main>
-  <header>
-    <div class="brand">netbug</div>
-    <div class="meta"><span id="m-up">Connecting…</span><span id="m-mem"></span><span id="m-host"></span></div>
-  </header>
+<div class="app">
+  <header class="nav">
+    <div class="nav-left">
+      <span class="wordmark">netbug</span>
+      <span class="ver" id="m-ver"></span>
+    </div>
 
-  <section class="status" aria-live="polite">
-    <span class="dot" aria-hidden="true"></span>
-    <h1 class="headline" id="headline">Connecting to netbug</h1>
-    <p class="sub" id="sub">Waiting for the first reading.</p>
-  </section>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button type="button" class="tab active" data-view="live" role="tab" aria-selected="true">Live</button>
+      <button type="button" class="tab" data-view="protect" id="tab-protect" role="tab" hidden>Protection<span class="tab-badge" id="bdg-protect"></span></button>
+      <button type="button" class="tab" data-view="events" role="tab">Events<span class="tab-badge" id="bdg-events"></span></button>
+      <button type="button" class="tab" data-view="system" id="tab-system" role="tab" hidden>System<span class="tab-badge warn" id="bdg-system"></span></button>
+    </nav>
 
-  <section class="fix" id="min" aria-live="polite">
-    <div class="fix-head"><h2>Minimal mode:</h2><span class="fix-state" id="mn-state"></span></div>
-    <label class="sw"><input type="checkbox" id="mn-on"><span><b>Minimal mode</b><small>For mobile data. Cuts netbug’s own traffic by about 90%: over the internet only a 1.1.1.1 ping every 2 s, a DNS check every minute, the public IP every 30 minutes and the update check every 6 hours (Google only when 1.1.1.1 fails). TCP, TLS, UDP, the regular Google ping, the Cloudflare route check, the ARP watch, the automatic router check and the MAC announce stop.</small></span></label>
-    <label class="sw"><input type="checkbox" id="mn-auto"><span><b>On by itself on a phone tether</b><small>When the internet comes through a phone’s USB tethering or a mobile broadband adapter. Stays on for 60 s if the tether drops out, then back to full checks on any other network. A phone’s Wi-Fi hotspot can’t be told apart: use the switch above.</small></span></label>
-    <div class="fix-err" id="mn-err"></div>
-  </section>
-
-  <section class="fix" id="fix" hidden aria-live="polite">
-    <div class="fix-head"><h2>Router protection:</h2><span class="fix-state" id="fx-state"></span></div>
-    <p class="fix-sub" id="fx-sub"></p>
-    <label class="sw"><input type="checkbox" id="fx-auto"><span><b>Auto-detect the real router</b><small id="fx-auto-note"></small></span></label>
-    <label class="sw"><input type="checkbox" id="fx-pin" disabled><span><b>Pin it permanently</b><small id="fx-pin-note"></small></span></label>
-    <label class="sw"><input type="checkbox" id="fx-ann"><span><b>Keep the router updated</b><small id="fx-ann-note"></small></span></label>
-    <div class="known">
-      <b>Router MAC</b>
-      <small>Pick a known router or type a MAC. <em>Test and pin</em> tests it first (if it’s wrong, the connection drops for a few seconds) and pins it only if it’s the real router. If it fails, use <em>Check now</em>.</small>
-      <div class="known-ctl">
-        <select id="fx-known" aria-label="Router MAC"></select>
-        <input id="fx-mac" type="text" placeholder="AA-BB-CC-DD-EE-FF" aria-label="Router MAC to test" spellcheck="false" autocomplete="off" maxlength="17" hidden>
-        <button class="btn ghost" id="fx-try" type="button">Test and pin</button>
+    <div class="nav-right">
+      <button type="button" class="quick-pill" id="min-pill" aria-expanded="false">Minimal: Off</button>
+      <div class="popover" id="min-pop" hidden>
+        <div class="pop-title"><b>Minimal mode</b><span id="mn-state">Off</span></div>
+        <p class="pop-why" id="mn-why"></p>
+        <div class="group" style="margin-bottom:0;border-radius:14px">
+          <label class="row clickable" style="padding:12px 14px">
+            <span class="row-text"><span class="row-title" style="font-size:14px">Minimal mode</span><span class="row-val" style="font-size:12px">Cut traffic ~90%</span></span>
+            <input type="checkbox" class="sw" id="mn-on">
+          </label>
+          <label class="row clickable" style="padding:12px 14px">
+            <span class="row-text"><span class="row-title" style="font-size:14px">Auto on phone tether</span><span class="row-val" style="font-size:12px">USB / mobile (60 s hold)</span></span>
+            <input type="checkbox" class="sw" id="mn-auto">
+          </label>
+        </div>
+        <div class="err-msg" id="mn-err"></div>
       </div>
     </div>
-    <ul class="cands" id="fx-cands"></ul>
-    <div class="fix-actions"><button class="btn" id="fx-check" type="button">Check now</button><button class="btn ghost" id="fx-uninst" type="button" hidden>Uninstall netbug</button></div>
-    <div class="fix-err" id="fx-err"></div>
+  </header>
+
+  <main class="view active" id="view-live">
+    <section class="hero" aria-live="polite">
+      <div class="hero-left">
+        <h1 class="hero-state" id="headline">Connecting</h1>
+        <p class="hero-sub" id="sub">Waiting for the first reading.</p>
+        <div class="hero-actions" id="hero-actions"></div>
+      </div>
+      <div class="hero-right">
+        <div class="big-metric">
+          <div class="lbl">Gateway</div>
+          <div class="num" id="hero-gw">–</div>
+        </div>
+        <div class="big-metric">
+          <div class="lbl">Cloudflare</div>
+          <div class="num" id="hero-cf">–</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="chart-stage">
+      <div class="chart-bar">
+        <div class="series-pills">
+          <button type="button" class="s-pill" data-trace="gw"><i style="background:var(--gw)"></i>Gateway</button>
+          <button type="button" class="s-pill" data-trace="cf"><i style="background:var(--cf)"></i>Cloudflare</button>
+          <button type="button" class="s-pill" data-trace="udp"><i style="background:var(--udp)"></i>UDP</button>
+        </div>
+        <div class="chart-hint">
+          <span><i style="background:var(--down)"></i>Outage</span>
+          <span><i style="background:var(--lag)"></i>Lag · CF · Check</span>
+          <span>5 min</span>
+        </div>
+      </div>
+      <div class="canvas-box">
+        <div class="float-tip" id="float-tip"></div>
+        <canvas id="chart" aria-label="Gateway, Cloudflare and UDP round-trip times over the last 5 minutes"></canvas>
+      </div>
+    </section>
+
+    <section class="probes">
+      <div class="probe"><div class="pk"><i style="background:var(--gw)"></i>Gateway</div><div class="pv" id="r-gw">–</div></div>
+      <div class="probe"><div class="pk"><i style="background:var(--cf)"></i>Cloudflare</div><div class="pv" id="r-cf">–</div></div>
+      <div class="probe"><div class="pk">Google</div><div class="pv" id="r-g">–</div></div>
+      <div class="probe"><div class="pk"><i style="background:var(--udp)"></i>UDP</div><div class="pv" id="r-udp">–</div></div>
+      <div class="probe"><div class="pk">DNS</div><div class="pv" id="r-dns">–</div></div>
+      <div class="probe"><div class="pk">New TCP</div><div class="pv" id="r-tcp">–</div></div>
+    </section>
+
+    <section class="tiles" id="tiles"></section>
+  </main>
+
+  <section class="view" id="view-protect" aria-live="polite">
+    <div class="page-wrap">
+      <div class="page-hero">
+        <div>
+          <h2>Router protection</h2>
+          <p id="fx-sub">Loading router state…</p>
+        </div>
+        <span class="tile-tag" id="fx-state">–</span>
+      </div>
+
+      <div class="banner" id="fx-banner" hidden></div>
+
+      <div class="group">
+        <label class="row clickable" id="row-pin">
+          <span class="row-text">
+            <span class="row-title">Pin router permanently</span>
+            <span class="row-val mono" id="fx-pin-note">–</span>
+          </span>
+          <input type="checkbox" class="sw" id="fx-pin" disabled>
+        </label>
+        <label class="row clickable" id="row-ann">
+          <span class="row-text">
+            <span class="row-title">Keep router updated</span>
+            <span class="row-val" id="fx-ann-note">–</span>
+          </span>
+          <input type="checkbox" class="sw" id="fx-ann">
+        </label>
+        <label class="row clickable" id="row-auto">
+          <span class="row-text">
+            <span class="row-title">Auto-detect real router</span>
+            <span class="row-val" id="fx-auto-note">–</span>
+          </span>
+          <input type="checkbox" class="sw" id="fx-auto">
+        </label>
+      </div>
+
+      <div class="group">
+        <div class="field-row" id="fx-known-wrap">
+          <span class="field-lbl">Test &amp; pin a router MAC</span>
+          <div class="ctl-flex">
+            <select class="sel" id="fx-known" aria-label="Router MAC"></select>
+            <input class="inp" id="fx-mac" type="text" placeholder="AA-BB-CC-DD-EE-FF" aria-label="Router MAC to test" spellcheck="false" autocomplete="off" maxlength="17" hidden>
+            <button class="btn sec" id="fx-try" type="button">Test and pin</button>
+          </div>
+        </div>
+        <div class="row">
+          <span class="row-text">
+            <span class="row-title">Verify router on this network</span>
+            <span class="row-val">Tests every MAC claiming the gateway (cuts link briefly)</span>
+          </span>
+          <button class="btn" id="fx-check" type="button">Check now</button>
+        </div>
+      </div>
+
+      <div class="group" id="fx-cands-wrap" hidden>
+        <ul class="cands" id="fx-cands"></ul>
+      </div>
+
+      <div class="err-msg" id="fx-err"></div>
+
+      <details class="faq">
+        <summary>How router protection works</summary>
+        <p>Pinning locks the real router’s MAC in Windows’ ARP table so fake “I am the router” replies are ignored, even after a restart. Turn it off before plugging this adapter into another network that uses the same router IP. Keep router updated sends an ARP request about once a second so the router re-learns this laptop’s real MAC if poisoned. Auto-detect checks every 30 min, on router changes and after spoofing (off by default, never on a phone tether or in minimal mode).</p>
+      </details>
+    </div>
   </section>
 
-  <section class="fix" id="tools" hidden aria-live="polite">
-    <div class="fix-head"><h2>Logs and updates:</h2><span class="fix-state" id="up-state"></span></div>
-    <p class="fix-sub" id="up-sub"></p>
-    <div class="upd" id="up-prog" hidden>
-      <div class="upd-bar" id="up-bar" role="progressbar" aria-label="Update progress" aria-valuemin="0" aria-valuemax="100"><i></i></div>
-      <div class="upd-line"><span id="up-step"></span><b id="up-pct"></b></div>
+  <section class="view" id="view-events">
+    <div class="ev-head">
+      <h2>Events</h2>
+      <div class="ev-controls">
+        <div class="ev-seg" role="group" aria-label="Filter events">
+          <button type="button" id="flt-all" class="active">All</button>
+          <button type="button" id="flt-prob">Alerts</button>
+        </div>
+        <button type="button" class="quick-pill on" id="quiet-btn">Health shown</button>
+        <input type="search" id="log-q" class="ev-search" placeholder="Search events…" aria-label="Search events">
+      </div>
     </div>
-    <div class="fix-actions">
-      <button class="btn" id="up-install" type="button" hidden>Install update now</button>
-      <button class="btn ghost" id="up-check" type="button">Check for updates</button>
-      <button class="btn ghost" id="ex-btn" type="button">Export all logs</button>
+    <div class="log-shell">
+      <div id="log" tabindex="0" aria-label="events.log"></div>
+      <button id="jump" type="button">Jump to latest</button>
     </div>
-    <p class="fix-sub" id="ex-note">One zip of everything netbug has recorded, up to the second you press it. Nothing is redacted: it includes MAC addresses, IPs and network names, so only send it to someone you trust.</p>
-    <div class="fix-err" id="up-err"></div>
   </section>
-  <iframe name="netbug-dl" id="dl" hidden title="download"></iframe>
 
-  <div class="trace">
-    <canvas id="chart" aria-label="Gateway, Cloudflare and UDP round-trip times over the last 5 minutes"></canvas>
-  </div>
-  <div class="axis"><span>5 min ago</span><span class="mid"><b>Red:</b> outage. <b>Orange:</b> lag, slow Cloudflare route or a router check</span><span>Now</span></div>
+  <section class="view" id="view-system" aria-live="polite">
+    <div class="page-wrap">
+      <div class="page-hero">
+        <div>
+          <h2>System &amp; logs</h2>
+          <p id="sys-sub">netbug</p>
+        </div>
+        <span class="tile-tag" id="up-state">–</span>
+      </div>
 
-  <div class="readouts">
-    <div class="readout"><div class="k"><i style="background:var(--gw)"></i>Gateway:</div><div class="v" id="r-gw">–</div></div>
-    <div class="readout"><div class="k"><i style="background:var(--net)"></i>Cloudflare:</div><div class="v" id="r-cf">–</div></div>
-    <div class="readout"><div class="k">Google:</div><div class="v" id="r-g">–</div></div>
-    <div class="readout"><div class="k"><i style="background:var(--udp)"></i>UDP:</div><div class="v" id="r-udp">–</div></div>
-    <div class="readout"><div class="k">DNS:</div><div class="v" id="r-dns">–</div></div>
-    <div class="readout"><div class="k">New TCP:</div><div class="v" id="r-tcp">–</div></div>
-  </div>
+      <div class="group">
+        <div class="upd-prog" id="up-prog" hidden>
+          <div class="upd-track" id="up-bar" role="progressbar" aria-label="Update progress" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+          <div class="upd-meta"><span id="up-step"></span><b id="up-pct"></b></div>
+        </div>
+        <div class="row">
+          <span class="row-text">
+            <span class="row-title">Updates</span>
+            <span class="row-val" id="up-meta">–</span>
+          </span>
+          <div class="ctl-flex" style="flex:none">
+            <button class="btn" id="up-install" type="button" hidden>Install update</button>
+            <button class="btn sec" id="up-check" type="button">Check now</button>
+          </div>
+        </div>
+        <div class="row">
+          <span class="row-text">
+            <span class="row-title">Export all logs</span>
+            <span class="row-val">Unredacted zip (includes MACs, IPs and network names)</span>
+          </span>
+          <button class="btn sec" id="ex-btn" type="button">Export zip</button>
+        </div>
+      </div>
 
-  <dl class="facts" id="facts"></dl>
+      <div class="group">
+        <div class="row">
+          <span class="row-text"><span class="row-title">Uptime</span></span>
+          <span class="row-val mono" id="sys-up">–</span>
+        </div>
+        <div class="row">
+          <span class="row-text"><span class="row-title">Memory</span></span>
+          <span class="row-val mono" id="sys-mem">–</span>
+        </div>
+        <div class="row">
+          <span class="row-text"><span class="row-title">Dashboard address</span></span>
+          <span class="row-val mono" id="sys-host">–</span>
+        </div>
+      </div>
 
-  <div class="logs-head">
-    <h2>Events</h2>
-    <label><input type="checkbox" id="quiet" checked> Show health lines</label>
-  </div>
-  <div class="log-wrap">
-    <div id="log" tabindex="0" aria-label="events.log"></div>
-    <button id="jump" type="button">Jump to latest</button>
-  </div>
-</main>
+      <div class="group" id="uninst-group" hidden>
+        <div class="row">
+          <span class="row-text">
+            <span class="row-title">Uninstall netbug</span>
+            <span class="row-val">Removes the logon task, router pin and program files. Logs stay.</span>
+          </span>
+          <button class="btn danger" id="fx-uninst" type="button">Uninstall</button>
+        </div>
+      </div>
+
+      <div class="err-msg" id="up-err"></div>
+    </div>
+  </section>
+</div>
+
+<iframe name="netbug-dl" id="dl" hidden title="download"></iframe>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const css = getComputedStyle(document.documentElement);
   const C = {};                    // palette read once, not on every chart draw
-  for (const n of ['line', 'ink', 'gw', 'net', 'udp', 'sans', 'lag', 'down']) C[n] = css.getPropertyValue('--' + n).trim();
+  for (const n of ['ink', 'ink-2', 'ink-3', 'gw', 'cf', 'udp', 'ok', 'lag', 'down', 'sans', 'mono'])
+    C[n] = css.getPropertyValue('--' + n).trim();
   // DOM writes only when the content changed, so an unchanged second costs no layout
   const put = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
   const putText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
@@ -292,6 +977,50 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   let since = 0, offset = -1, lastOk = 0, state = null, started0 = 0;
   const hist = new Map();          // unix s -> [t, gw, cf, g, udp, dns, tcp, fail]
   let lastProblem = null;          // latest finished outage/lag from events.log
+  let latestLogMsg = '', unreadAlerts = 0;
+
+  // ---------- views & minimal popover ----------
+  let activeView = 'live';
+  function showView(v) {
+    activeView = v;
+    document.querySelectorAll('.tab').forEach(t => {
+      const on = t.dataset.view === v;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === 'view-' + v));
+    if (v === 'live') requestAnimationFrame(draw);
+    if (v === 'events') {
+      unreadAlerts = 0;
+      putText($('bdg-events'), '');
+      if (follow) log.scrollTop = log.scrollHeight;
+    }
+  }
+  document.querySelectorAll('.tab').forEach(t => { t.onclick = () => showView(t.dataset.view); });
+
+  const minBtn = $('min-pill'), minPop = $('min-pop');
+  minBtn.onclick = e => {
+    e.stopPropagation();
+    const open = minPop.hidden;
+    minPop.hidden = !open;
+    minBtn.setAttribute('aria-expanded', String(open));
+  };
+  document.addEventListener('click', e => {
+    if (!minPop.hidden && !minPop.contains(e.target) && e.target !== minBtn) {
+      minPop.hidden = true;
+      minBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  const traceVis = { gw: true, cf: true, udp: true };
+  document.querySelectorAll('.s-pill').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.trace;
+      traceVis[k] = !traceVis[k];
+      b.classList.toggle('off', !traceVis[k]);
+      draw();
+    };
+  });
 
   // ---------- formatting ----------
   const ms = v => v < 0 ? null : v;
@@ -307,186 +1036,339 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   };
   const dur = s => {
     s = Math.max(0, Math.round(s));
-    if (s < 60) return s + ' s';
+    if (s < 60) return s + 's';
     const m = Math.floor(s / 60);
-    if (m < 60) return m + ' min' + (s % 60 && m < 10 ? ' ' + (s % 60) + ' s' : '');
+    if (m < 60) return m + 'm' + (s % 60 && m < 10 ? ' ' + (s % 60) + 's' : '');
     const h = Math.floor(m / 60);
-    if (h < 48) return h + ' h ' + (m % 60) + ' min';
-    return Math.floor(h / 24) + ' days';
+    if (h < 48) return h + 'h ' + (m % 60) + 'm';
+    return Math.floor(h / 24) + 'd';
   };
   const ago = at => {
     const s = (Date.now() - at) / 1000;
     return s < 86400 * 2 ? dur(s) + ' ago' : 'on ' + new Date(at).toLocaleDateString();
   };
-  const failNames = { no_iface: 'no network adapter', gw: 'gateway ping', internet: 'internet ping', dns: 'DNS',
-    udp: 'UDP', tcp: 'new TCP connections', udp_high: 'UDP port usage', lag: 'local lag', cf_route: 'Cloudflare route',
-    router_check: 'router check (cuts the connection on purpose)' };
+  const failNames = {
+    no_iface: 'no network adapter', gw: 'gateway ping', internet: 'internet ping', dns: 'DNS',
+    udp: 'UDP', tcp: 'new TCP connections', udp_high: 'UDP port usage', lag: 'local lag',
+    cf_route: 'Cloudflare route', router_check: 'router check (cuts the connection on purpose)'
+  };
   // fail codes that aren't an outage: shaded orange on the chart
   const softFails = ['lag', 'gw', 'udp_high', 'cf_route', 'router_check'];
   const failText = f => f.split('|').filter(Boolean).map(x => failNames[x] || x).join(', ');
 
-  // -2 = not measured (minimal mode): "off"; -3 = no reading yet (start-up, leaving minimal mode): "–"
-  function setReadout(id, v, raw) {
+  // -2 = not measured (minimal mode): "Off"; -3 = no reading yet (start-up, leaving minimal mode): "–"
+  function setVal(id, v, raw, big) {
     const el = $(id), off = raw === -2, none = raw === -3, lost = !off && !none && (v === null || v === undefined);
-    const cls = lost ? 'v bad' : 'v';
+    const base = big ? 'num' : 'pv';
+    const cls = lost ? base + ' bad' : (off || none) ? base + ' muted' : base;
     if (el.className !== cls) el.className = cls;
-    put(el, off ? 'off' : none ? '–' : lost ? 'lost' : v + '<small>ms</small>');
+    put(el, off ? 'Off' : none ? '–' : lost ? 'Lost' : v + '<small>ms</small>');
   }
 
   // ---------- status ----------
   function renderStatus() {
     const now = Date.now() / 1000;
-    let st = 'ok', head, sub;
+    let st = 'ok', head = 'Healthy', sub;
     const s = state && state.sample;
+
     if (!state || now - lastOk > 6) {
       st = 'stale';
-      head = 'netbug isn’t answering';
+      head = 'Not answering';
       sub = lastOk ? 'No reply for ' + dur(now - lastOk) + '. Check that the netbug task is running on the laptop.'
                    : 'Trying to reach the logger at this address.';
     } else if (!s) {
       head = 'Starting up'; sub = 'The first reading arrives within a second.';
     } else if (s.outage) {
       st = 'down';
-      head = 'Connection is down';
-      sub = 'Failing: ' + failText(s.fail) + '. Ongoing for ' + dur(state.now - s.outage) + '.' + (s.gwAlert ? ' Possible ARP spoofing: ' + s.gwAlert + '.' : '');
+      head = 'Connection down';
+      sub = 'Ongoing for ' + dur(state.now - s.outage) + ' · Failing: ' + failText(s.fail) + '.' + (s.gwAlert ? ' ' + s.gwAlert + '.' : '');
     } else if (s.gwAlert) {
       st = 'down';
-      head = 'Possible ARP spoofing';
-      sub = s.gwAlert + '. Shown for 30 minutes. See the events below.';
+      head = 'ARP spoofing';
+      sub = s.gwAlert + '. Shown for 30 minutes.';
     } else if (s.lag) {
       st = 'lag';
-      head = 'Local network is lagging';
-      sub = 'Gateway ping is high or dropping. Ongoing for ' + dur(state.now - s.lag) + '.';
+      head = 'Local lag';
+      sub = 'Gateway ping is high or dropping · Ongoing for ' + dur(state.now - s.lag) + '.';
     } else if (s.cfRoute) {
       st = 'lag';
-      head = 'Cloudflare route is degraded';
-      sub = '1.1.1.1 is losing pings or running at twice its usual time while Google is fine, so Discord and other Cloudflare-hosted services suffer. Ongoing for ' + dur(state.now - s.cfRoute) + '.';
+      head = 'Cloudflare slow';
+      sub = '1.1.1.1 is losing pings or running at twice its usual time while Google is fine · Ongoing for ' + dur(state.now - s.cfRoute) + '.';
     } else {
-      head = 'Network is healthy';
       sub = /(^|\|)router_check(\||$)/.test(s.fail) ? 'A router check is running: the connection drops for a few seconds on purpose.'
           : s.fail ? 'One-off miss this second: ' + failText(s.fail) + '.'
-          : lastProblem ? 'Last problem: ' + lastProblem.what + ', ' + ago(lastProblem.at) + '.'
+          : lastProblem ? 'Last incident: ' + lastProblem.what + ', ' + ago(lastProblem.at) + '.'
           : 'No outages or lag in the recent log.';
     }
+
     if (document.body.dataset.state !== st) document.body.dataset.state = st;
     putText($('headline'), head);
     putText($('sub'), sub);
+
+    const act = [];
+    if (s && (s.gwAlert || s.outage) && fixOn)
+      act.push('<button type="button" class="btn" id="go-protect">Open Protection</button>');
+    if (s && s.viaVpn)
+      act.push('<span class="tile-tag bad">Traffic via ' + esc(s.via) + ' (measures VPN, not ISP)</span>');
+    put($('hero-actions'), act.join(''));
+    const gp = $('go-protect');
+    if (gp) gp.onclick = () => showView('protect');
+
     const title = (st === 'ok' ? '' : st === 'lag' ? '◐ ' : '● ') + 'netbug';
     if (document.title !== title) document.title = title;
   }
 
   function renderState() {
     const s = state.sample;
-    put($('m-up'), '<b>Uptime:</b> ' + dur(state.now - state.started));
-    put($('m-mem'), '<b>Memory:</b> ' + state.memMb.toFixed(0) + ' MB');
-    put($('m-host'), '<b>Address:</b> ' + esc(location.host));
+    putText($('m-ver'), state.version || '');
+    putText($('sys-up'), dur(state.now - state.started));
+    putText($('sys-mem'), state.memMb.toFixed(1) + ' MB');
+    putText($('sys-host'), location.host);
+    putText($('sys-sub'), 'netbug ' + (state.version || '') + ' · up ' + dur(state.now - state.started));
     if (!s) return;
+
     const last = [...hist.values()].pop();
     if (last) {
-      setReadout('r-gw', ms(last[1])); setReadout('r-cf', cfShown(last)); setReadout('r-g', ms(last[3]), last[3]);
-      setReadout('r-udp', ms(last[4]), last[4]); setReadout('r-dns', ms(last[5]), last[5]); setReadout('r-tcp', ms(last[6]), last[6]);
+      setVal('hero-gw', ms(last[1]), last[1], true);
+      setVal('hero-cf', cfShown(last), last[2], true);
+      setVal('r-gw', ms(last[1]), last[1], false);
+      setVal('r-cf', cfShown(last), last[2], false);
+      setVal('r-g', ms(last[3]), last[3], false);
+      setVal('r-udp', ms(last[4]), last[4], false);
+      setVal('r-dns', ms(last[5]), last[5], false);
+      setVal('r-tcp', ms(last[6]), last[6], false);
     }
     renderMinimal(s);
-    // "cf=1.2.3.4:5678" -> address + which STUN server saw it
-    const nat = s.udpMap ? esc(s.udpMap.replace(/^\w+=/, '')) + '<span>seen by ' + (s.udpMap.startsWith('cf=') ? 'Cloudflare' : 'Google') + ' STUN</span>' : '–';
-    // "svchost=14 NVIDIA Overlay=8" -> "svchost 14, NVIDIA Overlay 8" (names can contain spaces)
-    const top = [...(s.udpTop || '').matchAll(/(\S.*?)=(\d+)/g)].map(m => m[1] + ' ' + m[2]).join(', ');
+
+    const pinTag = s.gwAlert ? ['Spoofed', 'bad'] : s.gwArp === 'static' ? ['Pinned', 'ok'] : s.gwArp === 'dynamic' ? ['Dynamic', 'warn'] : [s.gwArp || '–', ''];
     // Wi-Fi name: the SSID, else (Windows hides SSIDs without location access) Windows' network profile name, marked as such
-    const wifi = 'Wi-Fi' + (s.ssid ? ': ' + s.ssid : s.netProfile ? ': ' + s.netProfile + ' (Windows network name, SSID hidden)' : '');
-    const facts = [
-      ['Interface', esc(s.iface || 'none') + (s.ifType ? '<span>' + esc(s.ifType === 'wifi' ? wifi : s.ifType) + '</span>' : '')],
-      ['Wired link', esc(s.link)],
-      ['VPN', esc(s.vpn || 'none') + (s.viaVpn
-        ? '<span>Internet traffic goes through ' + esc(s.via) + ', so the internet readings measure the VPN tunnel</span>'
-        : (s.vpn ? '<span>Not carrying internet traffic</span>' : '')), !!s.viaVpn],
-      ['Local IP', esc(s.ip || '–')],
-      ['Gateway', esc(s.gw || '–')],
-      ['Gateway MAC', esc(s.gwMac || '–') + '<span>' +
-        (s.gwArp === 'static' ? 'Pinned (static ARP entry)' : s.gwArp === 'dynamic' ? 'Learned (dynamic ARP entry, can be spoofed)' : 'ARP entry: ' + esc(s.gwArp || 'unknown')) +
-        (s.arpWatch ? '. ARP watch: ' + esc(s.arpWatch) : '') + '</span>', !!s.gwAlert],
-      ['Public IP', esc(s.pubIp || '–')],
-      ['UDP NAT mapping', nat],
-      ['Packets in the last second', esc(s.tx + ' sent, ' + s.rx + ' received')],
-      ['UDP ports in use', s.udpTotal < 0 ? '–' : s.udpTotal + (top ? '<span>' + esc(top) + '</span>' : '')],
-    ];
-    // the last one (UDP ports + per-process list) is the longest: full width on phones
-    put($('facts'), facts.map(([k, v, alert], i) =>
-      '<div class="fact' + (i === facts.length - 1 && facts.length % 2 === 1 ? ' wide' : '') + '"><dt>' + k + ':</dt><dd' + (alert ? ' class="alert"' : '') + '>' + v + '</dd></div>').join(''));
+    const wifiName = s.ifType === 'wifi'
+      ? (s.ssid ? 'Wi-Fi: ' + s.ssid : s.netProfile ? 'Wi-Fi: ' + s.netProfile + ' (Windows network name, SSID hidden)' : 'Wi-Fi')
+      : (s.ifType || 'network');
+    const vpnTag = s.viaVpn ? ['VPN active', 'bad'] : s.vpn ? ['VPN standby', ''] : [s.link === 'up' ? 'Link up' : (s.link || '–'), ''];
+    const natAddr = s.udpMap ? s.udpMap.replace(/^\w+=/, '') : '';
+    const natSrv = s.udpMap ? (s.udpMap.startsWith('cf=') ? 'Cloudflare STUN' : 'Google STUN') : '';
+    // "svchost=14 NVIDIA Overlay=8" -> "svchost 14 · NVIDIA Overlay 8" (names can contain spaces)
+    const topProc = [...(s.udpTop || '').matchAll(/(\S.*?)=(\d+)/g)].slice(0, 3).map(m => m[1] + ' ' + m[2]).join(' · ');
+    const aw = s.arpWatch || 'Pending';
+    const awCls = /spoofing/i.test(aw) ? 'bad' : /clean/i.test(aw) ? 'ok' : /no ARP/i.test(aw) ? 'warn' : '';
+
+    const tilesHtml = `
+      <div class="tile ${fixOn ? 'clickable' : ''}" data-go="protect">
+        <div class="tile-head"><span>Router &amp; ARP</span><span class="tile-tag ${pinTag[1]}">${esc(pinTag[0])}</span></div>
+        <div class="tile-val mono ${s.gwAlert ? 'bad' : ''}">${esc(s.gwMac || '–')}</div>
+        <div class="tile-meta">
+          <button type="button" class="copy-chip" data-copy="${esc(s.gw || '')}">Gateway <code>${esc(s.gw || '–')}</code></button>
+          <span>${esc(/arp/i.test(aw) ? aw : 'ARP watch: ' + aw)}</span>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span>Connection</span><span class="tile-tag ${vpnTag[1]}">${esc(vpnTag[0])}</span></div>
+        <div class="tile-val">${esc(s.iface || 'No adapter')} <span style="color:var(--ink-3);font-weight:400">· ${esc(wifiName)}</span></div>
+        <div class="tile-meta">
+          <button type="button" class="copy-chip" data-copy="${esc(s.ip || '')}">Local <code>${esc(s.ip || '–')}</code></button>
+          <button type="button" class="copy-chip" data-copy="${esc(s.pubIp || '')}">Public <code>${esc(s.pubIp || '–')}</code></button>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span>Traffic &amp; UDP</span><span class="tile-tag ${s.tx > 15 && s.rx <= 2 ? 'bad' : ''}">${s.udpTotal < 0 ? '–' : s.udpTotal + ' ports'}</span></div>
+        <div class="tile-val mono">${s.tx} <span style="color:var(--ink-3)">↑</span> &nbsp; ${s.rx} <span style="color:var(--ink-3)">↓</span> <span style="font-size:13px;font-weight:400;color:var(--ink-3)">pkt/s</span></div>
+        <div class="tile-meta">
+          ${natAddr ? '<button type="button" class="copy-chip" data-copy="' + esc(natAddr) + '">NAT <code>' + esc(natAddr) + '</code> (' + esc(natSrv) + ')</button>' : ''}
+          ${topProc ? '<span>' + esc(topProc) + '</span>' : ''}
+        </div>
+      </div>
+
+      <div class="tile clickable" data-go="events">
+        <div class="tile-head"><span>Recent activity</span><span class="tile-tag ${awCls}">Open log →</span></div>
+        <div class="tile-val" style="font-size:15px;font-weight:500">${esc(latestLogMsg || 'Listening to events…')}</div>
+        <div class="tile-meta"><span>${s.vpn ? 'VPN: ' + esc(s.vpn) : 'No VPN active'}</span></div>
+      </div>
+    `;
+    put($('tiles'), tilesHtml);
   }
+
+  $('tiles').addEventListener('click', e => {
+    const cp = e.target.closest('.copy-chip');
+    if (cp) {
+      e.stopPropagation();
+      const v = cp.dataset.copy;
+      if (v) {
+        if (navigator.clipboard) navigator.clipboard.writeText(v).catch(() => {});
+        const orig = cp.innerHTML;
+        cp.textContent = 'Copied ' + v;
+        setTimeout(() => { cp.innerHTML = orig; }, 900);
+      }
+      return;
+    }
+    const tile = e.target.closest('.tile.clickable');
+    if (tile && tile.dataset.go) {
+      if (tile.dataset.go === 'protect' && !fixOn) return;
+      showView(tile.dataset.go);
+    }
+  });
 
   // ---------- chart ----------
   const chart = $('chart'), ctx = chart.getContext('2d');
   const SPAN = 300, MAXMS = 300;
-  const y = (v, h) => { const r = Math.sqrt(Math.min(v, MAXMS) / MAXMS); return h - 8 - r * (h - 20); };
+  const y = (v, h) => { const r = Math.sqrt(Math.min(v, MAXMS) / MAXMS); return h - 12 - r * (h - 26); };
+  let hoverX = null;
+
+  chart.addEventListener('pointermove', e => {
+    hoverX = e.clientX - chart.getBoundingClientRect().left;
+    draw();
+  });
+  chart.addEventListener('pointerleave', () => {
+    hoverX = null;
+    $('float-tip').classList.remove('show');
+    draw();
+  });
 
   function draw() {
+    if (activeView !== 'live') return;
     const dpr = window.devicePixelRatio || 1, w = chart.clientWidth, h = chart.clientHeight;
-    if (chart.width !== w * dpr || chart.height !== h * dpr) { chart.width = w * dpr; chart.height = h * dpr; }
+    if (!w || !h) return;
+    if (chart.width !== Math.round(w * dpr) || chart.height !== Math.round(h * dpr)) {
+      chart.width = Math.round(w * dpr); chart.height = Math.round(h * dpr);
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+
     const end = state ? state.now : Date.now() / 1000;
-    const pw = w - 52;               // plot width; the right gutter holds the scale labels
+    const pw = w - 46;
     const x = t => (1 - (end - t) / SPAN) * pw;
 
-    ctx.font = '500 11px ' + C.sans;
+    ctx.font = '500 11px ' + C.mono;
     ctx.textAlign = 'right';
     for (const g of [1, 10, 50, 150, 300]) {
       const yy = Math.round(y(g, h)) + .5;
-      ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(pw, yy); ctx.stroke();
-      ctx.fillStyle = C.ink; ctx.fillText(g + (g === 300 ? '+ ms' : ' ms'), w - 2, yy + 4);
+      ctx.fillStyle = C['ink-3'];
+      ctx.fillText(g === 300 ? '300+' : String(g), w - 2, yy + 3.5);
     }
 
     const rows = [...hist.values()];
     const bw = Math.max(1, pw / SPAN);
-    // a failed second shades back to the previous sample, so a missing sample (a round that ran late)
-    // doesn't leave a stripe in the band
+
+    // a failed second shades back to the previous sample, so a missing sample doesn't leave a stripe in the band
     let prevT = null;
     for (const r of rows) {
       if (r[7]) {
         const lagOnly = r[7].split('|').every(f => softFails.includes(f));
         const x0 = prevT !== null && r[0] - prevT <= 10 ? x(prevT) : x(r[0]) - bw;
-        const a = Math.round(x0), b = Math.round(x(r[0]));   // whole pixels: no overlap seams
-        ctx.fillStyle = lagOnly ? 'rgba(255,159,10,.32)' : 'rgba(255,69,58,.45)';
+        const a = Math.round(x0), b = Math.round(x(r[0]));
+        ctx.fillStyle = lagOnly ? 'rgba(255,138,61,0.16)' : 'rgba(255,69,58,0.22)';
         ctx.fillRect(a, 0, Math.max(1, b - a), h);
-        ctx.fillStyle = lagOnly ? C.lag : C.down;               // solid strip on top: visible at a glance
-        ctx.fillRect(a, 0, Math.max(1, b - a), 4);
+        ctx.fillStyle = lagOnly ? C.lag : C.down;
+        ctx.fillRect(a, 0, Math.max(1, b - a), 3);
       }
       prevT = r[0];
     }
 
-    const line = (i, color, width) => {
-      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round';
-      ctx.beginPath();
-      let pen = false, prev = 0;
+    const drawCurve = (i, color, width, fillColor) => {
+      const segs = [];
+      let seg = null, prev = 0;
       for (const r of rows) {
         const v = r[i];
         // a Cloudflare-only miss is skipped without breaking the line (see cfHidden)
         if (i === 2 && cfHidden(r)) continue;
-        if (v < 0 || r[0] - prev > 2) pen = false;
+        if (v < 0 || r[0] - prev > 2) seg = null;
         prev = r[0];
         if (v < 0) continue;
-        const px = x(r[0]), py = y(v, h);
-        pen ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-        pen = true;
+        const pt = [x(r[0]), y(v, h)];
+        if (!seg) { seg = [pt]; segs.push(seg); } else seg.push(pt);
       }
-      ctx.stroke();
+      for (const s of segs) {
+        if (s.length === 1) {
+          ctx.fillStyle = color;
+          ctx.beginPath(); ctx.arc(s[0][0], s[0][1], width, 0, Math.PI * 2); ctx.fill();
+          continue;
+        }
+        ctx.beginPath();
+        ctx.moveTo(s[0][0], s[0][1]);
+        for (let k = 1; k < s.length; k++) ctx.lineTo(s[k][0], s[k][1]);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        if (fillColor) {
+          const grad = ctx.createLinearGradient(0, 0, 0, h);
+          grad.addColorStop(0, fillColor);
+          grad.addColorStop(1, 'rgba(12,12,12,0)');
+          ctx.lineTo(s[s.length - 1][0], h - 12);
+          ctx.lineTo(s[0][0], h - 12);
+          ctx.closePath();
+          ctx.fillStyle = grad;
+          ctx.fill();
+        }
+      }
     };
-    line(4, C.udp, 1.25);
-    line(2, C.net, 1.25);
-    line(1, C.gw, 2);
+
+    if (traceVis.udp) drawCurve(4, C.udp, 1.5, null);
+    if (traceVis.cf) drawCurve(2, C.cf, 1.75, 'rgba(245,245,243,0.08)');
+    if (traceVis.gw) drawCurve(1, C.gw, 2.2, 'rgba(96,165,250,0.12)');
+
+    const tip = $('float-tip');
+    if (hoverX !== null && hoverX >= 0 && hoverX <= pw && rows.length) {
+      const targetT = end - (1 - hoverX / pw) * SPAN;
+      let nearest = rows[0], bestD = Infinity;
+      for (const r of rows) {
+        const d = Math.abs(r[0] - targetT);
+        if (d < bestD) { bestD = d; nearest = r; }
+      }
+      if (bestD <= 6) {
+        const px = Math.round(x(nearest[0])) + .5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h - 12); ctx.stroke();
+
+        for (const [idx, col, on] of [[4, C.udp, traceVis.udp], [2, C.cf, traceVis.cf], [1, C.gw, traceVis.gw]]) {
+          if (on && nearest[idx] >= 0) {
+            ctx.fillStyle = col;
+            ctx.beginPath(); ctx.arc(px, y(nearest[idx], h), 3.8, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        const fmt = v => v === -2 ? 'off' : v === -3 ? '–' : v < 0 ? '<span class="ft-bad">lost</span>' : v + 'ms';
+        const ts = new Date(nearest[0] * 1000).toLocaleTimeString([], { hour12: false });
+        tip.innerHTML =
+          '<div class="ft-t">' + ts + '</div>' +
+          '<div class="ft-row">' +
+          '<span>GW ' + fmt(nearest[1]) + '</span>' +
+          '<span>CF ' + fmt(nearest[2]) + '</span>' +
+          '<span>G ' + fmt(nearest[3]) + '</span>' +
+          '<span>UDP ' + fmt(nearest[4]) + '</span>' +
+          '<span>DNS ' + fmt(nearest[5]) + '</span>' +
+          '</div>' +
+          (nearest[7] ? '<div class="ft-warn">' + esc(failText(nearest[7])) + '</div>' : '');
+        tip.classList.add('show');
+        const tw = tip.offsetWidth || 240;
+        tip.style.left = Math.min(Math.max(8, px - tw / 2), pw - tw - 8) + 'px';
+      } else tip.classList.remove('show');
+    }
   }
 
   // ---------- events ----------
   const log = $('log');
-  let follow = true, lastDay = '';
+  let follow = true, lastDay = '', searchTerm = '', showHealth = true;
   const kind = m =>
     /^(OUTAGE|\s*outage now|GATEWAY MAC CHANGED|ARP SPOOFING|\s*gateway is pinned|netbug error|MAC announce failing|update failed|snapshot failed|snapshot .* stopped|ARP capture error|size cap error|install failed|router check failed|dashboard failed)/.test(m) ? 'down' :
     /^(LAG|CLOUDFLARE ROUTE DEGRADED)/.test(m) ? 'lag' :
     /^health:/.test(m) ? 'quiet' : '';
 
-  function addLines(lines) {
+  function applySearch(el) {
+    if (!searchTerm) { el.classList.remove('filtered'); return; }
+    el.classList.toggle('filtered', !el.textContent.toLowerCase().includes(searchTerm));
+  }
+
+  function addLines(lines, initial) {
     const frag = document.createDocumentFragment();
+    let newAlerts = 0;
     for (const raw of lines) {
       // "2026-11-04 08:01:02 +08:00  msg" (older lines have no UTC offset: "2026-11-04 08:01:02  msg")
       const tz = /^.{19} [+-]\d\d:\d\d  /.test(raw);
@@ -499,21 +1381,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
         frag.appendChild(d);
       }
       const k = kind(msg);
+      if (k !== 'quiet') latestLogMsg = time + ' · ' + msg.slice(0, 96);
+      if (!initial && k === 'down') newAlerts++;
       const el = document.createElement('div');
       el.className = 'l' + (k ? ' ' + k : '');
       el.innerHTML = '<span class="t">' + esc(time) + '</span><span class="m">' + esc(msg) + '</span>';
+      applySearch(el);
       frag.appendChild(el);
 
       // a LAG summary logged within 2 min of an outage ending is the same incident: keep the outage
       let m;
       const at = new Date(day + 'T' + time).getTime();
-      if ((m = msg.match(/^OUTAGE END after ([\d,]+) s/))) lastProblem = { what: 'outage lasting ' + dur(+m[1].replace(/,/g, '')), at, outage: true };
+      if ((m = msg.match(/^OUTAGE END after ([\d,]+) s/))) lastProblem = { what: 'outage (' + dur(+m[1].replace(/,/g, '')) + ')', at, outage: true };
       else if ((m = msg.match(/^LAG .*?\(([\d,]+) s\)/)) && !(lastProblem && lastProblem.outage && at - lastProblem.at < 120000))
-        lastProblem = { what: 'lag lasting ' + dur(+m[1].replace(/,/g, '')), at };
+        lastProblem = { what: 'local lag (' + dur(+m[1].replace(/,/g, '')) + ')', at };
     }
     log.appendChild(frag);
     while (log.childElementCount > 4000) log.firstElementChild.remove();
     if (follow) log.scrollTop = log.scrollHeight;
+    if (newAlerts > 0 && activeView !== 'events') {
+      unreadAlerts += newAlerts;
+      putText($('bdg-events'), String(unreadAlerts));
+    }
+    if (state) renderState();
   }
 
   log.addEventListener('scroll', () => {
@@ -523,10 +1413,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   $('jump').onclick = () => { log.scrollTop = log.scrollHeight; };
   // the web font swapping in changes line heights after the first auto-scroll: re-pin to the bottom
   if (document.fonts) document.fonts.ready.then(() => { if (follow) log.scrollTop = log.scrollHeight; });
-  $('quiet').onchange = e => {
-    log.classList.toggle('hide-quiet', !e.target.checked);
+  $('quiet-btn').onclick = () => {
+    showHealth = !showHealth;
+    $('quiet-btn').classList.toggle('on', showHealth);
+    putText($('quiet-btn'), showHealth ? 'Health shown' : 'Health hidden');
+    log.classList.toggle('hide-quiet', !showHealth);
     if (follow) log.scrollTop = log.scrollHeight;
   };
+  $('flt-all').onclick = () => { $('flt-all').classList.add('active'); $('flt-prob').classList.remove('active'); log.classList.remove('only-problems'); };
+  $('flt-prob').onclick = () => { $('flt-prob').classList.add('active'); $('flt-all').classList.remove('active'); log.classList.add('only-problems'); };
+  $('log-q').oninput = e => { searchTerm = e.target.value.trim().toLowerCase(); log.querySelectorAll('.l').forEach(applySearch); };
 
   // ---------- polling ----------
   // each poll waits for its previous request: a stuck netbug doesn't pile requests up
@@ -546,7 +1442,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       for (const h of state.hist) { hist.set(h[0], h); since = Math.max(since, h[0]); }
       for (const t of hist.keys()) if (t < state.now - SPAN) hist.delete(t); else break;
       renderState();
-    } catch (e) { /* shown as "isn't answering" by renderStatus */ }
+    } catch (e) { /* shown as "Not answering" by renderStatus */ }
     renderStatus();
     draw();
   }
@@ -559,9 +1455,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     try {
       const r = await fetch('/api/events' + (offset >= 0 ? '?from=' + offset : ''), { cache: 'no-store' });
       const j = await r.json();
-      if (j.reset && offset >= 0) { log.textContent = ''; lastDay = ''; }
+      const wasInit = offset < 0;
+      if (j.reset && offset >= 0) { log.textContent = ''; lastDay = ''; lastProblem = null; latestLogMsg = ''; }
       offset = j.next;
-      if (j.lines.length) { addLines(j.lines); renderStatus(); }
+      if (j.lines.length) { addLines(j.lines, wasInit); renderStatus(); }
     } catch (e) { }
   }
 
@@ -571,8 +1468,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   let minHold = 0;
   function renderMinimal(s) {
     const on = !!s.minimal;
-    putText($('mn-state'), on ? 'On' + (s.minimalWhy ? ' (' + s.minimalWhy + ')' : '') : 'Off');
-    $('mn-state').className = 'fix-state' + (on ? ' ok' : '');
+    putText($('min-pill'), on ? 'Minimal: On' : 'Minimal: Off');
+    $('min-pill').classList.toggle('on', on);
+    putText($('mn-state'), on ? 'On' : 'Off');
+    putText($('mn-why'), on && s.minimalWhy ? 'Active: ' + s.minimalWhy : '');
     if (Date.now() > minHold) { $('mn-on').checked = !!s.minimalOn; $('mn-auto').checked = !!s.minimalAuto; }
   }
   async function minCall(q) {
@@ -586,10 +1485,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
   $('mn-on').onchange = e => minCall('on=' + (e.target.checked ? 1 : 0));
   $('mn-auto').onchange = e => minCall('auto=' + (e.target.checked ? 1 : 0));
 
-  // ---------- router protection (only on the laptop itself) ----------
+  // ---------- router protection & system (only on the laptop itself) ----------
   const token = document.querySelector('meta[name="netbug-token"]').content;
   const fixOn = /^[0-9a-f]{32}$/.test(token);
   let fix = null, uninstArmed = false, fixPolling = false, fastFix = 0;
+
+  $('tab-protect').hidden = !fixOn;
+  $('tab-system').hidden = !fixOn;
+
   async function fixCall(path, method) {
     const poll = !path;
     if (poll && fixPolling) return;   // a status poll waits for the previous one
@@ -599,75 +1502,95 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       if (r.ok) { fix = await r.json(); renderFix(); }
       else if (r.status === 403) location.reload();   // the token is from a netbug that has restarted since
     } catch (e) {
-      // netbug is gone for a moment while an update restarts it: say so until the new one answers (the
-      // page then reloads, see pollState)
+      // netbug is gone for a moment while an update restarts it: say so until the new one answers (the page then reloads)
       if (fix && fix.update && fix.update.busy && fix.update.pct >= 95) {
         fix.update.step = 'Waiting for netbug ' + (fix.update.latest || '') + ' to start';
         renderTools();
       }
     } finally { if (poll) fixPolling = false; }
   }
+
   function renderFix() {
     const f = fix, res = f.result;
-    $('fix').hidden = false;
-    let st = '', cls = '', sub;
-    if (!f.gw) { st = 'No network'; cls = 'warn'; sub = 'Connect to the network first.'; }
-    else if (f.busy) { st = 'Checking…'; cls = 'warn'; sub = (f.step || 'Working') + '. The connection drops for a few seconds while each address is tested.'; }
-    else if (f.pinned && f.verified && f.pinned !== f.verified) { st = 'Pin differs'; cls = 'bad'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ', but the last check found ' + f.verified + '. If the router was replaced, turn the pin off and on again.'; }
-    else if (f.pinned) { st = 'Protected'; cls = 'ok'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ' on ' + f.iface + '. Fake router replies are ignored.'; }
-    else if (f.verified) { st = 'Not pinned'; cls = 'warn'; sub = 'The real router ' + f.gw + ' is ' + f.verified + '. Turn on the pin to protect this laptop.'; }
-    else { st = 'Not pinned'; cls = 'warn'; sub = 'Router ' + f.gw + ' on ' + f.iface + ' is currently ' + (f.arpMac || 'unknown') + ' (' + (f.arpType || 'not in the ARP table') + '). Run a check to find the real one, or test a router MAC below.'; }
+    let st = 'Not pinned', cls = 'warn', sub = '', ban = '', bCls = '';
+    if (!f.gw) { st = 'No network'; sub = 'Connect to a network to manage router protection.'; }
+    else if (f.tether && !f.busy) { st = 'Off on tether'; cls = ''; sub = 'Phone tether on ' + f.iface + '.'; ban = 'On a phone tether, router protection is off: the phone is the router and nobody else is on that link. Switches keep their settings for other networks.'; }
+    else if (f.busy) { st = 'Checking…'; sub = f.step || 'Testing router candidates…'; ban = 'Testing router candidates — the connection drops for a few seconds on purpose.'; bCls = 'warn'; }
+    else if (f.pinned && f.verified && f.pinned !== f.verified) { st = 'Pin differs'; cls = 'bad'; sub = 'Router ' + f.gw + ' is pinned to ' + f.pinned + ', but check found ' + f.verified + '.'; ban = 'If the router was replaced, turn the pin off and on again.'; bCls = 'bad'; }
+    else if (f.pinned) { st = 'Protected'; cls = 'ok'; sub = 'Router ' + f.gw + ' pinned to ' + f.pinned + ' on ' + f.iface + '.'; }
+    else if (f.verified) { st = 'Not pinned'; sub = 'Verified real router ' + f.verified + ' on ' + f.iface + '.'; ban = 'Turn on Pin router permanently below to lock this address.'; bCls = 'warn'; }
+    else { st = 'Not pinned'; sub = 'Router ' + f.gw + ' on ' + f.iface + ' is currently ' + (f.arpMac || 'unknown') + ' (' + (f.arpType || 'not in ARP table') + ').'; }
+
     // what netbug refuses right now (see TetherOff, MinimalNoCheck and StartDetect in netbug.cs)
-    if (f.tether && !f.busy) sub += ' On a phone tether, router protection is off: the phone itself is the router and nobody else is on that link, and each check cuts the connection. The switches keep their settings for other networks.';
-    else if (f.minimal && !f.busy) sub += ' In minimal mode, Check now is off (it needs the ARP capture, which is off); Test and pin still works.';
-    if (f.snapshot && !f.busy) sub += ' A snapshot is being taken: router tests wait until it’s done.';
-    putText($('fx-state'), st); $('fx-state').className = 'fix-state ' + cls;
+    if (f.minimal && !f.tether && !f.busy) ban = (ban ? ban + ' ' : '') + 'In minimal mode, Check now is off (ARP capture is off); Test and pin still works.';
+    if (f.snapshot && !f.busy) ban = (ban ? ban + ' ' : '') + 'A snapshot is being taken: router tests wait until it’s done.';
+
     putText($('fx-sub'), sub);
-    // on a phone tether the three switches are greyed out (netbug refuses them, see TetherOff); a pin made on
-    // another network can still be turned off
-    const teth = !!f.tether, offNote = 'Off on a phone tether. ';
-    $('fx-auto').checked = f.auto;
-    $('fx-auto').disabled = teth;
-    $('fx-auto').closest('.sw').classList.toggle('off', teth);
-    // minimal mode pauses the auto-detect, the MAC announce and slows the update check (see netbug.cs "minimal mode")
+    putText($('fx-state'), st);
+    $('fx-state').className = 'tile-tag' + (cls ? ' ' + cls : '');
+    putText($('bdg-protect'), cls === 'bad' ? '!' : (f.busy ? '…' : ''));
+
+    const bEl = $('fx-banner');
+    bEl.hidden = !ban;
+    if (ban) { bEl.className = 'banner' + (bCls ? ' ' + bCls : ''); putText(bEl, ban); }
+
+    // on a phone tether the switches are greyed out (netbug refuses them, see TetherOff); an existing pin can still be turned off
+    const teth = !!f.tether;
     const minOn = !!(state && state.sample && state.sample.minimal);
-    putText($('fx-auto-note'), (teth ? offNote : minOn ? 'Paused while minimal mode is on. ' : '') +
-      'Off by default. Checks now, every 30 minutes, when the router changes and when spoofing is seen. Each check cuts the connection for a few seconds. Never runs on a phone tether. It never changes a pin by itself.');
+
     const pin = $('fx-pin');
     pin.checked = !!f.pinned;
     pin.disabled = f.busy || !f.gw || (!f.pinned && (!f.verified || teth));
-    pin.closest('.sw').classList.toggle('off', teth && !f.pinned);
-    putText($('fx-pin-note'), (teth && !f.pinned ? offNote : !f.pinned && !f.verified ? 'Run a check first. ' : '') + 'Windows then ignores fake “I am the router” replies, even after a restart. It only protects this laptop. Turn it off before plugging this adapter into another network that uses the same router address (' + (f.gw || '–') + ').');
-    const a = f.announce;
-    $('fx-ann').checked = a.on;
+    $('row-pin').classList.toggle('off', teth && !f.pinned);
+    putText($('fx-pin-note'), f.pinned ? f.pinned + ' · ' + f.iface : (teth ? 'Off on a phone tether' : !f.verified ? 'Run a check first' : 'Ready: ' + f.verified));
+
+    const a = f.announce || {};
+    $('fx-ann').checked = !!a.on;
     $('fx-ann').disabled = teth;
-    $('fx-ann').closest('.sw').classList.toggle('off', teth);
-    const annOff = teth || minOn;
-    putText($('fx-ann-note'), (teth ? offNote + 'Nothing is sent. ' : minOn ? 'Paused while minimal mode is on: nothing is sent. ' : '') +
-      'Tells the router this laptop’s real address about once a second (an ARP request asking for ' + (a.target || 'a neighbor of the router') +
-      '), so if someone tells the router they are this laptop, it lasts about a second. The pin can’t block that kind of attack.' +
-      (annOff ? '' : a.error ? ' Not working: ' + a.error + '.' : a.on && a.sent ? ' ' + a.sent + ' sent since netbug started.' : '') +
-      (a.seen >= 0 ? ' Last capture check (' + new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '): ' + a.seen +
-        ' ARP requests from this laptop seen on the wire' + (a.seenFrom ? ' in the ' + dur(a.seenAt - a.seenFrom) + ' before it' : '') + '.' : ''));
+    $('row-ann').classList.toggle('off', teth);
+    const annEl = $('fx-ann-note');
+    if (teth) { putText(annEl, 'Off on a phone tether (nothing sent)'); annEl.className = 'row-val'; }
+    else if (minOn) { putText(annEl, 'Paused while minimal mode is on (nothing sent)'); annEl.className = 'row-val'; }
+    else if (a.error) { putText(annEl, 'Not working: ' + a.error); annEl.className = 'row-val bad'; }
+    else {
+      const p = [];
+      if (a.on && a.sent) p.push(a.sent.toLocaleString() + ' sent');
+      if (a.seen >= 0) {
+        const at = new Date(a.seenAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        p.push(a.seen + ' seen on wire (' + at + (a.seenFrom ? ', ' + dur(a.seenAt - a.seenFrom) : '') + ')');
+      }
+      putText(annEl, p.length ? p.join(' · ') : (a.on ? 'Active (~1/s)' : 'Off'));
+      annEl.className = 'row-val';
+    }
+
+    $('fx-auto').checked = !!f.auto;
+    $('fx-auto').disabled = teth;
+    $('row-auto').classList.toggle('off', teth);
+    putText($('fx-auto-note'), teth ? 'Off on a phone tether' : minOn ? 'Paused while minimal mode is on' : f.auto ? 'Checks every 30 min, on router changes and spoofing' : 'Off by default');
+
     $('fx-check').disabled = f.busy || !f.gw || f.tether || f.minimal || f.snapshot;
-    put($('fx-cands'), res && res.cands ? res.cands.map(c =>
-      '<li><span class="mac ' + (c.mac === res.chosen ? 'ok' : c.works ? '' : 'bad') + '">' + esc(c.mac) + '</span><span class="why">' + esc(c.verdict) +
-      (c.random ? '. Random-style address, unusual for a router' : '') + '.</span><span class="src">Seen as: ' + esc(c.from) + '</span></li>').join('') +
-      (res.note ? '<li><span></span><span class="why">' + esc(res.note) + '</span></li>' : '') : '');
-    $('fx-uninst').hidden = !f.portable;   // a lone exe installed in %ProgramData%; the repo copy uses --uninstall
-    $('fx-uninst').disabled = f.busy;      // not during a router check: it must put the router's entry back first
+    putText($('fx-check'), f.busy ? 'Checking…' : 'Check now');
+
+    const hasCands = !!(res && ((res.cands && res.cands.length) || res.note));
+    $('fx-cands-wrap').hidden = !hasCands;
+    if (hasCands) {
+      put($('fx-cands'), (res.cands || []).map(c =>
+        '<li><div class="cand-h"><span class="cand-mac ' + (c.mac === res.chosen ? 'ok' : c.works ? '' : 'bad') + '">' + esc(c.mac) + '</span>' +
+        '<span class="cand-from">Seen as: ' + esc(c.from) + '</span></div>' +
+        '<div class="cand-why">' + esc(c.verdict) + (c.random ? '. Random-style address, unusual for a router' : '') + '.</div></li>'
+      ).join('') + (res.note ? '<li><div class="cand-why">' + esc(res.note) + '</div></li>' : ''));
+    }
+
+    $('uninst-group').hidden = !f.portable;   // a lone exe installed in %ProgramData%; the repo copy uses --uninstall
+    $('fx-uninst').disabled = f.busy;         // not during a router check: it must put the router's entry back first
     renderKnown();
     putText($('fx-err'), f.error || '');
     renderTools();
   }
 
-  // "Logs and updates": version, the GitHub release check (15 min, 6 h in minimal mode), install (with a progress bar and the
-  // current step while it runs), and the full log export
   let exportUntil = 0;
   function renderTools() {
     const f = fix, u = f.update || {};
-    $('tools').hidden = false;
-    // while an update runs: the bar (pct -1 = size not known, an animated bar) and one line with the step
     $('up-prog').hidden = !u.busy;
     if (u.busy) {
       const known = typeof u.pct === 'number' && u.pct >= 0;
@@ -680,32 +1603,37 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     // poll every 0.5 s while an update runs, so the bar moves smoothly
     if (u.busy && !fastFix) fastFix = setInterval(() => fixCall(''), 500);
     else if (!u.busy && fastFix) { clearInterval(fastFix); fastFix = 0; }
-    let st, cls;
-    if (u.busy) { st = 'Updating to ' + (u.latest || 'the new release'); cls = 'warn'; }
-    else if (u.checking) { st = 'Checking…'; cls = ''; }
-    else if (u.available) { st = 'Update available: ' + u.latest; cls = 'warn'; }
+
+    let st, cls = '';
+    if (u.busy) { st = 'Updating…'; cls = 'warn'; }
+    else if (u.checking) { st = 'Checking…'; }
+    else if (u.available) { st = 'v' + u.latest + ' available'; cls = 'warn'; }
     else if (u.checkedAt && !u.error) { st = 'Up to date'; cls = 'ok'; }
-    else { st = u.checkedAt ? 'Couldn’t check' : 'Not checked yet'; cls = u.checkedAt ? 'bad' : ''; }
-    putText($('up-state'), st); $('up-state').className = 'fix-state ' + cls;
-    const when = u.checkedAt ? ' Last checked ' + ago(u.checkedAt * 1000) + '.' : '';
-    const minOn = !!(state && state.sample && state.sample.minimal);
-    putText($('up-sub'), 'This is netbug ' + f.version + '. It checks GitHub for a new release ' + (minOn ? 'every 6 hours (minimal mode)' : 'every 15 minutes') +
-      (f.portable ? ' and installs it by itself (netbug restarts for a few seconds; the page reloads).' : '. This copy runs from its repo (a developer build), so it only reports a new release: update it with git pull and a rebuild.') + when +
-      (u.busy ? ' Don’t close netbug.' : ''));
+    else { st = u.checkedAt ? 'Check failed' : 'Not checked'; cls = u.checkedAt ? 'bad' : ''; }
+
+    putText($('up-state'), st);
+    $('up-state').className = 'tile-tag' + (cls ? ' ' + cls : '');
+    putText($('bdg-system'), u.busy ? (u.pct >= 0 ? u.pct + '%' : '…') : (u.available ? '1' : ''));
+
     const inst = $('up-install');
     inst.hidden = !(u.available && f.portable);
     inst.disabled = u.busy || f.busy;   // not during a router check (netbug refuses it too)
     putText(inst, 'Install ' + (u.latest || 'update') + ' now');
     $('up-check').disabled = u.busy || u.checking;
+
     const busyEx = f.exporting || Date.now() < exportUntil;
     $('ex-btn').disabled = busyEx;
-    putText($('ex-btn'), busyEx ? 'Preparing the zip…' : 'Export all logs');
+    putText($('ex-btn'), busyEx ? 'Preparing zip…' : 'Export zip');
+
+    const minOn = !!(state && state.sample && state.sample.minimal);
+    const modeNote = f.portable ? '' : ' · repo build (update with git pull & rebuild)';
+    putText($('up-meta'), (u.checkedAt ? 'Checked ' + ago(u.checkedAt * 1000) : 'Not checked yet') +
+      ' · checks every ' + (minOn ? '6 h (minimal)' : '15 min') + modeNote);
     putText($('up-err'), u.error || '');
   }
 
-  // "Router MAC": the known routers present on this network (built into netbug), the pinned MAC and the
-  // last check's MAC (netbug picks them), plus "Other MAC…" with a text box.
-  // The options are rebuilt only when the list changes, so a choice survives the 2 s polls.
+  // "Router MAC": the known routers present on this network, the pinned MAC and the last check's MAC,
+  // plus "Other MAC…". Rebuilt only when the list changes so a choice survives the 2 s polls.
   let knownKey = null;
   function chosenMac() {
     const sel = $('fx-known');
@@ -724,13 +1652,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
       if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
     }
     $('fx-mac').hidden = sel.value !== 'other';
-    // greyed out on a phone tether, with the switches above
     sel.disabled = $('fx-mac').disabled = !!f.tether;
-    sel.closest('.known').classList.toggle('known-off', !!f.tether);
+    $('fx-known-wrap').classList.toggle('off', !!f.tether);
     const mac = chosenMac(), already = !!mac && f.pinned === mac;
     $('fx-try').disabled = f.busy || !f.gw || !mac || already || f.tether || f.snapshot;
     putText($('fx-try'), already ? 'Already pinned' : 'Test and pin');
   }
+
   if (fixOn) {
     $('fx-check').onclick = () => fixCall('/check', 'POST');
     $('fx-auto').onchange = e => fixCall('/auto?on=' + (e.target.checked ? 1 : 0), 'POST');
@@ -742,7 +1670,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, #log:focus-visi
     $('fx-try').onclick = () => { const mac = chosenMac(); if (mac) fixCall('/trypin?mac=' + encodeURIComponent(mac), 'POST'); };
     // removes the logon task, the router pin and netbug's program files; the logs stay
     $('fx-uninst').onclick = () => {
-      if (!uninstArmed) { uninstArmed = true; putText($('fx-uninst'), 'Click again to uninstall'); setTimeout(() => { uninstArmed = false; putText($('fx-uninst'), 'Uninstall netbug'); }, 4000); return; }
+      if (!uninstArmed) {
+        uninstArmed = true;
+        $('fx-uninst').classList.add('armed');
+        putText($('fx-uninst'), 'Click again to uninstall');
+        setTimeout(() => { uninstArmed = false; $('fx-uninst').classList.remove('armed'); putText($('fx-uninst'), 'Uninstall'); }, 4000);
+        return;
+      }
       fixCall('/uninstall', 'POST');
     };
     $('up-check').onclick = () => fixCall('/update/check', 'POST');

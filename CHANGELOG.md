@@ -5,6 +5,15 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
+### 21:51: dashboard UI redesign and theme rules
+- `tools/dashboard.html`: redesigned as a matte dark-graphite tabbed desktop-app shell (`#0c0c0c` / `#151515`) with centered pill navigation (**Live**, **Protection**, **Events**, **System**) and a top-right **Minimal** popover available to every viewer.
+  - **Live**: unboxed status headline with live Gateway/Cloudflare ms, full-bleed 5-minute latency chart with series toggles and cursor-tracking hover tooltip, unboxed 6-probe strip, and 2×2 overview tiles (click IPs/MACs to copy; click Router/Activity to jump to those tabs). Removed pulsing status dots and prose walls under switches.
+  - **Protection** & **System**: grouped settings rows with tactile switches, collapsed "How router protection works" disclosure, update progress bar, log zip export and double-click uninstall.
+  - **Events**: full-height log viewer with All/Alerts filter, health toggle, live search, and unread alert badge for new alerts.
+- `AGENTS.md`: added **DASHBOARD DESIGN & THEME** rules enforcing the matte dark-graphite palette, sentence-case typography, zero decorative dots / prose clutter, app-shell navigation, and offline API integrity.
+- `README.md`, `tools/netbug.cs` (header comments): synced dashboard tab names, headlines and control labels with the redesign.
+- Checked: `tools/build.ps1` builds clean with all embedded resources; dashboard script passes `node --check`.
+
 ### 19:32: `3923ba0` v1.0.19: router protection off on a phone tether
 - On a phone's USB tether or a mobile broadband adapter, all of router protection is off: Check now, Test and pin, Pin, the **Auto-detect the real router** and **Keep the router updated** switches (refused by `/api/fix`, `TetherOff`), and the MAC announce sends nothing. The switches keep their settings for other networks; Unpin still works. `tools/netbug.cs`.
 - Page: on a tether those rows and the Router MAC picker are greyed out, each note says "Off on a phone tether". `tools/dashboard.html`.

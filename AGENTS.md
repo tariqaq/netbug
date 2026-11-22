@@ -24,6 +24,18 @@
    - Shell is for running things only: builds, git, `gh`, tests, and read-only log analysis scripts.
    - Throwaway scripts go in the scratchpad, never in the repo.
 
+## DASHBOARD DESIGN & THEME (`tools/dashboard.html`)
+
+Enforce this visual language on every UI edit so the dashboard stays like a focused native desktop app and never drifts into generic AI-generated admin-dashboard tropes:
+
+1. **Palette & surfaces:** Warm matte charcoal (`--bg: #0c0c0c`, `--surf: #151515`, `--surf-2: #1d1d1d`, `--surf-3: #272727`), whisper hairlines (`rgba(255, 255, 255, 0.075)`), warm ivory ink (`#f5f5f3`) and neutral secondary (`#9a9a95`). No cold bluish-slate dark themes, no neon cyan/emerald devops palettes, no dot-grid backgrounds, no glowing box-shadows, no left-edge colored stripe bars.
+2. **Typography & copy:** Sentence-case headings and labels in bundled Inter (`/fonts/inter.woff2`, zero external requests). Reserve monospace strictly for technical data (IPs, MACs, ports, timestamps, raw event lines) — no ALL-CAPS monospace UI headers.
+3. **No AI-slop clutter:**
+   - **No decorative or pulsing status dots** (no random green "live/online" dots). Communicate state with crisp typography, the restrained top ambient wash on lag/outage (`--wash`), and pill tags only when actionable.
+   - **No walls of grey explanatory text** under switches or cards. Keep control rows to a clear title plus one short dynamic status value; tuck longer explanations into collapsed `<details>` disclosures.
+4. **App-shell navigation & layout:** Centered pill tab bar (**Live**, **Protection**, **Events**, **System**) plus a top-right **Minimal** popover accessible from every view and remote device. Keep **Live** airy and scannable (unboxed hero + borderless full-bleed chart with cursor-tracking tooltip and series toggles + unboxed 6-probe strip + 2×2 overview tiles), and keep **Protection** / **System** as spacious grouped settings rows with smooth tactile switches.
+5. **Offline & API integrity:** Zero external CDN dependencies. Preserve localhost token gating for **Protection**, **System**, and `/api/export`, and keep **Minimal** accessible to all viewers via `X-Netbug-Minimal`.
+
 ## LOG ANALYSIS (every time the user asks to analyze logs)
 
 Logs: `C:\ProgramData\netbug\logs` (the release exe, since 2026-11-04 07:56). The repo's `logs\` stops at 11-04 07:55. Older `events.log` lines may be in `events-<time>.log` (rotated at 20 MB, since v1.0.18).

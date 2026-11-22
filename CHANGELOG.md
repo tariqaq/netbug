@@ -5,11 +5,12 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 22:13: v2.0.1: steady Live tiles, sage green
+### 22:13: `e6dfeaf` v2.0.1: steady Live tiles, sage green
 - `tools/dashboard.html`: the four Live tiles are built once and only their values update (before, the whole block was rebuilt almost every second, so a click on a copy chip or a tile could land on a replaced node and do nothing). A copied value shows "Copied …" for 0.9 s.
 - `tools/dashboard.html`: OK green `--ok` is now muted sage `#8fbf8a` (was emerald `#34d399`, against the design rules); `AGENTS.md` design rules name the status colours.
 - `tools/netbug.cs`: `Version` `2.0.1`.
 - Checked: page script passes `node --check`; the page rendered in headless Edge against the live netbug fills every tile.
+- Release https://github.com/tariqaq/netbug/releases/tag/v2.0.1, `netbug.exe` sha256 `bbd284774fc11ebb08f78c4bf9f73f2f2503219447c30948d6a84cb61480e347`.
 
 ### 22:01: `052f3e7` stale control names after the redesign
 - Old control names left by the v2.0.0 redesign: `README.md` How it works (**Keep router updated**), `tools/netbug.cs` comments in `Serve` (Protection and System tabs) and the update section (the System tab's "Install <version> now"). Comments only, no behavior change, no rebuild.

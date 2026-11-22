@@ -5,10 +5,11 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-23
 
-### 07:23: v2.0.5: update check every 15 min in minimal mode too
+### 07:23: `70062da` v2.0.5: update check every 15 min in minimal mode too
 - `tools/netbug.cs` `UpdateLoop`: the GitHub release check runs every 15 min in minimal mode too (was every 6 h). Header, minimal mode and update comments, and the `minimal mode on` event line updated. `Version` `2.0.5`.
 - `tools/dashboard.html`: the System tab says "checks every 15 min" in any mode.
 - `README.md`: Minimal mode (kept list) and Updates.
+- Release https://github.com/tariqaq/netbug/releases/tag/v2.0.5, `netbug.exe` sha256 `dfe4619c6b20e5d58c17ac022895f47cf2be412a20bda126781240f45b7fe2ff`.
 
 ### 06:21: `d06eb48` v2.0.4: Cloudflare usual time learns again after 2 h degraded
 - `tools/netbug.cs` `CfRoute`: the usual time stays frozen during a degradation (v2.0.3) only for the first 2 h (`CfRelearnAfter` 7200 s); then it learns again, so a route that is slower for good becomes the usual within ~30 min more and **Cloudflare slow** ends instead of staying on until a network change or restart. `Version` `2.0.4`.

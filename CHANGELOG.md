@@ -5,10 +5,11 @@ Entries cover repo changes (with commit hash) and changes made to the machine it
 
 ## 2026-11-22
 
-### 19:32: v1.0.19: router protection off on a phone tether
+### 19:32: `3923ba0` v1.0.19: router protection off on a phone tether
 - On a phone's USB tether or a mobile broadband adapter, all of router protection is off: Check now, Test and pin, Pin, the **Auto-detect the real router** and **Keep the router updated** switches (refused by `/api/fix`, `TetherOff`), and the MAC announce sends nothing. The switches keep their settings for other networks; Unpin still works. `tools/netbug.cs`.
 - Page: on a tether those rows and the Router MAC picker are greyed out, each note says "Off on a phone tether". `tools/dashboard.html`.
 - README: Minimal mode and Router protection sections.
+- Release https://github.com/tariqaq/netbug/releases/tag/v1.0.19, `netbug.exe` sha256 `2bd4b88c2f3cc8a4eca53e9223609a68715bdd231cc16db387b1ab9942d5ab4d`. Not tested live on a tether yet.
 
 ### 19:16: netbug re-enabled on the user's request
 - **Machine:** from an elevated prompt the user approved, `schtasks /Change /TN netbug /ENABLE` and `schtasks /Run /TN netbug`: task `Running`, netbug v1.0.18 up and the dashboard answering on port 8787. The hostel gateway pin still reads `static`.
